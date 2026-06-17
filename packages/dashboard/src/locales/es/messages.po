@@ -94,6 +94,12 @@ msgstr "{0} eventos cayeron en el mismo tick del daemon - la línea muestra su "
 msgid "{0} sat/PH/day (default - tunable later)"
 msgstr "{0} sat/PH/día (predeterminado - ajustable después)"
 
+#. placeholder {0}: cs.window.ticks_below
+#. placeholder {1}: cs.window.ticks_required
+#: src/components/TilesBar.tsx
+msgid "{0}/{1} min < {threshold}%"
+msgstr "{0}/{1} min < {threshold}%"
+
 #: src/lib/format.ts
 msgid "{days}d ago"
 msgstr "hace {days}d"
@@ -351,6 +357,11 @@ msgid "A few questions to get the daemon operational. Defaults work for typical 
 msgstr "Unas preguntas para poner el daemon operativo. Los valores "
 "predeterminados funcionan para mineros caseros típicos; ajusta más "
 "tarde desde la página Config."
+
+#: src/pages/Config.tsx
+msgid "A mempool.space fork that surfaces BIP-110 miner signaling."
+msgstr "Un fork de mempool.space que muestra la señalización de BIP-110 por los "
+"mineros."
 
 #: src/pages/Setup.tsx
 msgid "Access"
@@ -846,6 +857,10 @@ msgstr "OFERTA REANUDADA"
 #: src/pages/Config.tsx
 msgid "Bid sustained-paused for"
 msgstr "Oferta sostenidamente Paused durante"
+
+#: src/components/TilesBar.tsx
+msgid "bid vs hashprice"
+msgstr "puja vs hashprice"
 
 #: src/components/BidEventDrawer.tsx
 msgid "Bid was cancelled. See reason above."
@@ -1396,9 +1411,18 @@ msgstr "Suavizado del gráfico"
 msgid "Chat ID"
 msgstr "ID de chat"
 
+#: src/components/TilesBar.tsx
+msgid "cheap < {threshold}%"
+msgstr "barato < {threshold}%"
+
 #: src/pages/Config.tsx
 msgid "Cheap mode"
 msgstr "Modo barato"
+
+#. placeholder {0}: cs.cheap_target_hashrate_ph
+#: src/components/TilesBar.tsx
+msgid "cheap on → {0} PH/s"
+msgstr "barato activo → {0} PH/s"
 
 #: src/pages/Config.tsx
 msgid "Cheap threshold"
@@ -1743,16 +1767,16 @@ msgid "Datum (received)"
 msgstr "Datum (recibido)"
 
 #: src/pages/Status.tsx
+msgid "Datum /umbrel-api HTTP poll."
+msgstr ""
+
+#: src/pages/Status.tsx
 msgid "datum hashrate"
 msgstr "hashrate datum"
 
 #: src/pages/Config.tsx
 msgid "Datum stats API (optional)"
 msgstr "API de estadísticas de Datum (opcional)"
-
-#: src/pages/Status.tsx
-msgid "Datum stats HTTP poll."
-msgstr ""
 
 #: src/pages/Status.tsx
 msgid "Datum stats not configured - set <0>datum_api_url</0> in Config to "
@@ -3288,6 +3312,10 @@ msgstr "No configurado. Ve a Config → Pagos on-chain y selecciona Servidor "
 msgid "Not enough data in this range yet."
 msgstr "Aún no hay suficientes datos en este rango."
 
+#: src/components/SoloMinersCard.tsx
+msgid "not hashing, reboot needed"
+msgstr "sin hashear, reiniciar"
+
 #: src/pages/Status.tsx
 msgid "not in LIVE mode"
 msgstr "no está en modo LIVE"
@@ -3435,6 +3463,10 @@ msgid "Ocean's Unpaid Earnings - what will land on-chain at the next payout. "
 "Threshold: {0} sat (~0.01 BTC)."
 msgstr "Ganancias no pagadas de Ocean - lo que llegará on-chain en el próximo "
 "pago. Umbral: {0} sat (~0.01 BTC)."
+
+#: src/components/TilesBar.tsx
+msgid "of hashprice"
+msgstr "del hashprice"
 
 #: src/pages/Config.tsx
 msgid "Off"
@@ -3743,6 +3775,10 @@ msgstr "% global del rango seleccionado en el que se estaba entregando "
 #: src/pages/Status.tsx
 msgid "overdue {overdueFormatted}"
 msgstr "atrasado {overdueFormatted}"
+
+#: src/components/SoloMinersCard.tsx
+msgid "overheated, reboot needed"
+msgstr "sobrecalentado, reiniciar"
 
 #: src/components/BidEventDrawer.tsx
 #: src/components/PriceChart.tsx
@@ -4680,6 +4716,10 @@ msgstr "Mostrar valor"
 msgid "showing {0} of {totalCount}"
 msgstr "mostrando {0} de {totalCount}"
 
+#: src/components/SoloMinersCard.tsx
+msgid "shut down, reboot needed"
+msgstr "apagado, reiniciar"
+
 #: src/pages/Login.tsx
 msgid "sign in"
 msgstr "iniciar sesión"
@@ -4968,6 +5008,17 @@ msgstr "El hostname que se mantiene. Para grupos de DDNS Key de No-IP (el flujo 
 "del DDNS Key en una sola llamada. Test connection envía una "
 "actualización real con los valores del formulario (sin guardar). "
 "`nochg` y `good` son ambos éxito."
+
+#. placeholder {0}: cs.cheap_target_hashrate_ph
+#: src/components/TilesBar.tsx
+msgid "The price the controller would post (fillable ask + overpay) as a "
+"percent of Ocean hashprice. Cheap mode steps the hashrate target up to "
+"{0} PH/s when this stays below the {threshold}% threshold. Lower is "
+"cheaper."
+msgstr "El precio que publicaría el controlador (ask disponible + overpay) como "
+"porcentaje del hashprice de Ocean. El modo barato sube el objetivo de "
+"hashrate a {0} PH/s cuando esto se mantiene por debajo del umbral del "
+"{threshold}%. Más bajo es más barato."
 
 #: src/pages/Config.tsx
 msgid "The provider's dyndns2-compatible update endpoint. Examples: Dynu uses "

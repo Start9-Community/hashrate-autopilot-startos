@@ -327,6 +327,20 @@ export interface StatusResponse {
     effective_target_hashrate_ph: number;
     cheap_mode_active: boolean;
   };
+  /** #293: live bid-vs-hashprice snapshot for the tile. */
+  cheap_status: {
+    enabled: boolean;
+    bid_vs_hashprice_pct: number | null;
+    threshold_pct: number;
+    engaged: boolean;
+    target_hashrate_ph: number;
+    cheap_target_hashrate_ph: number;
+    window: {
+      ticks_below: number;
+      ticks_required: number;
+      minutes: number;
+    } | null;
+  } | null;
 }
 
 export interface DecisionSummary {
@@ -484,6 +498,17 @@ export interface SoloMinerSnapshotEntry {
   temp_c: number | null;
   vr_temp_c: number | null;
   power_w: number | null;
+  /** #291: stock-Bitaxe `overheat_mode` flag, normalised to a boolean. */
+  overheat_mode: boolean | null;
+  /** #291: NerdQAxe `shutdown` flag. */
+  shutdown: boolean | null;
+  /** #291: ASIC frequency (MHz). */
+  frequency_mhz: number | null;
+  /** #291: reachable but provably not producing the hashrate it
+   *  reports (overheated / shut down / stale frozen reading). Treat
+   *  hashrate as 0 and show a "not hashing" badge when true. */
+  halted: boolean;
+  halted_reason: 'overheat' | 'shutdown' | 'stale_hashrate' | null;
   voltage_v: number | null;
   current_a: number | null;
   shares_accepted: number | null;

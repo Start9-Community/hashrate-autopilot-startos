@@ -151,7 +151,14 @@ export function Layout() {
             Money panel. */}
         <header className="bg-slate-900 border-b border-slate-800 backdrop-blur">
         <div className="px-4 sm:px-6 flex flex-wrap items-center gap-x-6 gap-y-2 py-2">
-          <div className="flex items-center gap-3 mr-4">
+          <div className="flex items-center gap-2.5 mr-4">
+            <img
+              src="/aviator-mark.png"
+              alt=""
+              width={27}
+              height={36}
+              className="h-9 w-auto shrink-0"
+            />
             <div className="text-amber-400 font-semibold leading-tight">Hashrate Autopilot</div>
           </div>
 

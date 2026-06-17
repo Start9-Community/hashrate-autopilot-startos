@@ -1,5 +1,85 @@
 # Changelog
 
+## 2026-06-15
+
+### `[Release]` v1.15.0
+
+Aviator branding (favicon, header logo, and app icon), the bid-vs-hashprice stats tile (#293), mempool.guide as the default block explorer plus mempool.kilombino.com as a second BIP-110-aware option (#289), reachable-but-not-hashing detection for Bitaxe miners (#291), and a sweep of fixes: stale-bid self-heal (#295), false bid-paused bands (#292), the cross-browser chart-jump beacon (#288), the year-long HTML cache, and daemon-offline downtime accounting. Safe to upgrade from any 1.14.x release.
+
+### `[Infra]` StartOS package tracks upstream v1.15.0
+
+The StartOS wrapper now points at upstream Hashrate Autopilot v1.15.0, adds the `1.15.0:0` package version to the StartOS version graph, and refreshes downstream README and migration metadata.
+
+### `[UI]` "View on chart" in the History event drawer is now a button
+
+The "View on chart" action in a History event's detail drawer was a faint amber text link buried in the footer and easy to miss. It's now a filled amber button placed near the top of the drawer, right under the event reason, so jumping from an event to its spot on the price chart is an obvious, prominent action you reach for first. "copy JSON" stays a subtle secondary control in the footer.
+
+### `[UI]` App icon is now the aviator brand mark (#298)
+
+The Umbrel / app-store icon (`assets/icon.webp` + the 512/256 PNGs) is replaced with the aviator brand mark - vintage orange on navy, matching the new favicon and header logo - so the browser tab, in-app header, and store/home-screen tile share one identity. The old icon was an unrelated illustration that turned to mush at small sizes. The Community App Store picks it up via the existing URL; the official Umbrel store icon updates with the v1.15.0 PR.
+
+### `[Fix]` Self-heal local bids that were deleted at Braiins out-of-band (#295)
+
+If a bid was removed at Braiins while the autopilot wasn't looking (the operator cancelled it manually, a port/URL change, etc.), the local ledger kept it as active forever - the stale-URL banner showed a ghost bid and "Cancel & recreate" failed because the order no longer existed, leaving the only fix as hand-editing the database. Now the daemon cross-checks the ledger against a successful Braiins bid-list fetch each tick and clears any active bid the list no longer contains (with a grace window so a freshly-placed bid is never pruned, and only when the fetch definitively succeeded so an API hiccup can't wipe live bids). "Cancel & recreate" also recovers on its own: an "order not found" from Braiins is treated as already-gone and clears the row. No manual database surgery, no stuck loop.
+
+### `[UI]` Add mempool.kilombino.com as a second BIP-110 block explorer
+
+A second BIP-110-aware mempool instance, mempool.kilombino.com, joins the block-explorer presets, highlighted in yellow next to mempool.guide. Selecting it sets both the block and transaction URL templates.
+
+## 2026-06-14
+
+### `[UI]` Aviator favicon and header logo
+
+The dashboard now has a stylized 1940s aviator (leather flight helmet + goggles, vintage orange): a favicon in the browser tab (orange on a navy tile, 16/32/48 + apple-touch 180) and a transparent badge of the full aviator next to the "Hashrate Autopilot" wordmark in the top bar. Favicon links and a theme-color meta were added to `index.html`.
+
+### `[Infra]` Bump esbuild to 0.28.1 (clears GHSA advisories)
+
+Pin esbuild `>=0.28.1` via a pnpm override to clear two Dependabot advisories (one high - a Deno-path RCE via `NPM_CONFIG_REGISTRY`, which doesn't apply to our Node/Vite usage but shouldn't ride along on a release; one low - the Windows dev-server file read). Build and tests unaffected. No runtime behavior change.
+
+### `[UI]` mempool.guide is now the default block explorer (#289 follow-up)
+
+mempool.guide - a mempool.space fork that surfaces BIP-110 miner signaling - is now the default block/transaction explorer for fresh installs and the first preset in Config → Display & Logging → Block explorer, rendered as a highlighted yellow "preferred" pill with a tooltip explaining the BIP-110 rationale. Existing installs keep whatever explorer they configured; only the default and the preset order/styling change.
+
+## 2026-06-13
+
+### `[Feature]` Bid-vs-hashprice tile shows how close you are to cheap mode (#293)
+
+A new add-tile catalogue entry, BID VS HASHPRICE, shows the price the controller would post (fillable ask + overpay) as a percentage of Ocean hashprice - the exact quantity cheap mode checks. The caption is state-aware: the cheap threshold ("cheap < 95%") when above it, sustained-window progress ("3/5 min < 95%") while it's filling below the threshold, and "cheap on → 10 PH/s" once cheap mode engages, with emerald / amber / neutral colouring to match. The percentage and the cheap-mode window summary are computed daemon-side (`/api/status` `cheap_status`) so the tile can't drift from the controller's own check. Opt in via the tile picker.
+
+### `[Fix]` Solo miners no longer show phantom hashrate after a halt; no false "back online" (#291)
+
+A Bitaxe-family miner that thermally halts but stays reachable keeps publishing its last hashrate - the NerdAxe firmware exposes no halt flag and does not zero the reading - so the Bitaxe miners card looked healthy and a false "miner back online" alert fired while nothing was hashing. HA now detects a reachable-but-not-hashing miner: it reads the explicit `overheat_mode` (stock Bitaxe) and `shutdown` (NerdQAxe) flags where the firmware provides them, and otherwise catches a physically impossible hashrate-per-watt reading. A halted miner now shows 0 with a "reboot needed" badge, drops out of the fleet hashrate total, and the zero-hashrate alert keeps firing (no false recovery) until it is genuinely hashing again.
+
+### `[Fix]` Bid-pause bands no longer falsely shade long spans as paused (#292)
+
+Large red hatched "Bid paused by Braiins" bands were shading long stretches (e.g. "1d 15h") where the bid was clearly delivering hashrate. Cause: when the bid was paused while the daemon was down or restarting, the daemon re-baselined as paused without recording the pause, then emitted a lone `BID_RESUMED` on resume - and the dashboard rendered that orphan resume as "paused since the beginning of time", shading the whole history. Now the daemon only emits a resume when it logged the matching pause, and the dashboard draws no band for an orphan resume it can't place on a timeline. The genuine pauses still shade correctly.
+
+### `[Fix]` Chart-jump beacon now shows in Firefox and Safari; jump homes in to a 3 h window (#288)
+
+The History → chart "homing beacon" was invisible in Firefox and Safari - it animated the SVG `r` attribute via CSS, which only Chrome/Blink supports, so the rings stayed at radius 0 elsewhere. The sonar rings now animate `transform: scale()` (animatable in every engine) on circles with a static radius. The jump also now always lands on a 3 h window centred on the event instead of preserving whatever zoom the chart was at, so the marker and beacon are easy to spot rather than a speck in a day-wide axis. Verified rendering in Chromium, Firefox, and WebKit.
+
+### `[Fix]` Dashboard updates no longer get stuck behind a year-long browser cache
+
+The daemon served `index.html` with `Cache-Control: max-age=31536000, immutable` - a browser that loaded the dashboard once cached the entry point for a year, so it kept requesting the old hashed JS bundle and silently ran stale code after every deploy. Shipped fixes appeared to "do nothing" until a manual hard-refresh. The intended per-file override was being overridden by `@fastify/static`'s `immutable` flag; an `onSend` hook now authoritatively forces `no-cache` on every HTML document while leaving the content-hashed `/assets/*` immutable. Note: a browser that already cached the old `index.html` still needs one hard-refresh to pick up the fixed headers; after that, updates land automatically.
+
+### `[Infra]` Deploy no longer leaves the daemon unrunnable if a build or test fails
+
+`deploy.sh` / `deploy-systemd.sh` used to `rm -rf packages/*/dist` before building. The daemon runs from source via tsx but resolves its sibling workspace packages through their built `dist/`, so a build or test failure after that clean left every `dist/` deleted - and a `Restart=always` systemd unit then flapped the daemon forever on `ERR_MODULE_NOT_FOUND`. The deploy now clears only the incremental build cache (`tsbuildinfo`) and lets `tsc` overwrite `dist/` in place, so a failed deploy leaves the previously running daemon intact instead of bringing it down.
+
+## 2026-06-12
+
+### `[Fix]` History → chart jump always lands on a visible, beaconed marker (#288)
+
+Jumping to an event from the History drawer now force-renders that event's marker even when its kind is faded at the current zoom (price edits at week-plus ranges) or dropped by the marker cap, and highlights it with a pulsating sonar beacon - three expanding amber rings - instead of the old single ring. The beacon's countdown starts when the marker actually renders rather than at click time, so slow data loads no longer eat the highlight, and the page re-scrolls to the chart once the marker is on screen. Also fixes a bug where the highlight timer and the scroll-to-chart poller were cancelled almost immediately after the jump.
+
+### `[Feature]` mempool.guide block-explorer preset (#289)
+
+The Config → Block explorer presets gain mempool.guide, a mempool.space fork whose block view surfaces BIP-110 signaling.
+
+### `[Fix]` Uptime and bid-coverage tiles count daemon-offline time as downtime (#290)
+
+A daemon outage used to vanish from the uptime and bid-coverage percentages: the calculation weighed ticks by their duration but capped both numerator and denominator at 5 minutes per tick, so the single tick spanning an outage gap fell out of the clock entirely - a 24h window with a ~9h outage still read 99,6 % bid coverage. The denominator is now the wall-clock length of the window (clamped to the first tick ever recorded), so offline time counts as no uptime and no bid coverage. The "delivery while bidding" tile is unchanged - it deliberately isolates hardware/Datum failures from gaps, since during an outage there is no way to know whether a bid was active.
+
 ## 2026-06-11
 
 ### `[Release]` v1.14.0

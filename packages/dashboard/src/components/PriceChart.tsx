@@ -41,6 +41,7 @@ import {
   inferRetargetBlockHeight,
   projectSoloSeries,
 } from './HashrateChart';
+import { type IpChangeMarkerEvent } from './IpChangeMarkers';
 import { applyExplorerTemplate } from '../lib/blockExplorer';
 import {
   clientXToTickAt,
@@ -257,6 +258,7 @@ export const PriceChart = memo(function PriceChart({
   chartColorOverrides,
   crosshair,
   focusEventId = null,
+  onFocusEventRendered,
 }: {
   points: readonly MetricPoint[];
   events?: readonly BidEventView[];
@@ -336,6 +338,8 @@ export const PriceChart = memo(function PriceChart({
    * chart they hovered.
    */
   ourBlocks?: readonly OurBlockMarker[];
+  /** #250: public-IP change events accepted for parity with the hashrate chart. */
+  ipChangeEvents?: ReadonlyArray<IpChangeMarkerEvent>;
   /** Block-explorer URL template for pool-block markers (`{hash}` / `{height}` placeholders). */
   blockExplorerTemplate?: string;
   /** Transaction-explorer URL template for reward-event markers (`{txid}` / `{hash}` placeholders). */
@@ -388,12 +392,17 @@ export const PriceChart = memo(function PriceChart({
    *  undefined the crosshair is disabled entirely. */
   crosshair?: SharedCrosshair;
   /** #285 follow-up: bid_events.id from the URL `focus_event` handoff.
-   *  The matching marker renders a pulsing amber ring on top of its
-   *  glyph so the operator can spot which event they jumped to. The
-   *  ring is purely visual; clicking it still routes through the
-   *  normal onMarkerClick path. Status clears this back to null after
-   *  ~5 s so the highlight doesn't linger. */
+   *  The matching marker renders a pulsing amber sonar beacon on top
+   *  of its glyph so the operator can spot which event they jumped
+   *  to. The beacon is purely visual; clicking it still routes
+   *  through the normal onMarkerClick path. Status clears this back
+   *  to null a few seconds after onFocusEventRendered fires. */
   focusEventId?: number | null;
+  /** #288: fired (possibly more than once) when the focused event's
+   *  marker is actually present in the rendered set. Status starts
+   *  the beacon's clear countdown on the first call, so slow metrics/
+   *  events queries no longer eat the visible pulse window. */
+  onFocusEventRendered?: (id: number) => void;
 }) {
   const { i18n } = useLingui();
   void i18n;
@@ -1261,8 +1270,15 @@ export const PriceChart = memo(function PriceChart({
       'BID_PAUSED',
       'BID_RESUMED',
     ]);
+    // #288: the focused event (History → chart jump) bypasses kind
+    // filtering entirely - the whole point of the jump is to see that
+    // one marker, so it must render even when its kind is faded at
+    // the current range (EDIT_PRICE at 1w+, EDIT_SPEED at 1m+).
     const visibleEvents = events.filter(
-      (e) => allowedKinds.has(e.kind) && e.occurred_at >= dataMinX && e.occurred_at <= dataMaxX,
+      (e) =>
+        (allowedKinds.has(e.kind) || e.id === focusEventId) &&
+        e.occurred_at >= dataMinX &&
+        e.occurred_at <= dataMaxX,
     );
 
     // #167/#173: contiguous spans where fillable_ask is null. Split into
@@ -1311,7 +1327,7 @@ export const PriceChart = memo(function PriceChart({
     // crosshair readout - the bid row mirrors the smoothed line the
     // chart draws, the cap row mirrors the per-tick effective cap.
     return { pricePoints, xs, smoothedPriceByTick, capByTick, minX, maxX, dataMinX, dataMaxX, hasPrice, priceMin, priceMax, xScale, yScale, pricePath, priceAreaPath, hashpricePath, fillablePath, fillableHasData: fillablePoints.length > 0, effectivePath, effectiveHasData: effectivePoints.length > 0, capPath, capExclusionPolygon, yTicks, xTickInterval, xTicks, visibleEvents, rightAxis, hasRightAxis, rightAxisPath, rightYTicks, rightYScale, padRight, marketplaceEmptyIntervals, braiinsUnreachableIntervals, daemonOfflineIntervals };
-  }, [points, events, showEventKinds, priceSmoothingMinutes, historicalPayoutsOffsetSat, maxOverpayVsHashpriceSatPerPhDay, chartHeight, rightAxisSeries, soloSeries, denomination, intlLocale, viewportSince, viewportUntil, hidden]);
+  }, [points, events, showEventKinds, focusEventId, priceSmoothingMinutes, historicalPayoutsOffsetSat, maxOverpayVsHashpriceSatPerPhDay, chartHeight, rightAxisSeries, soloSeries, denomination, intlLocale, viewportSince, viewportUntil, hidden]);
 
   const eventPriceAt = useCallback((e: BidEventView): number | null => {
     const pricePoints = chartData?.pricePoints ?? [];
@@ -1926,6 +1942,18 @@ export const PriceChart = memo(function PriceChart({
     const x = xScale(cs.tickAt);
     return { state: cs, x, lineXFrac: x / WIDTH, rows, dots };
   }, [crosshair?.state, chartData, isDragging, points, denomination, intlLocale, _colorOverrides]);
+
+  // #288: tell Status the focused marker is actually in the rendered
+  // set so the beacon's clear countdown starts at render time, not
+  // click time - on a cold navigation from /history the events query
+  // can land well after the jump, and a click-anchored timer ate the
+  // visible pulse window.
+  useEffect(() => {
+    if (focusEventId === null || !onFocusEventRendered || !chartData) return;
+    if (chartData.visibleEvents.some((e) => e.id === focusEventId)) {
+      onFocusEventRendered(focusEventId);
+    }
+  }, [focusEventId, onFocusEventRendered, chartData]);
 
   if (!chartData) {
     return (
@@ -2546,12 +2574,14 @@ export const PriceChart = memo(function PriceChart({
           }
           return null;
         })}
-        {/* #285 follow-up: focus pulse for the marker the operator
-            jumped to from /history. Draws an expanding amber ring
-            anchored on the price-line bubble. Pure visual cue; no
-            pointer events so the underlying marker's hit-rect still
-            receives the click. Status clears focusEventId after ~5 s
-            so the ring doesn't linger. */}
+        {/* #285/#288: sonar beacon for the marker the operator jumped
+            to from /history. Three staggered expanding amber rings
+            (negative animation delays so the beacon is mid-ping the
+            instant it mounts) plus a breathing inner glow, anchored
+            on the marker's bubble/glyph. Pure visual cue; no pointer
+            events so the underlying marker's hit-rect still receives
+            the click. Status clears focusEventId a few seconds after
+            the marker actually renders (onFocusEventRendered). */}
         {focusEventId !== null && (() => {
           const focus = visibleEvents.find((e) => e.id === focusEventId);
           if (!focus) return null;
@@ -2568,30 +2598,51 @@ export const PriceChart = memo(function PriceChart({
             : priceAtEvent !== null ? yScale(priceAtEvent) : PADDING.top - 2;
           return (
             <g pointerEvents="none">
+              {/* #288 follow-up: the sonar rings animate `transform:
+                  scale()`, NOT the SVG `r` attribute. Animating SVG
+                  geometry attributes (r/cx/cy) via CSS @keyframes only
+                  works in Chrome/Blink - Firefox and Safari/WebKit
+                  ignore it, leaving the circles at their default r=0
+                  (invisible). So every ring carries a static `r` and we
+                  scale it instead, which is animatable in all engines.
+                  `transform-box: fill-box` + `transform-origin: center`
+                  makes the scale pivot on each circle's own centre so
+                  the rings stay anchored on the marker; the base r is
+                  small (5) and scales up ~6.8x to reach the old ~34px
+                  outer radius. `vector-effect: non-scaling-stroke`
+                  keeps the ring outline crisp as it expands. */}
               <style>{`
-                @keyframes priceChartFocusPulse {
-                  0%   { r: 5;  opacity: 0.95; }
-                  100% { r: 22; opacity: 0;    }
+                @keyframes priceChartFocusPing {
+                  0%   { transform: scale(1);   opacity: 0.95; }
+                  100% { transform: scale(6.8); opacity: 0;    }
                 }
                 @keyframes priceChartFocusGlow {
-                  0%, 100% { r: 7; opacity: 0.85; }
-                  50%      { r: 9; opacity: 1;    }
+                  0%, 100% { transform: scale(0.875); opacity: 0.85; }
+                  50%      { transform: scale(1.125); opacity: 1;    }
                 }
-                .price-chart-focus-pulse {
-                  animation: priceChartFocusPulse 1.5s ease-out infinite;
+                .price-chart-focus-ping {
+                  animation: priceChartFocusPing 2.4s ease-out infinite;
+                  transform-box: fill-box;
+                  transform-origin: center;
+                  vector-effect: non-scaling-stroke;
                   fill: none;
                   stroke: #fbbf24;
                   stroke-width: 2;
                 }
                 .price-chart-focus-glow {
-                  animation: priceChartFocusGlow 1.5s ease-in-out infinite;
+                  animation: priceChartFocusGlow 1.2s ease-in-out infinite;
+                  transform-box: fill-box;
+                  transform-origin: center;
+                  vector-effect: non-scaling-stroke;
                   fill: none;
                   stroke: #fde68a;
                   stroke-width: 1.5;
                 }
               `}</style>
-              <circle cx={cx} cy={cy} className="price-chart-focus-pulse" />
-              <circle cx={cx} cy={cy} className="price-chart-focus-glow" />
+              <circle cx={cx} cy={cy} r={5} className="price-chart-focus-ping" />
+              <circle cx={cx} cy={cy} r={5} className="price-chart-focus-ping" style={{ animationDelay: '-0.8s' }} />
+              <circle cx={cx} cy={cy} r={5} className="price-chart-focus-ping" style={{ animationDelay: '-1.6s' }} />
+              <circle cx={cx} cy={cy} r={8} className="price-chart-focus-glow" />
             </g>
           );
         })()}
