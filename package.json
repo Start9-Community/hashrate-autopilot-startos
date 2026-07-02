@@ -46,25 +46,15 @@
     "@hashrate-autopilot/shared": "workspace:*",
     "@inquirer/prompts": "^8.5.2",
     "@start9labs/start-sdk": "0.4.0-beta.62",
-    "@types/node": "^25.9.2",
+    "@types/node": "^26.0.0",
     "@vercel/ncc": "0.38.4",
-    "eslint": "^10.4.1",
-    "playwright": "^1.60.0",
-    "prettier": "^3.8.3",
+    "eslint": "^10.5.0",
+    "playwright": "^1.61.0",
+    "prettier": "^3.8.4",
     "tsx": "^4.22.4",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.61.0",
-    "vitest": "^4.1.8",
+    "typescript-eslint": "^8.62.0",
+    "vitest": "^4.1.9",
     "yaml": "^2.9.0"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "better-sqlite3",
-      "esbuild"
-    ],
-    "overrides": {
-      "fast-uri": ">=3.1.2",
-      "esbuild": ">=0.28.1"
-    }
   }
 }

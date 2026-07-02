@@ -1,6 +1,100 @@
 # Changelog
 
+## 2026-07-01
+
+### `[Infra]` StartOS package tracks upstream v1.15.1
+
+The StartOS wrapper now points at upstream Hashrate Autopilot v1.15.1, adds the `1.15.1:0` package version to the StartOS version graph, and refreshes downstream README, dependency metadata, and generated catalogs.
+
+## 2026-06-28
+
+### `[Release]` v1.15.1
+
+Patch release: fixes and polish, no new headline features. The price chart's safety-ceiling line is relabeled "effective cap" and is now historically accurate - the "max premium over hashprice" knob is recorded per tick and backfilled for older history, so tuning it only moves the line from that point forward (#312). Invalid Bitcoin payout addresses are now rejected at save (#309), preventing silently lost earnings from a typo. The P&L "Per Day" card no longer sticks on "refreshing…" (#311), the DATUM stats API gives actionable errors when behind an auth proxy or on a moved port (#310), and the Electrum host/port help points to the server's own connection page (#313). Plus the IP-change tooltip relative-age, mobile tiles-bar overlap (#302), block-explorer preset both-URLs (#301), and corrected Ocean batched-sweep payout wording throughout.
+
+## 2026-06-28
+
+### `[Fix]` Backfill the effective-cap line's historical premium (#312 follow-up)
+
+The #312 fix historized "max premium over hashprice" per tick going forward, but left every row recorded before that migration NULL - and the chart falls back to the *current* config value for NULL rows, so all of your pre-existing history still chased the live knob (exactly the bug #312 was meant to kill, only fixed from the migration forward). Lowering the premium still dragged the whole back-history down with it. Migration 0113 backfills that leading NULL block with the earliest premium the daemon actually recorded - the value in effect when per-tick recording began - carried backward over the old history. We can't know the true premium for ticks that predate recording (it was never stored), so this freezes the unknown past at a concrete historical value instead of letting it follow the current setting. Future knob changes now only move the line from the change forward. No-op if you never enabled the dynamic cap.
+
+## 2026-06-28
+
+### `[Fix]` P&L per-day card no longer stuck on "refreshing…" (#311)
+
+The Profit & Loss per-day card's refresh countdown was derived from `data.checked_at_ms`, which the finance API sets to the *oldest* of its aggregated source timestamps - so whenever any source was even slightly stale, `checked_at_ms + 60s` was already in the past and the card sat on "refreshing…" forever instead of counting down like the other cards. The countdown now derives from react-query's actual fetch time (`dataUpdatedAt + 60s`) and self-heals at zero, matching the rest of the dashboard.
+
+## 2026-06-28
+
+### `[Fix]` Effective-cap line on the Price chart is now historically accurate (#312)
+
+The red line on the Price chart is the effective cap, `min(max bid, hashprice + max premium over hashprice)`. Max bid was already stored per tick, but the premium was applied as the *current* config value across the whole history - so changing "Max premium over hashprice" shifted the entire line, including the past, making it look like you'd always had the new value. The premium is now historized per tick (migration 0112), exactly like max bid, so the line reflects what the premium actually was at each moment and tuning the knob only affects ticks from the change forward. Pre-migration history falls back to the current value (we can't know the past premium). The line is also relabeled from "max bid" to "effective cap" since that's what it actually plots.
+
+## 2026-06-28
+
+### `[UI]` Electrum host/port help points to the server's connection page (#313)
+
+The "Electrum server host" / "Port" fields used a terse "Default 50001." hint, which left users unsure what to enter (the autopilot works with electrs, Fulcrum, or ElectrumX). The help now simply points to the authoritative source: read the host and port off your Electrum server's own connection page - the same applies whichever implementation you run, on Umbrel, Docker, Start9, or bare metal - and notes that a fresh Umbrel install auto-fills these for the Electrum server you chose at setup, so you usually don't need to touch them. No per-implementation presets or port specifics, since the right values are environment-specific and the connection page is the one place that always shows them. (#273 follow-up.)
+
+## 2026-06-28
+
+### `[Fix]` Clearer DATUM error when it's behind an auth proxy or its port moved (#310)
+
+When the DATUM stats API is unreachable, the panel and the "Test connection" button used to show unhelpful errors: a bare `fetch failed` (port gone), or `Unexpected token '<', "<!doctype "... is not valid JSON` (the request silently followed Umbrel's app-proxy 302 into a login page). The daemon now detects a redirect-to-login ("the Datum API is behind an auth proxy ... see docs/setup-datum-api.md"), an HTML response served with a 200, and rewrites connection-refused into "the port may have changed or a manual port mapping was reverted by an app update". `docs/setup-datum-api.md` is refreshed too: it now leads with the fact that Datum app updates revert the manual port mapping (the actual recurring failure mode), and documents the cleaner `PROXY_AUTH_ADD: "false"` / `PROXY_AUTH_WHITELIST` approach alongside the original direct-mapping method.
+
+## 2026-06-27
+
+### `[Fix]` Validate the BTC payout address (#309)
+
+The BTC payout address field accepted any non-empty string. A stray `c` got saved, the worker identity became `c.plebs-pilot`, and because Ocean credits by the address in the worker identity, the rented hashrate was credited to nobody - silent lost earnings, plus a blank Ocean panel and a frozen unpaid-earnings line. The field now validates as a real mainnet Bitcoin address (bech32 `bc1q…` or Taproot `bc1p…`) in the Config form, the first-run wizard, and the config-save API. An invalid address shows an inline error, isn't saved, and blocks the save. Validation is write-side only, so an already-saved bad value can't prevent the daemon from starting before you fix it.
+
+## 2026-06-25
+
+### `[Infra]` Dependency bumps: Babel 8, @types/node 26, typescript-eslint 8.62, actions/checkout v7 (#303-#306)
+
+Applied four Dependabot updates, all dev/build tooling or CI (no runtime bundle change): @babel/core 7.29.7 → 8.0.1, @types/node 25.9.3 → 26.0.0, typescript-eslint 8.61.1 → 8.62.0, and actions/checkout 6 → 7 in the CI workflows. The two majors were verified end to end: Babel 8 transforms the lingui macros cleanly (full build + dev-server check), and @types/node 26 passes the typecheck. Tests and dev smoke green; no behavior changes.
+
+## 2026-06-22
+
+### `[Fix]` Tiles bar "add tile" no longer overlaps the range selector on mobile (#302)
+
+On narrow screens the "add tile / pick…" control - anchored as a floating element above the tiles - overlapped the time-range buttons (3h / 6h / … / All) that sit directly above it, because the two blocks are closer together than the float's upward offset. On desktop the selector's right side is empty so it never collided. The control now floats in the top-right corner only from the `sm` breakpoint up; below that it flows as a right-aligned row beneath the tiles, so there's no overlap on phones.
+
+### `[Fix]` Block-explorer preset now sets both URLs in one click (#301)
+
+Clicking a block-explorer preset (mempool.guide, mempool.space, etc.) wrote only the Transaction URL template, leaving the Block URL template unchanged. The Config draft updater spread a stale snapshot, so the two writes a preset fires in one click landed in the same React batch and the second clobbered the first. The updater now uses a functional `setState`, so the writes compose - both URLs update together, for every preset.
+
+## 2026-06-18
+
+### `[Infra]` Dependency bumps: lingui 6.4, better-sqlite3 12.11.1, react-router 7.18, + tooling (#297, #300)
+
+Applied both grouped Dependabot updates: production deps (better-sqlite3 12.10.0 → 12.11.1, @lingui/core + @lingui/react 6.2.0 → 6.4.0, react-router-dom 7.17.0 → 7.18.0) and dev/tooling deps (the rest of @lingui/* 6.4.0, tailwindcss + @tailwindcss/vite 4.3.1, vitest 4.1.9, eslint 10.5.0, playwright 1.61.0, prettier 3.8.4, typescript-eslint 8.61.1, @types/node 25.9.3). Verified with a full workspace build, the i18n catalog recompile, the test suite, and a dev-server smoke check; no behavior changes.
+
+## 2026-06-17
+
+### `[Fix]` Two CodeQL findings: support-bundle escaping + a no-op string replace
+
+Fixed two static-analysis alerts. The Diagnostics support bundle's markdown table escaped `|` in a probe detail/error but not a leading backslash (and didn't collapse newlines), so a detail containing `\` or a multi-line error could break the table rendering; it now escapes backslashes first and flattens newlines. Separately, a leftover `whereClause.replace(/\be\./g, 'e.')` in the bid-events history query was a no-op (it replaced `e.` with itself) and is removed; the SQL it produced is byte-identical, so query behavior is unchanged.
+
+### `[UI]` Correct the Ocean payout-mechanism wording (it's a batched sweep, not a coinbase)
+
+Several tooltips and docs claimed Ocean pays you "in the coinbase of the next block Ocean finds." That's wrong: Ocean accumulates block rewards in a pool wallet and settles operator payouts as batched, multi-output transactions broadcast on its own cadence, mined into whatever block by whatever pool (not a coinbase, not necessarily an Ocean-mined block). The "next payout" tooltip on Status, the two payout-alert tooltips, and the historical-backfill tooltip on Config are reworded to match reality, and docs/spec.md + docs/research.md are corrected (the backfill code already matched any tx paying the address since #240). Translations updated for en/nl/es.
+
+## 2026-06-16
+
+### `[Infra]` pnpm v11 compatibility: settings + native-build approval in pnpm-workspace.yaml (#299)
+
+pnpm v11 stopped reading the `pnpm` field from `package.json`, which meant the build-script approvals (better-sqlite3, esbuild) and the dependency overrides (the esbuild / js-yaml / fast-uri security pins) were silently ignored on v11 - and `pnpm install` printed a warning on every update. Those settings now live in `pnpm-workspace.yaml`, where both our pinned pnpm v10 and pnpm v11 read them. pnpm v11 also changed how native builds are approved: `onlyBuiltDependencies` (which v10 uses) is no longer honored for approval and a fresh v11 install hard-errors with `ERR_PNPM_IGNORED_BUILDS`, so the workspace file now also carries an `allowBuilds` block (v11's mechanism) with both keys present - a clean install builds better-sqlite3's native binding on either pnpm major. The lockfile is unchanged, so frozen-lockfile installs are unaffected.
+
+### `[UI]` IP-change marker tooltip shows relative time
+
+The public-IP-change marker tooltip on the charts now shows a relative age in parentheses after the absolute timestamp (e.g. "15 Jun 2026, 12:22:28 (12h 24m ago)"), so you can tell at a glance how long ago an ISP rotation happened without doing the math.
+
 ## 2026-06-15
+
+### `[Infra]` Pin js-yaml to 4.2.0 (clears Dependabot advisory)
+
+Pin js-yaml `>=4.2.0` via a pnpm override to clear a medium Dependabot advisory (quadratic-complexity DoS in YAML merge-key handling). The dependency is dev-only - it rides in through `openapi-typescript`, a build-time codegen tool, and is never in the runtime image, so there is no production exposure. No runtime behavior change.
 
 ### `[Release]` v1.15.0
 

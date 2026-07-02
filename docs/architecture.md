@@ -90,6 +90,12 @@
 > retarget, IP-change, on-chain payout, and Braiins deposit markers; the parser carries a one-key
 > alias (`price.unpaid → price.marker_deposit`) so saved overrides under the old name transparently
 > migrate.
+> Migration 0112 adds `tick_metrics.max_overpay_vs_hashprice_sat_per_eh_day` (#312), snapshotting
+> the dynamic-cap premium in effect at each tick so the price chart's effective-cap line is drawn
+> from per-tick history instead of re-applying the current config value backwards across all of it.
+> Migration 0113 (#312 follow-up) backfills the leading block of pre-0112 NULL rows - which still
+> fell back to live config - with the earliest premium ever recorded (the value in effect when
+> per-tick recording began), carried backward; no-op when the dynamic cap was never enabled.
 
 ## 1. High-level shape
 
@@ -259,7 +265,7 @@ done.
 - `/v1/spot/bid/current` + per-bid `/v1/spot/bid/detail/{id}` - our active bids.
 - `/v1/account/balance` - wallet (and reward income via Electrs/bitcoind separately).
 - Pool reachability (TCP connect to Datum Gateway:23334).
-- Payout observer: recent coinbase outputs to the BTC payout address since the last check.
+- Payout observer: recent on-chain payout transactions to the BTC payout address since the last check (Ocean settles via batched sweep transactions, not coinbase-direct).
 - Local DB: ownership ledger, config, last-decrease timestamps, run mode, manual-override windows.
 
 ### 3.3 Config reload without restart
@@ -482,6 +488,7 @@ CREATE TABLE tick_metrics (
   fillable_ask_sat_per_eh_day INTEGER,    -- depth-aware ask at target (controller anchor)
   hashprice_sat_per_eh_day INTEGER,       -- Ocean break-even hashprice
   max_bid_sat_per_eh_day INTEGER,         -- snapshot of config cap used this tick
+  max_overpay_vs_hashprice_sat_per_eh_day INTEGER, -- snapshot of dynamic-cap premium this tick (migration 0112, #312); null = disabled
   available_balance_sat INTEGER,
   total_balance_sat INTEGER,              -- available + blocked; migration 0095; null pre-0095
   datum_hashrate_ph REAL,                 -- gateway-measured hashrate (null if not configured)

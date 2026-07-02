@@ -1207,6 +1207,9 @@ export function Status() {
             qc.invalidateQueries({ queryKey: ['finance-range'] });
           }}
           refreshing={financeQuery.isFetching || financeRangeQuery.isFetching}
+          nextRefreshAtMs={
+            financeQuery.dataUpdatedAt > 0 ? financeQuery.dataUpdatedAt + 60_000 : null
+          }
         />
       </section>
     ),
@@ -2517,9 +2520,9 @@ function OceanPanel() {
               tooltip={
                 // State-aware: when the daemon emits the literal
                 // 'Next block' string the balance is already past
-                // threshold and the wording flips to explain what
-                // "next block" means in context (next pool block
-                // Ocean wins, not next Bitcoin block).
+                // threshold and the wording flips to explain that it's
+                // Ocean's projection - settlement is a batched sweep tx,
+                // not a coinbase of an Ocean-mined block.
                 o.user.time_to_payout_text === 'Next block'
                   ? t`Our unpaid balance (${denomination.formatSat(
                       o.user.unpaid_sat,
@@ -2527,7 +2530,7 @@ function OceanPanel() {
                     )}) has already crossed the payout threshold (${denomination.formatSat(
                       o.user.payout_threshold_sat,
                       intlLocale,
-                    )} ≈ 0,01 BTC). The accumulated balance ships as a coinbase output the next time Ocean wins a pool block - under TIDES the pool only pays out when it finds a block, since that's the only block where it controls the coinbase. "Next block" means the next Ocean pool block (~3/day at typical share), NOT the next Bitcoin block in general. The blue cubes on the hashrate chart above mark each pool block as it lands.`
+                    )} ≈ 0,01 BTC), so Ocean has queued us for payout. "Next block" is Ocean's own projection, not a literal trigger: Ocean settles operator payouts as a batched payment transaction from its pool wallet, broadcast on its own cadence and mined into whatever block by whatever pool - it is NOT a coinbase output and NOT necessarily an Ocean-mined block. When it confirms, a payout marker appears on the price chart.`
                   : t`Projected time until our unpaid balance (${denomination.formatSat(
                       o.user.unpaid_sat,
                       intlLocale,
@@ -2681,6 +2684,7 @@ function FinancePanel({
   chartRange,
   onRefresh,
   refreshing,
+  nextRefreshAtMs,
 }: {
   data: FinanceResponse | undefined;
   rangeData: FinanceRangeResponse | undefined;
@@ -2688,6 +2692,11 @@ function FinancePanel({
   chartRange: ChartRange;
   onRefresh: () => void;
   refreshing: boolean;
+  /** #311: when the panel will next refetch. Derived from react-query's
+   *  fetch time + 60s, NOT data.checked_at_ms (which is the oldest of
+   *  the aggregated source timestamps and is often already stale, which
+   *  pinned the countdown on "refreshing…" forever). */
+  nextRefreshAtMs: number | null;
 }) {
   const { intlLocale } = useLocale();
   const denomination = useDenomination();
@@ -2805,18 +2814,9 @@ function FinancePanel({
   // range dropdown labels from CHART_RANGE_SPECS.
   const rangeLabel = localizedRangeLabel(chartRange, i18n.locale);
 
-  // P&L now refreshes every 60s (matches the rest of the dashboard).
-  // Dashboard countdown is derived from checked_at_ms + 60s so the
-  // operator sees how long until fresh numbers without guessing the
-  // cadence. Earlier 1h cadence was too coarse - block-find events
-  // that bump `unpaid earnings (Ocean)` by ~38k sats took up to an
-  // hour to land in the panel even though /api/ocean had the new
-  // number within seconds.
-  const nextRefreshAtMs = data.checked_at_ms + 60_000;
-
   const headerControls = (
     <div className="flex items-center gap-2 text-[11px] text-slate-500 font-mono">
-      <RefreshCountdown nextAtMs={nextRefreshAtMs} />
+      <RefreshCountdown nextAtMs={nextRefreshAtMs} refetchQueryKey={['finance']} />
       <button
         onClick={onRefresh}
         disabled={refreshing}

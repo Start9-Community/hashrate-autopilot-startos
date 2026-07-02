@@ -5,7 +5,7 @@ daemon and dashboard for the [Braiins Hashpower marketplace](https://hashpower.b
 rented-hashrate bid alive within operator-defined limits and routes delivered hashrate to an Ocean/Datum mining
 setup.
 
-This fork tracks upstream Hashrate Autopilot v1.15.0 and adds the StartOS service wrapper, dependency
+This fork tracks upstream Hashrate Autopilot v1.15.1 and adds the StartOS service wrapper, dependency
 declarations, persistent data volume, backup hooks, web interface wiring, and `.s9pk` build flow. Upstream
 application behavior is intentionally kept close to `rdouma/hashrate-autopilot`; StartOS-specific work lives in
 `startos/`, `instructions.md`, `Makefile`, and `s9pk.mk`.
@@ -18,7 +18,7 @@ application behavior is intentionally kept close to `rdouma/hashrate-autopilot`;
 | --- | --- |
 | Downstream package repo | `mdubore/hashrate9` |
 | Upstream app repo | `rdouma/hashrate-autopilot` |
-| Upstream version tracked | `v1.15.0` |
+| Upstream version tracked | `v1.15.1` |
 | StartOS package id | `hashrate-autopilot-9` |
 | Package architectures | `x86_64`, `aarch64` |
 | Verified sideload target | `x86_64` StartOS server |

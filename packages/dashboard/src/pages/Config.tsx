@@ -1,3 +1,4 @@
+import { isValidBtcPayoutAddress } from '@hashrate-autopilot/shared';
 import { Trans } from '@lingui/react/macro';
 import { t } from '@lingui/core/macro';
 import { useLingui } from '@lingui/react';
@@ -138,7 +139,12 @@ function useSections(): Section[] {
         description: t`Where the autopilot aims, and the floor below which it starts escalating.`,
         fields: [
           { key: 'target_hashrate_ph', label: t`Target hashrate`, kind: 'decimal', unit: 'PH/s' },
-          { key: 'minimum_floor_hashrate_ph', label: t`Minimum floor`, kind: 'decimal', unit: 'PH/s' },
+          {
+            key: 'minimum_floor_hashrate_ph',
+            label: t`Minimum floor`,
+            kind: 'decimal',
+            unit: 'PH/s',
+          },
         ],
       },
       {
@@ -212,7 +218,14 @@ function useSections(): Section[] {
       {
         id: 'pricing',
         title: t`Pricing`,
-        description: <Trans>The bid tracks the cheapest ask with enough depth for your target, plus a small premium. Two hard ceilings sit above that so the premium can never run away. Entered in <SatSymbol />/PH/day.</Trans>,
+        description: (
+          <Trans>
+            The bid tracks the cheapest ask with enough depth for your target, plus a small premium.
+            Two hard ceilings sit above that so the premium can never run away. Entered in{' '}
+            <SatSymbol />
+            /PH/day.
+          </Trans>
+        ),
         fields: [
           {
             key: 'overpay_sat_per_eh_day',
@@ -652,10 +665,17 @@ export function Config() {
   // keystroke during the debounce window). Cleanup cancels the pending
   // timer on every dependency change so a flurry of edits collapses
   // into one save.
+  // #309: never persist an invalid BTC payout address. The backend
+  // rejects it with 422 anyway, but gating here keeps autosave from
+  // spamming failed saves while the operator is mid-edit, and pairs
+  // with the inline error on the field.
+  const payoutAddressOk =
+    !draft || isValidBtcPayoutAddress((draft.btc_payout_address as string | null) ?? '');
   const lastAttemptedRef = useRef<string | null>(null);
   useEffect(() => {
     if (!autoSave) return;
     if (!draft || !isDirty) return;
+    if (!payoutAddressOk) return;
     if (mutation.isPending) return;
     const draftKey = JSON.stringify(draft);
     if (mutation.isError && lastAttemptedRef.current === draftKey) return;
@@ -664,7 +684,7 @@ export function Config() {
       mutation.mutate(draft);
     }, AUTOSAVE_DEBOUNCE_MS);
     return () => window.clearTimeout(timer);
-  }, [draft, autoSave, isDirty, mutation.isPending, mutation.isError]);
+  }, [draft, autoSave, isDirty, payoutAddressOk, mutation.isPending, mutation.isError]);
 
   if (query.isError && query.error instanceof UnauthorizedError) {
     navigate('/login');
@@ -678,6 +698,14 @@ export function Config() {
       </div>
     );
 
+  // #301: always use a FUNCTIONAL setDraft updater. A single click can
+  // call `update` more than once synchronously (e.g. a block-explorer
+  // preset writes both the block URL and the tx URL). React batches
+  // those into one render, so a `setDraft({ ...draft, ... })` form would
+  // have every call spread the same stale `draft` snapshot and the last
+  // write would silently clobber the earlier ones - which is exactly why
+  // picking a preset only set the Transaction URL. Reading from `prev`
+  // makes sequential writes compose.
   const update = <K extends keyof AppConfig>(key: K, value: AppConfig[K]) => {
     if (key === 'btc_payout_address') {
       // Auto-bind worker identity to the address - same shape as the
@@ -687,27 +715,23 @@ export function Config() {
       // (or empty). Preserves any custom label the operator typed;
       // never silently overwrites a worker that intentionally points
       // at a different address.
-      const nextAddr = typeof value === 'string' ? value : '';
-      const oldAddr = (draft.btc_payout_address as string) ?? '';
-      const oldWorker = (draft.destination_pool_worker_name as string) ?? '';
-      const looksLikeOldDerivation =
-        oldAddr.length > 0 && oldWorker.startsWith(oldAddr + '.');
-      let nextWorker = oldWorker;
-      if (looksLikeOldDerivation || oldWorker.length === 0) {
-        const label =
-          oldWorker.length > 0
-            ? oldWorker.slice(oldAddr.length + 1) || 'autopilot'
-            : 'autopilot';
-        nextWorker = nextAddr.length > 0 ? `${nextAddr}.${label}` : '';
-      }
-      setDraft({
-        ...draft,
-        btc_payout_address: nextAddr,
-        destination_pool_worker_name: nextWorker,
+      setDraft((prev) => {
+        if (!prev) return prev;
+        const nextAddr = typeof value === 'string' ? value : '';
+        const oldAddr = (prev.btc_payout_address as string) ?? '';
+        const oldWorker = (prev.destination_pool_worker_name as string) ?? '';
+        const looksLikeOldDerivation = oldAddr.length > 0 && oldWorker.startsWith(oldAddr + '.');
+        let nextWorker = oldWorker;
+        if (looksLikeOldDerivation || oldWorker.length === 0) {
+          const label =
+            oldWorker.length > 0 ? oldWorker.slice(oldAddr.length + 1) || 'autopilot' : 'autopilot';
+          nextWorker = nextAddr.length > 0 ? `${nextAddr}.${label}` : '';
+        }
+        return { ...prev, btc_payout_address: nextAddr, destination_pool_worker_name: nextWorker };
       });
       return;
     }
-    setDraft({ ...draft, [key]: value });
+    setDraft((prev) => (prev ? { ...prev, [key]: value } : prev));
   };
 
   return (
@@ -765,7 +789,8 @@ export function Config() {
           {!autoSave && (
             <button
               onClick={() => mutation.mutate(draft)}
-              disabled={mutation.isPending || !isDirty}
+              disabled={mutation.isPending || !isDirty || !payoutAddressOk}
+              title={!payoutAddressOk ? t`Fix the BTC payout address before saving.` : undefined}
               className="px-4 py-1.5 text-sm bg-amber-400 text-slate-900 font-medium rounded hover:bg-amber-300 disabled:opacity-50"
             >
               {mutation.isPending ? <Trans>saving…</Trans> : <Trans>save</Trans>}
@@ -814,10 +839,27 @@ const TAB_SECTIONS: Record<TabId, readonly string[]> = {
   // #222: fee-protection sits between pricing and budget - the two
   // knobs (max acceptable fee, edit deadband) modify the pricing
   // controller's behavior under marketplace fees.
-  strategy: ['hashrate-targets', 'cheap-mode', 'pricing', 'fee-protection', 'budget', 'daemon-startup'],
+  strategy: [
+    'hashrate-targets',
+    'cheap-mode',
+    'pricing',
+    'fee-protection',
+    'budget',
+    'daemon-startup',
+  ],
   pool: ['pool-destination', 'ddns', 'payout-source', 'profit-and-loss', 'btc-price-oracle'],
   notifications: ['notifications', 'block-found-sound'],
-  display: ['display-settings', 'chart-colors', 'solo-miners', 'block-explorer', 'chart-smoothing', 'chart-markers', 'log-retention', 'debug-api', 'diagnostics'],
+  display: [
+    'display-settings',
+    'chart-colors',
+    'solo-miners',
+    'block-explorer',
+    'chart-smoothing',
+    'chart-markers',
+    'log-retention',
+    'debug-api',
+    'diagnostics',
+  ],
 };
 
 function isTabId(s: string | null): s is TabId {
@@ -839,7 +881,9 @@ function ConfigTabsAndContent({
   void i18n;
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const activeTab: TabId = isTabId(searchParams.get('tab')) ? (searchParams.get('tab') as TabId) : 'strategy';
+  const activeTab: TabId = isTabId(searchParams.get('tab'))
+    ? (searchParams.get('tab') as TabId)
+    : 'strategy';
 
   const setActiveTab = (id: TabId) => {
     const next = new URLSearchParams(searchParams);
@@ -879,7 +923,15 @@ function ConfigTabsAndContent({
     },
     notifications: {
       title: t`Notifications`,
-      labels: [t`Telegram bot token`, t`Chat ID`, t`Instance label (optional)`, t`Send messages to Telegram`, t`Retry interval`, t`Wallet runway below`, t`Ocean pool-block credited`],
+      labels: [
+        t`Telegram bot token`,
+        t`Chat ID`,
+        t`Instance label (optional)`,
+        t`Send messages to Telegram`,
+        t`Retry interval`,
+        t`Wallet runway below`,
+        t`Ocean pool-block credited`,
+      ],
     },
     diagnostics: {
       title: t`Diagnostics`,
@@ -983,8 +1035,19 @@ function ConfigTabsAndContent({
 
   const searchResults = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return [] as Array<{ tabId: TabId; sectionId: string; sectionTitle: string; fieldLabel?: string }>;
-    const out: Array<{ tabId: TabId; sectionId: string; sectionTitle: string; fieldLabel?: string }> = [];
+    if (!q)
+      return [] as Array<{
+        tabId: TabId;
+        sectionId: string;
+        sectionTitle: string;
+        fieldLabel?: string;
+      }>;
+    const out: Array<{
+      tabId: TabId;
+      sectionId: string;
+      sectionTitle: string;
+      fieldLabel?: string;
+    }> = [];
     for (const tab of TAB_ORDER) {
       for (const sid of TAB_SECTIONS[tab]) {
         const std = sections.find((s) => s.id === sid);
@@ -994,7 +1057,12 @@ function ConfigTabsAndContent({
           }
           for (const f of std.fields) {
             if (f.label.toLowerCase().includes(q)) {
-              out.push({ tabId: tab, sectionId: sid, sectionTitle: std.title, fieldLabel: f.label });
+              out.push({
+                tabId: tab,
+                sectionId: sid,
+                sectionTitle: std.title,
+                fieldLabel: f.label,
+              });
             }
           }
           continue;
@@ -1212,8 +1280,7 @@ function BidBudgetField({
   const availableSat = statusQuery.data?.balances?.[0]?.available_balance_sat ?? null;
   const BRAIINS_MAX_AMOUNT_SAT = 100_000_000; // 1 BTC per-bid cap
   const isFullWallet = value === 0;
-  const resolvedSat =
-    availableSat !== null ? Math.min(availableSat, BRAIINS_MAX_AMOUNT_SAT) : null;
+  const resolvedSat = availableSat !== null ? Math.min(availableSat, BRAIINS_MAX_AMOUNT_SAT) : null;
 
   // Active owned bid defers the next CREATE until it drains. Surface
   // that - without it, the "Currently ≈ X sat" figure reads as "what
@@ -1269,31 +1336,43 @@ function BidBudgetField({
                 resolvedSat !== null ? (
                   isCapped ? (
                     <Trans>
-                      A bid is currently running (≈ {remainingSatStr} <SatSymbol /> left). The next CREATE fires when it finishes - at that point the full available wallet balance (currently ≈ {resolvedSatStr} <SatSymbol />, capped at 1 BTC) will be used.
+                      A bid is currently running (≈ {remainingSatStr} <SatSymbol /> left). The next
+                      CREATE fires when it finishes - at that point the full available wallet
+                      balance (currently ≈ {resolvedSatStr} <SatSymbol />, capped at 1 BTC) will be
+                      used.
                     </Trans>
                   ) : (
                     <Trans>
-                      A bid is currently running (≈ {remainingSatStr} <SatSymbol /> left). The next CREATE fires when it finishes - at that point the full available wallet balance (currently ≈ {resolvedSatStr} <SatSymbol />) will be used.
+                      A bid is currently running (≈ {remainingSatStr} <SatSymbol /> left). The next
+                      CREATE fires when it finishes - at that point the full available wallet
+                      balance (currently ≈ {resolvedSatStr} <SatSymbol />) will be used.
                     </Trans>
                   )
                 ) : (
                   <Trans>
-                    A bid is currently running (≈ {remainingSatStr} <SatSymbol /> left). The next CREATE fires when it finishes - at that point the full available wallet balance will be used.
+                    A bid is currently running (≈ {remainingSatStr} <SatSymbol /> left). The next
+                    CREATE fires when it finishes - at that point the full available wallet balance
+                    will be used.
                   </Trans>
                 )
               ) : resolvedSat !== null ? (
                 isCapped ? (
                   <Trans>
-                    A bid is currently running. The next CREATE fires when it finishes - at that point the full available wallet balance (currently ≈ {resolvedSatStr} <SatSymbol />, capped at 1 BTC) will be used.
+                    A bid is currently running. The next CREATE fires when it finishes - at that
+                    point the full available wallet balance (currently ≈ {resolvedSatStr}{' '}
+                    <SatSymbol />, capped at 1 BTC) will be used.
                   </Trans>
                 ) : (
                   <Trans>
-                    A bid is currently running. The next CREATE fires when it finishes - at that point the full available wallet balance (currently ≈ {resolvedSatStr} <SatSymbol />) will be used.
+                    A bid is currently running. The next CREATE fires when it finishes - at that
+                    point the full available wallet balance (currently ≈ {resolvedSatStr}{' '}
+                    <SatSymbol />) will be used.
                   </Trans>
                 )
               ) : (
                 <Trans>
-                  A bid is currently running. The next CREATE fires when it finishes - at that point the full available wallet balance will be used.
+                  A bid is currently running. The next CREATE fires when it finishes - at that point
+                  the full available wallet balance will be used.
                 </Trans>
               )}
             </>
@@ -1302,10 +1381,13 @@ function BidBudgetField({
               {resolvedSat !== null ? (
                 isCapped ? (
                   <Trans>
-                    Full wallet balance per bid. Currently ≈ {resolvedSatStr} <SatSymbol /> (capped at 1 BTC).
+                    Full wallet balance per bid. Currently ≈ {resolvedSatStr} <SatSymbol /> (capped
+                    at 1 BTC).
                   </Trans>
                 ) : (
-                  <Trans>Full wallet balance per bid. Currently ≈ {resolvedSatStr} <SatSymbol />.</Trans>
+                  <Trans>
+                    Full wallet balance per bid. Currently ≈ {resolvedSatStr} <SatSymbol />.
+                  </Trans>
                 )
               ) : (
                 <Trans>Full wallet balance per bid. Awaiting wallet balance from the daemon.</Trans>
@@ -1345,9 +1427,7 @@ function SectionCard({
         {section.description && (
           <p className="text-xs text-slate-500 mt-1">{section.description}</p>
         )}
-        {section.id === 'log-retention' && (
-          <LogRetentionTotalHint draft={draft} locale={locale} />
-        )}
+        {section.id === 'log-retention' && <LogRetentionTotalHint draft={draft} locale={locale} />}
       </header>
       {section.id === 'cheap-mode' ? (
         <CheapModeBody
@@ -1444,9 +1524,7 @@ function BtcOracleSectionBody({
                 <div className="flex gap-2 items-stretch">
                   <select
                     value={draft.btc_price_source as string}
-                    onChange={(e) =>
-                      onChange('btc_price_source', e.target.value as never)
-                    }
+                    onChange={(e) => onChange('btc_price_source', e.target.value as never)}
                     className="flex-1 bg-slate-800 border border-slate-700 rounded px-3 py-1.5 text-sm"
                   >
                     {f.options.map((opt) => (
@@ -1464,9 +1542,7 @@ function BtcOracleSectionBody({
                     {test.isPending ? <Trans>Testing…</Trans> : <Trans>Test connection</Trans>}
                   </button>
                 </div>
-                {f.help && (
-                  <span className="block text-xs text-slate-500 mt-1">{f.help}</span>
-                )}
+                {f.help && <span className="block text-xs text-slate-500 mt-1">{f.help}</span>}
               </label>
             ) : (
               <Field spec={f} draft={draft} locale={locale} onChange={onChange} />
@@ -1487,14 +1563,10 @@ function BtcOracleSectionBody({
             </div>
           )}
           {test.data && !test.data.ok && (
-            <div className="text-xs text-red-400 font-mono break-words">
-              {test.data.error}
-            </div>
+            <div className="text-xs text-red-400 font-mono break-words">{test.data.error}</div>
           )}
           {test.isError && (
-            <div className="text-xs text-red-400 font-mono break-words">
-              {test.error.message}
-            </div>
+            <div className="text-xs text-red-400 font-mono break-words">{test.error.message}</div>
           )}
         </div>
       )}
@@ -1557,9 +1629,7 @@ function CheapModeBody({
         </span>
       </label>
       <div
-        className={
-          (enabled ? '' : 'opacity-50 pointer-events-none ') + gridCls
-        }
+        className={(enabled ? '' : 'opacity-50 pointer-events-none ') + gridCls}
         aria-disabled={!enabled}
       >
         {section.fields.map((f) => (
@@ -1675,7 +1745,11 @@ function BlockFoundSoundExtras({
         bin += String.fromCharCode(bytes[i] as number);
       }
       const b64 = btoa(bin);
-      const resp = await api.uploadBlockFoundSound(b64, file.type || 'audio/mpeg', file.name || null);
+      const resp = await api.uploadBlockFoundSound(
+        b64,
+        file.type || 'audio/mpeg',
+        file.name || null,
+      );
       if (!resp.ok) {
         throw new Error(resp.error ?? 'unknown upload error');
       }
@@ -1726,10 +1800,7 @@ function BlockFoundSoundExtras({
           <select
             value={choice}
             onChange={(e) =>
-              onChange(
-                'block_found_sound',
-                e.target.value as AppConfig['block_found_sound'],
-              )
+              onChange('block_found_sound', e.target.value as AppConfig['block_found_sound'])
             }
             className="flex-1 min-w-[12rem] bg-slate-800 border border-slate-700 rounded px-3 py-1.5 text-sm"
           >
@@ -1750,10 +1821,9 @@ function BlockFoundSoundExtras({
         </div>
         <span className="block text-xs text-slate-500 mt-1">
           <Trans>
-            Browsers block audio until the page sees a user click; logging in
-            counts. The first poll after a fresh page load establishes a silent
-            baseline so you don't get a sound for every backlog row. Test plays
-            whatever's selected above (no save needed).
+            Browsers block audio until the page sees a user click; logging in counts. The first poll
+            after a fresh page load establishes a silent baseline so you don't get a sound for every
+            backlog row. Test plays whatever's selected above (no save needed).
           </Trans>
         </span>
       </label>
@@ -1771,7 +1841,9 @@ function BlockFoundSoundExtras({
             </button>
             {hasBlob && filename && blobKb && (
               <span className="text-slate-300">
-                <Trans>Currently: <span className="font-mono">{filename}</span> ({blobKb} KB)</Trans>
+                <Trans>
+                  Currently: <span className="font-mono">{filename}</span> ({blobKb} KB)
+                </Trans>
               </span>
             )}
             {hasBlob && !filename && blobKb && (
@@ -1823,15 +1895,13 @@ function LogRetentionTotalHint({
     <p className="text-xs text-amber-300/80 mt-1">
       {dbStr !== null ? (
         <Trans>
-          Estimated cap at current settings: ~ {totalStr} (logs only, indexes
-          excluded). Logs grow ~ {dailyStr}/day. Database file is currently
-          {' '}
-          {dbStr}.
+          Estimated cap at current settings: ~ {totalStr} (logs only, indexes excluded). Logs grow ~{' '}
+          {dailyStr}/day. Database file is currently {dbStr}.
         </Trans>
       ) : (
         <Trans>
-          Estimated cap at current settings: ~ {totalStr} (logs only, indexes
-          excluded). Logs grow ~ {dailyStr}/day.
+          Estimated cap at current settings: ~ {totalStr} (logs only, indexes excluded). Logs grow ~{' '}
+          {dailyStr}/day.
         </Trans>
       )}
     </p>
@@ -1843,10 +1913,7 @@ function retentionTotalBytes(draft: AppConfig, est: StorageEstimateResponse): nu
   // rather than a finite cap; it contributes 0 to the cap projection.
   return (
     bucketProjection(draft.tick_metrics_retention_days, est.tick_metrics) +
-    bucketProjection(
-      draft.decisions_uneventful_retention_days,
-      est.decisions_uneventful,
-    ) +
+    bucketProjection(draft.decisions_uneventful_retention_days, est.decisions_uneventful) +
     bucketProjection(draft.decisions_eventful_retention_days, est.decisions_eventful) +
     bucketProjection(draft.alerts_retention_days, est.alerts)
   );
@@ -1873,10 +1940,8 @@ function formatBytes(n: number, locale: string | undefined): string {
   const MB = KB * 1024;
   const GB = MB * 1024;
   if (n < KB) return `${Math.round(n).toLocaleString(locale)} B`;
-  if (n < MB)
-    return `${(n / KB).toLocaleString(locale, { maximumFractionDigits: 1 })} KB`;
-  if (n < GB)
-    return `${(n / MB).toLocaleString(locale, { maximumFractionDigits: 1 })} MB`;
+  if (n < MB) return `${(n / KB).toLocaleString(locale, { maximumFractionDigits: 1 })} KB`;
+  if (n < GB) return `${(n / MB).toLocaleString(locale, { maximumFractionDigits: 1 })} MB`;
   return `${(n / GB).toLocaleString(locale, { maximumFractionDigits: 2 })} GB`;
 }
 
@@ -1931,7 +1996,9 @@ function RetentionField({
           {days === 0 ? (
             <Trans>No auto-prune; growing ~ {dailyStr}/day</Trans>
           ) : (
-            <Trans>~ {dailyStr}/day · ~ {totalStr} at {daysStr} days</Trans>
+            <Trans>
+              ~ {dailyStr}/day · ~ {totalStr} at {daysStr} days
+            </Trans>
           )}
         </span>
       )}
@@ -1990,9 +2057,8 @@ function DisplaySettingsSection() {
         </h3>
         <p className="text-xs text-slate-500 mt-1">
           <Trans>
-            How numbers and dates render in this browser. Month names follow
-            the UI language picker (top-right). Saved locally - every operator
-            can pick their own.
+            How numbers and dates render in this browser. Month names follow the UI language picker
+            (top-right). Saved locally - every operator can pick their own.
           </Trans>
         </p>
       </header>
@@ -2032,7 +2098,9 @@ function DisplaySettingsSection() {
             ))}
           </select>
           <span className="block text-xs text-slate-500 mt-1">
-            <Trans>Order, separators, 12h vs 24h. Month names always follow your UI language.</Trans>
+            <Trans>
+              Order, separators, 12h vs 24h. Month names always follow your UI language.
+            </Trans>
           </span>
         </label>
         <label className="block">
@@ -2049,7 +2117,11 @@ function DisplaySettingsSection() {
             <option value="F">{t`Fahrenheit (°F)`}</option>
           </select>
           <span className="block text-xs text-slate-500 mt-1">
-            <Trans>ASIC and VR temperatures on the Status page, the right-axis temperature plot, and the overheating-ceiling threshold. Stored internally in °C; conversion happens at display only.</Trans>
+            <Trans>
+              ASIC and VR temperatures on the Status page, the right-axis temperature plot, and the
+              overheating-ceiling threshold. Stored internally in °C; conversion happens at display
+              only.
+            </Trans>
           </span>
         </label>
       </div>
@@ -2118,16 +2190,18 @@ function ChartColorsSection({
   const groups: Array<{ title: string; subgroups: Subgroup[] }> = [
     {
       title: t`Hashrate chart`,
-      subgroups: [{
-        rows: [
-          { key: 'hashrate.delivered', label: t`delivered (Braiins)` },
-          { key: 'hashrate.received_datum', label: t`received (Datum)` },
-          { key: 'hashrate.received_ocean', label: t`received (Ocean)` },
-          { key: 'hashrate.target', label: t`target` },
-          { key: 'hashrate.floor', label: t`floor` },
-          { key: 'hashrate.right_axis', label: t`right-axis line` },
-        ],
-      }],
+      subgroups: [
+        {
+          rows: [
+            { key: 'hashrate.delivered', label: t`delivered (Braiins)` },
+            { key: 'hashrate.received_datum', label: t`received (Datum)` },
+            { key: 'hashrate.received_ocean', label: t`received (Ocean)` },
+            { key: 'hashrate.target', label: t`target` },
+            { key: 'hashrate.floor', label: t`floor` },
+            { key: 'hashrate.right_axis', label: t`right-axis line` },
+          ],
+        },
+      ],
     },
     {
       title: t`Price chart`,
@@ -2157,17 +2231,19 @@ function ChartColorsSection({
     },
     {
       title: t`Markers`,
-      subgroups: [{
-        rows: [
-          { key: 'hashrate.pool_block_ours', label: t`own pool block` },
-          { key: 'hashrate.pool_block_others', label: t`pool block` },
-          { key: 'hashrate.pool_block_bip110', label: t`BIP 110-signalling block` },
-          { key: 'hashrate.marker_retarget', label: t`difficulty retarget` },
-          { key: 'hashrate.marker_ip_change', label: t`public-IP change` },
-          { key: 'price.marker_payout_gem', label: t`on-chain payout` },
-          { key: 'price.marker_deposit', label: t`Braiins deposit` },
-        ],
-      }],
+      subgroups: [
+        {
+          rows: [
+            { key: 'hashrate.pool_block_ours', label: t`own pool block` },
+            { key: 'hashrate.pool_block_others', label: t`pool block` },
+            { key: 'hashrate.pool_block_bip110', label: t`BIP 110-signalling block` },
+            { key: 'hashrate.marker_retarget', label: t`difficulty retarget` },
+            { key: 'hashrate.marker_ip_change', label: t`public-IP change` },
+            { key: 'price.marker_payout_gem', label: t`on-chain payout` },
+            { key: 'price.marker_deposit', label: t`Braiins deposit` },
+          ],
+        },
+      ],
     },
   ];
 
@@ -2183,8 +2259,8 @@ function ChartColorsSection({
           <p className="text-xs text-slate-500 mt-1 max-w-2xl">
             <Trans>
               Override the color of any named line or event marker on the Hashrate and Price charts.
-              Click a swatch to pick from the curated palette or set a custom hex value.
-              Saved on the daemon, so the choice follows you across devices.
+              Click a swatch to pick from the curated palette or set a custom hex value. Saved on
+              the daemon, so the choice follows you across devices.
             </Trans>
           </p>
         </div>
@@ -2251,13 +2327,7 @@ function ChartColorsSection({
  * resolved (override-or-default) hex so the preview updates live as
  * the operator picks new colours.
  */
-function ChartColorRowIcon({
-  keyId,
-  color,
-}: {
-  keyId: ChartColorKey;
-  color: string;
-}) {
+function ChartColorRowIcon({ keyId, color }: { keyId: ChartColorKey; color: string }) {
   // Lines and right-axis series render as a small horizontal stroke.
   // Dashed for target/floor + hashprice, dotted-style is also dashed
   // here for simplicity (the picker shows the swatch; the line preview
@@ -2269,7 +2339,14 @@ function ChartColorRowIcon({
       </svg>
     );
   }
-  if (keyId.includes('.right_axis') || keyId.startsWith('hashrate.delivered') || keyId.startsWith('hashrate.received') || keyId.startsWith('price.our_bid') || keyId === 'price.fillable' || keyId === 'price.max_bid') {
+  if (
+    keyId.includes('.right_axis') ||
+    keyId.startsWith('hashrate.delivered') ||
+    keyId.startsWith('hashrate.received') ||
+    keyId.startsWith('price.our_bid') ||
+    keyId === 'price.fillable' ||
+    keyId === 'price.max_bid'
+  ) {
     return (
       <svg width="18" height="10" viewBox="0 0 18 10" className="shrink-0">
         <line x1="1" y1="5" x2="17" y2="5" stroke={color} strokeWidth="2" />
@@ -2282,10 +2359,23 @@ function ChartColorRowIcon({
   // renders on the chart.
   if (keyId === 'hashrate.pool_block_others' || keyId === 'hashrate.pool_block_bip110') {
     return (
-      <svg width="14" height="14" viewBox="0 0 24 24" className="shrink-0"
-        fill="none" stroke={color} strokeWidth="2"
-        strokeLinecap="round" strokeLinejoin="round" opacity="0.95">
-        <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" fill={color} fillOpacity="0.25" />
+      <svg
+        width="14"
+        height="14"
+        viewBox="0 0 24 24"
+        className="shrink-0"
+        fill="none"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        opacity="0.95"
+      >
+        <path
+          d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"
+          fill={color}
+          fillOpacity="0.25"
+        />
         <path d="m3.3 7 8.7 5 8.7-5" />
         <path d="M12 22V12" />
       </svg>
@@ -2295,7 +2385,14 @@ function ChartColorRowIcon({
   if (keyId === 'hashrate.pool_block_ours') {
     return (
       <svg width="14" height="14" viewBox="0 0 14 14" className="shrink-0">
-        <path d="M1 11 L2.5 5 L5 8 L7 2 L9 8 L11.5 5 L13 11 Z" fill={color} fillOpacity="0.4" stroke={color} strokeWidth="1.3" strokeLinejoin="round" />
+        <path
+          d="M1 11 L2.5 5 L5 8 L7 2 L9 8 L11.5 5 L13 11 Z"
+          fill={color}
+          fillOpacity="0.4"
+          stroke={color}
+          strokeWidth="1.3"
+          strokeLinejoin="round"
+        />
         <line x1="1" y1="12.5" x2="13" y2="12.5" stroke={color} strokeWidth="1.4" />
       </svg>
     );
@@ -2303,7 +2400,17 @@ function ChartColorRowIcon({
   // Pickaxe (difficulty retarget) - Lucide pickaxe minified.
   if (keyId === 'hashrate.marker_retarget') {
     return (
-      <svg width="14" height="14" viewBox="0 0 24 24" className="shrink-0" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <svg
+        width="14"
+        height="14"
+        viewBox="0 0 24 24"
+        className="shrink-0"
+        fill="none"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
         <path d="m14 13-8.381 8.38a1 1 0 0 1-3.001-3L11 9.999" />
         <path d="M15.973 4.027A13 13 0 0 0 5.902 2.373c-1.398.342-1.092 2.158.277 2.601a19.9 19.9 0 0 1 5.822 3.024" />
         <path d="M16.001 11.999a19.9 19.9 0 0 1 3.024 5.824c.444 1.369 2.26 1.676 2.603.278A13 13 0 0 0 20 8.069" />
@@ -2314,7 +2421,17 @@ function ChartColorRowIcon({
   // Router (public-IP change).
   if (keyId === 'hashrate.marker_ip_change') {
     return (
-      <svg width="14" height="14" viewBox="0 0 24 24" className="shrink-0" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <svg
+        width="14"
+        height="14"
+        viewBox="0 0 24 24"
+        className="shrink-0"
+        fill="none"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
         <rect width="20" height="8" x="2" y="14" rx="2" />
         <path d="M6.01 18H6" />
         <path d="M10.01 18H10" />
@@ -2328,10 +2445,23 @@ function ChartColorRowIcon({
   // reward-event marker rendering in PriceChart.tsx.
   if (keyId === 'price.marker_payout_gem') {
     return (
-      <svg width="14" height="14" viewBox="0 0 24 24" className="shrink-0"
-        fill="none" stroke={color} strokeWidth="2"
-        strokeLinecap="round" strokeLinejoin="round" opacity="0.95">
-        <path d="M17 3a2 2 0 0 1 1.6.8l3 4a2 2 0 0 1 .013 2.382l-7.99 10.986a2 2 0 0 1-3.247 0l-7.99-10.986A2 2 0 0 1 2.4 7.8l2.998-3.997A2 2 0 0 1 7 3z" fill={color} fillOpacity="0.25" />
+      <svg
+        width="14"
+        height="14"
+        viewBox="0 0 24 24"
+        className="shrink-0"
+        fill="none"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        opacity="0.95"
+      >
+        <path
+          d="M17 3a2 2 0 0 1 1.6.8l3 4a2 2 0 0 1 .013 2.382l-7.99 10.986a2 2 0 0 1-3.247 0l-7.99-10.986A2 2 0 0 1 2.4 7.8l2.998-3.997A2 2 0 0 1 7 3z"
+          fill={color}
+          fillOpacity="0.25"
+        />
         <path d="M2 9h20" />
         <path d="M10.5 3 8 9l4 13 4-13-2.5-6" />
       </svg>
@@ -2342,9 +2472,18 @@ function ChartColorRowIcon({
   // deposit-marker rendering in PriceChart.tsx.
   if (keyId === 'price.marker_deposit') {
     return (
-      <svg width="14" height="14" viewBox="0 0 24 24" className="shrink-0"
-        fill="none" stroke={color} strokeWidth="2"
-        strokeLinecap="round" strokeLinejoin="round" opacity="0.95">
+      <svg
+        width="14"
+        height="14"
+        viewBox="0 0 24 24"
+        className="shrink-0"
+        fill="none"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        opacity="0.95"
+      >
         <path d="M14 13h2a2 2 0 0 1 2 2v2a2 2 0 0 0 4 0v-6.998a2 2 0 0 0-.59-1.42L18 5" />
         <path d="M14 21V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v16" />
         <path d="M2 21h13" />
@@ -2357,9 +2496,15 @@ function ChartColorRowIcon({
   if (keyId === 'events.create') {
     return (
       <svg
-        width="14" height="14" viewBox="0 0 24 24" className="shrink-0"
-        fill="none" stroke={color} strokeWidth="2"
-        strokeLinecap="round" strokeLinejoin="round"
+        width="14"
+        height="14"
+        viewBox="0 0 24 24"
+        className="shrink-0"
+        fill="none"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
       >
         <circle cx="12" cy="12" r="10" />
         <path d="M8 12h8" />
@@ -2377,9 +2522,15 @@ function ChartColorRowIcon({
   if (keyId === 'events.edit_speed') {
     return (
       <svg
-        width="14" height="14" viewBox="0 0 24 24" className="shrink-0"
-        fill="none" stroke={color} strokeWidth="2"
-        strokeLinecap="round" strokeLinejoin="round"
+        width="14"
+        height="14"
+        viewBox="0 0 24 24"
+        className="shrink-0"
+        fill="none"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
       >
         <path d="m12 14 4-4" />
         <path d="M3.34 19a10 10 0 1 1 17.32 0" />
@@ -2389,9 +2540,15 @@ function ChartColorRowIcon({
   if (keyId === 'events.cancel') {
     return (
       <svg
-        width="14" height="14" viewBox="0 0 24 24" className="shrink-0"
-        fill="none" stroke={color} strokeWidth="2"
-        strokeLinecap="round" strokeLinejoin="round"
+        width="14"
+        height="14"
+        viewBox="0 0 24 24"
+        className="shrink-0"
+        fill="none"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
       >
         <circle cx="12" cy="12" r="10" />
         <path d="m4.9 4.9 14.2 14.2" />
@@ -2405,9 +2562,15 @@ function ChartColorRowIcon({
   if (keyId === 'events.mode_change') {
     return (
       <svg
-        width="14" height="14" viewBox="0 0 24 24" className="shrink-0"
-        fill="none" stroke={color} strokeWidth="2"
-        strokeLinecap="round" strokeLinejoin="round"
+        width="14"
+        height="14"
+        viewBox="0 0 24 24"
+        className="shrink-0"
+        fill="none"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
       >
         <path d="M12 2v10" />
         <path d="M18.4 6.6a9 9 0 1 1-12.77.04" />
@@ -2417,9 +2580,15 @@ function ChartColorRowIcon({
   if (keyId === 'events.bid_paused') {
     return (
       <svg
-        width="14" height="14" viewBox="0 0 24 24" className="shrink-0"
-        fill="none" stroke={color} strokeWidth="2"
-        strokeLinecap="round" strokeLinejoin="round"
+        width="14"
+        height="14"
+        viewBox="0 0 24 24"
+        className="shrink-0"
+        fill="none"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
       >
         <circle cx="12" cy="12" r="10" />
         <line x1="10" x2="10" y1="15" y2="9" />
@@ -2430,9 +2599,15 @@ function ChartColorRowIcon({
   if (keyId === 'events.bid_resumed') {
     return (
       <svg
-        width="14" height="14" viewBox="0 0 24 24" className="shrink-0"
-        fill="none" stroke={color} strokeWidth="2"
-        strokeLinecap="round" strokeLinejoin="round"
+        width="14"
+        height="14"
+        viewBox="0 0 24 24"
+        className="shrink-0"
+        fill="none"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
       >
         <circle cx="12" cy="12" r="10" />
         <polygon points="10 8 16 12 10 16 10 8" />
@@ -2532,7 +2707,9 @@ function SoloMinersSection({
               <Trans>Devices</Trans>
             </h4>
             {list.isPending && (
-              <div className="text-xs text-slate-500"><Trans>loading…</Trans></div>
+              <div className="text-xs text-slate-500">
+                <Trans>loading…</Trans>
+              </div>
             )}
             {list.data && list.data.devices.length === 0 && (
               <div className="text-xs text-slate-500 italic">
@@ -2564,9 +2741,15 @@ function SoloMinersSection({
                       {/* #155: column order = ON/off > Label > IP/host
                           > trash. table-fixed makes the col widths
                           binding rather than advisory. */}
-                      <th className="text-left font-normal py-1 pr-3"><Trans>On</Trans></th>
-                      <th className="text-left font-normal py-1 pr-3"><Trans>Label</Trans></th>
-                      <th className="text-left font-normal py-1 pr-3"><Trans>IP / host</Trans></th>
+                      <th className="text-left font-normal py-1 pr-3">
+                        <Trans>On</Trans>
+                      </th>
+                      <th className="text-left font-normal py-1 pr-3">
+                        <Trans>Label</Trans>
+                      </th>
+                      <th className="text-left font-normal py-1 pr-3">
+                        <Trans>IP / host</Trans>
+                      </th>
                       <th></th>
                     </tr>
                   </thead>
@@ -2630,9 +2813,7 @@ function SoloMinersSection({
                 {createMutation.isPending ? <Trans>adding…</Trans> : <Trans>Add</Trans>}
               </button>
             </div>
-            {formError && (
-              <div className="text-xs text-red-400">{formError}</div>
-            )}
+            {formError && <div className="text-xs text-red-400">{formError}</div>}
           </div>
 
           <SoloThresholdInputs draft={draft} onChange={onChange} />
@@ -2703,7 +2884,18 @@ function SoloMinerRow({
           className="text-slate-400 hover:text-red-400 p-1 rounded transition-colors"
         >
           {/* Trash-can glyph (SVG); 14px to match the row's text-xs scale. */}
-          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
             <polyline points="3 6 5 6 21 6" />
             <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
             <path d="M10 11v6" />
@@ -2755,9 +2947,9 @@ function SoloThresholdInputs({
       </h4>
       <p className="text-[11px] text-slate-500">
         <Trans>
-          Per-event-class opt-outs live on the Notifications tab. Per-ASIC-model thermal
-          ceilings are picked automatically; the override below applies a single global
-          ceiling across every device.
+          Per-event-class opt-outs live on the Notifications tab. Per-ASIC-model thermal ceilings
+          are picked automatically; the override below applies a single global ceiling across every
+          device.
         </Trans>
       </p>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -2832,9 +3024,7 @@ function ScanLocalNetworkButton() {
   // candidates into this map on each poll: new IPs get a fresh
   // default label + pick state; existing IPs keep the operator's
   // edits intact.
-  const [edits, setEdits] = useState<
-    Record<string, { label: string; pick: boolean }>
-  >({});
+  const [edits, setEdits] = useState<Record<string, { label: string; pick: boolean }>>({});
   // #156: subnet-override input. On Umbrel the daemon's auto-detected /24
   // is the docker bridge (10.21.0.0/24), so the scan finds nothing - the
   // operator types their home LAN here (e.g. 192.168.1.0/24). Persist
@@ -2864,9 +3054,7 @@ function ScanLocalNetworkButton() {
   // `lastKnownState` mirror keeps us polling whenever the latest
   // status we've seen says 'running', regardless of whether the
   // modal is open.
-  const [lastKnownState, setLastKnownState] = useState<SoloScanState | undefined>(
-    undefined,
-  );
+  const [lastKnownState, setLastKnownState] = useState<SoloScanState | undefined>(undefined);
   const statusQuery = useQuery({
     queryKey: ['solo-miners-scan-status'],
     queryFn: async () => {
@@ -2957,16 +3145,12 @@ function ScanLocalNetworkButton() {
   const candidates = status?.candidates ?? [];
   const isRunning = status?.state === 'running';
   const isDone = status?.state === 'done';
-  const startError = startMutation.data && !startMutation.data.ok
-    ? startMutation.data.error
-    : null;
+  const startError = startMutation.data && !startMutation.data.ok ? startMutation.data.error : null;
   const scanError = startError ?? status?.error ?? null;
   const total = status?.total ?? 0;
   const done = status?.done ?? 0;
   const progressPct = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0;
-  const pickedCount = candidates.filter(
-    (c) => edits[c.ip]?.pick && !c.already_added,
-  ).length;
+  const pickedCount = candidates.filter((c) => edits[c.ip]?.pick && !c.already_added).length;
 
   return (
     <>
@@ -3061,9 +3245,7 @@ function ScanLocalNetworkButton() {
                 </div>
               </div>
             )}
-            {scanError && (
-              <div className="text-xs text-red-400 mb-2">{scanError}</div>
-            )}
+            {scanError && <div className="text-xs text-red-400 mb-2">{scanError}</div>}
             {!scanError && isDone && candidates.length === 0 && (
               <div className="text-xs text-slate-500 italic">
                 <Trans>No AxeOS devices found on the local subnet.</Trans>
@@ -3075,10 +3257,18 @@ function ScanLocalNetworkButton() {
                   <thead className="text-slate-500 uppercase tracking-wider">
                     <tr>
                       <th className="text-left font-normal py-1 pr-2"></th>
-                      <th className="text-left font-normal py-1 pr-2"><Trans>IP</Trans></th>
-                      <th className="text-left font-normal py-1 pr-2"><Trans>ASIC</Trans></th>
-                      <th className="text-right font-normal py-1 pr-2"><Trans>Hashrate</Trans></th>
-                      <th className="text-left font-normal py-1 pr-2"><Trans>Label</Trans></th>
+                      <th className="text-left font-normal py-1 pr-2">
+                        <Trans>IP</Trans>
+                      </th>
+                      <th className="text-left font-normal py-1 pr-2">
+                        <Trans>ASIC</Trans>
+                      </th>
+                      <th className="text-right font-normal py-1 pr-2">
+                        <Trans>Hashrate</Trans>
+                      </th>
+                      <th className="text-left font-normal py-1 pr-2">
+                        <Trans>Label</Trans>
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -3158,17 +3348,13 @@ function ScanLocalNetworkButton() {
                   <button
                     type="button"
                     onClick={() => confirmMutation.mutate()}
-                    disabled={
-                      confirmMutation.isPending || isRunning || pickedCount === 0
-                    }
+                    disabled={confirmMutation.isPending || isRunning || pickedCount === 0}
                     className="px-3 py-1 text-xs bg-amber-500/20 border border-amber-500 text-amber-200 rounded hover:bg-amber-500/30 disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     {confirmMutation.isPending ? (
                       <Trans>adding…</Trans>
                     ) : (
-                      <Trans>
-                        Add {pickedCount} selected
-                      </Trans>
+                      <Trans>Add {pickedCount} selected</Trans>
                     )}
                   </button>
                 </div>
@@ -3181,10 +3367,7 @@ function ScanLocalNetworkButton() {
   );
 }
 
-function defaultLabelFor(c: {
-  ip: string;
-  asic_model: string | null;
-}): string {
+function defaultLabelFor(c: { ip: string; asic_model: string | null }): string {
   // "192.168.1.127 (BM1370)" is more informative than just the IP
   // and a reasonable starting point the operator can edit before
   // confirming. Falls back to bare IP when ASIC is unknown.
@@ -3244,10 +3427,9 @@ function NotificationsSection({
         </h3>
         <p className="text-xs text-slate-500 mt-1">
           <Trans>
-            Push outage alerts (Datum unreachable, hashrate floor breach, wallet
-            runway, etc.) to Telegram so the operator finds out within minutes,
-            not hours. See the setup walkthrough for the @BotFather + @userinfobot
-            steps.
+            Push outage alerts (Datum unreachable, hashrate floor breach, wallet runway, etc.) to
+            Telegram so the operator finds out within minutes, not hours. See the setup walkthrough
+            for the @BotFather + @userinfobot steps.
           </Trans>
         </p>
       </header>
@@ -3276,8 +3458,7 @@ function NotificationsSection({
               >
                 @BotFather
               </a>
-              , send /newbot, follow the prompts; @BotFather replies with the token.
-              Paste it here.
+              , send /newbot, follow the prompts; @BotFather replies with the token. Paste it here.
             </Trans>
           </span>
         </label>
@@ -3314,8 +3495,8 @@ function NotificationsSection({
               >
                 @userinfobot
               </a>{' '}
-              and copy the numeric Id back into this field. Test connection
-              validates the values currently in the form, before saving.
+              and copy the numeric Id back into this field. Test connection validates the values
+              currently in the form, before saving.
             </Trans>
           </span>
           {(test.data || test.isError) && (
@@ -3342,16 +3523,16 @@ function NotificationsSection({
           <input
             type="text"
             value={draft.telegram_instance_label ?? ''}
-            onChange={(e) =>
-              onChange('telegram_instance_label', e.target.value as never)
-            }
+            onChange={(e) => onChange('telegram_instance_label', e.target.value as never)}
             placeholder="prod / dev / umbrel"
             maxLength={32}
             className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-1.5 text-sm font-mono"
           />
           <span className="block text-xs text-slate-500 mt-1">
             <Trans>
-              Optional. When set, every Telegram message from this daemon is prefixed with `[label] ` so you can tell which instance fired the alert if you run more than one daemon against the same bot/chat. Leave empty to send messages without a prefix.
+              Optional. When set, every Telegram message from this daemon is prefixed with `[label]
+              ` so you can tell which instance fired the alert if you run more than one daemon
+              against the same bot/chat. Leave empty to send messages without a prefix.
             </Trans>
           </span>
         </label>
@@ -3364,7 +3545,9 @@ function NotificationsSection({
             <div className="w-20 flex-none">
               <NumberField
                 value={draft.notification_retry_interval_minutes}
-                onChange={(n) => onChange('notification_retry_interval_minutes', (n || 30) as never)}
+                onChange={(n) =>
+                  onChange('notification_retry_interval_minutes', (n || 30) as never)
+                }
                 step="integer"
                 locale={locale}
                 noGrouping
@@ -3376,10 +3559,9 @@ function NotificationsSection({
           </div>
           <span className="block text-xs text-slate-500 mt-1">
             <Trans>
-              Cadence between retries when an alert fails to deliver or the bad
-              state persists. First attempt fires immediately; up to 4 retries
-              follow at this cadence; the 5th carries a final "giving up" message
-              and the notifier stays silent until recovery.
+              Cadence between retries when an alert fails to deliver or the bad state persists.
+              First attempt fires immediately; up to 4 retries follow at this cadence; the 5th
+              carries a final "giving up" message and the notifier stays silent until recovery.
             </Trans>
           </span>
         </label>
@@ -3448,9 +3630,11 @@ function EventClassSubscriptions({
   // pending/result state per-row via the most recently clicked event
   // class so the button can show "sending..." then a brief tick or
   // error inline.
-  const [testResult, setTestResult] = useState<
-    { event_class: string; ok: boolean; error?: string | null } | null
-  >(null);
+  const [testResult, setTestResult] = useState<{
+    event_class: string;
+    ok: boolean;
+    error?: string | null;
+  } | null>(null);
   const testEvent = useMutation({
     mutationFn: (event_class: string) => api.notificationsTestEvent(event_class),
     onSuccess: (resp, event_class) => {
@@ -3469,10 +3653,7 @@ function EventClassSubscriptions({
     const next = new Set(disabled);
     if (enabled) next.delete(id);
     else next.add(id);
-    onChange(
-      'notification_disabled_event_classes',
-      Array.from(next).sort() as never,
-    );
+    onChange('notification_disabled_event_classes', Array.from(next).sort() as never);
   };
 
   const sendHelp = i18n._(
@@ -3486,10 +3667,7 @@ function EventClassSubscriptions({
   // wallet-runway tile's "below N days" pattern. Used by every
   // timer-driven event so the operator edits the threshold inline
   // on the tile rather than hunting for a separate config variable.
-  const minutesInput = <K extends keyof AppConfig>(
-    field: K,
-    enabled: boolean,
-  ): React.ReactNode => (
+  const minutesInput = <K extends keyof AppConfig>(field: K, enabled: boolean): React.ReactNode => (
     <span
       className={
         'flex items-center gap-2 text-sm font-semibold whitespace-nowrap ' +
@@ -3500,9 +3678,7 @@ function EventClassSubscriptions({
       <div className="w-16 flex-none">
         <NumberField
           value={(draft[field] as number) ?? 0}
-          onChange={(n) =>
-            onChange(field, (n && n > 0 ? Math.round(n) : 1) as never)
-          }
+          onChange={(n) => onChange(field, (n && n > 0 ? Math.round(n) : 1) as never)}
           step="integer"
           locale={locale}
           noGrouping
@@ -3614,8 +3790,7 @@ function EventClassSubscriptions({
       severity: 'IMPORTANT',
       // Toggling on resets the threshold to 3 days; toggling off
       // collapses to 0 (the daemon's "alert disabled" sentinel).
-      setEnabled: (n) =>
-        onChange('wallet_runway_alert_days', (n ? 3 : 0) as never),
+      setEnabled: (n) => onChange('wallet_runway_alert_days', (n ? 3 : 0) as never),
       // Always render the day-input so the row's height never
       // changes when the operator toggles the checkbox - the input
       // just becomes editable when the box is ticked, greyed
@@ -3691,11 +3866,11 @@ function EventClassSubscriptions({
     // #226: payout lifecycle - two separate INFO toggles. Most operators
     // will want both on or both off; keeping them split mirrors how the
     // events actually fire (one when Ocean debits unpaid_sat, one when
-    // the coinbase confirms on-chain).
+    // the payout tx confirms on-chain).
     {
       id: 'payout_initiated',
       label: t`Ocean payout initiated`,
-      help: t`Informational. Off by default. Fires the moment Ocean debits your unpaid balance - the payout has been committed to the coinbase of the next block Ocean finds, but the transaction hasn't confirmed on-chain yet. Detection: the daemon's per-tick ocean_unpaid_sat drops by more than 30% AND the residual is below the 1,048,576-sat payout threshold (filters out tick noise / Ocean-side accounting bumps).`,
+      help: t`Informational. Off by default. Fires the moment Ocean debits your unpaid balance - Ocean has queued your payout and will settle it via a batched payment transaction, but it hasn't confirmed on-chain yet. Detection: the daemon's per-tick ocean_unpaid_sat drops by more than 30% AND the residual is below the 1,048,576-sat payout threshold (filters out tick noise / Ocean-side accounting bumps).`,
       enabled: draft.notify_on_payout_initiated,
       setEnabled: (n) => onChange('notify_on_payout_initiated', n as never),
       severity: 'INFO',
@@ -3703,7 +3878,7 @@ function EventClassSubscriptions({
     {
       id: 'payout_confirmed',
       label: t`Ocean payout confirmed on-chain`,
-      help: t`Informational. Off by default. Fires when the on-chain payout scanner observes a coinbase output crediting your payout address - i.e. the transaction Ocean committed has now confirmed. Includes block height, payout amount, and a truncated tx id. Source: reward_events ledger (populated by your Electrum server or bitcoind scantxoutset, whichever the operator has wired).`,
+      help: t`Informational. Off by default. Fires when the on-chain payout scanner observes a new transaction crediting your payout address - i.e. the payout Ocean queued has now confirmed (any tx, not just a coinbase - Ocean pays out via batched sweeps). Includes block height, payout amount, and a truncated tx id. Source: reward_events ledger (populated by your Electrum server or bitcoind scantxoutset, whichever the operator has wired).`,
       enabled: draft.notify_on_payout_confirmed,
       setEnabled: (n) => onChange('notify_on_payout_confirmed', n as never),
       severity: 'INFO',
@@ -3799,9 +3974,7 @@ function EventClassSubscriptions({
               disabled={muted}
               className="accent-amber-400 h-4 w-4 flex-shrink-0 mt-0.5"
             />
-            <span className="text-sm text-slate-100 font-semibold leading-tight">
-              {tile.label}
-            </span>
+            <span className="text-sm text-slate-100 font-semibold leading-tight">{tile.label}</span>
           </label>
           <SeverityPill severity={tile.severity} />
           <button
@@ -3822,14 +3995,13 @@ function EventClassSubscriptions({
         {showResult && (
           <p
             className={
-              'text-[11px] mt-1 ml-6 ' +
-              (testResult?.ok ? 'text-emerald-300' : 'text-red-400')
+              'text-[11px] mt-1 ml-6 ' + (testResult?.ok ? 'text-emerald-300' : 'text-red-400')
             }
           >
             {testResult?.ok ? (
               <Trans>sent · check Telegram</Trans>
             ) : (
-              testResult?.error ?? <Trans>send failed</Trans>
+              (testResult?.error ?? <Trans>send failed</Trans>)
             )}
           </p>
         )}
@@ -3883,19 +4055,15 @@ function EventClassSubscriptions({
           </span>
           <p className="text-xs text-slate-500 mt-0.5">
             <Trans>
-              Language for Telegram message titles + bodies + severity prefix. Independent of
-              the dashboard's display language (each browser has its own). Defaults to
-              English.
+              Language for Telegram message titles + bodies + severity prefix. Independent of the
+              dashboard's display language (each browser has its own). Defaults to English.
             </Trans>
           </p>
         </span>
         <select
           value={draft.notification_locale ?? 'en'}
           onChange={(e) =>
-            onChange(
-              'notification_locale',
-              e.target.value as 'en' | 'nl' | 'es' as never,
-            )
+            onChange('notification_locale', e.target.value as 'en' | 'nl' | 'es' as never)
           }
           className="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm"
         >
@@ -3908,8 +4076,8 @@ function EventClassSubscriptions({
       <div className="ml-6 pl-3 border-l border-slate-800 mt-1">
         <p className="text-xs text-slate-500 mb-1">
           <Trans>
-            Tick any event type you want pushed. Untouched types skip the
-            daemon entirely - no Telegram, no /alerts row, no retry ladder.
+            Tick any event type you want pushed. Untouched types skip the daemon entirely - no
+            Telegram, no /alerts row, no retry ladder.
           </Trans>
         </p>
 
@@ -4008,8 +4176,8 @@ function PayoutSourceSection({
         </h3>
         <p className="text-xs text-slate-500 mt-1">
           <Trans>
-            How the daemon checks your BTC payout balance. Pick a backend and fill in the
-            connection details. Requires a restart to take effect.
+            How the daemon checks your BTC payout balance. Pick a backend and fill in the connection
+            details. Requires a restart to take effect.
           </Trans>
         </p>
       </header>
@@ -4023,14 +4191,14 @@ function PayoutSourceSection({
           {payoutAddr.length > 0 ? (
             <Trans>
               Observing payouts to <code className="text-slate-200 break-all">{payoutAddr}</code>.
-              Edit this in the <strong>Pool destination</strong> section above - the worker
-              identity is auto-derived from it.
+              Edit this in the <strong>Pool destination</strong> section above - the worker identity
+              is auto-derived from it.
             </Trans>
           ) : (
             <Trans>
               Observing payouts to <span className="text-amber-400">(no address set)</span>. Edit
-              this in the <strong>Pool destination</strong> section above - the worker identity
-              is auto-derived from it.
+              this in the <strong>Pool destination</strong> section above - the worker identity is
+              auto-derived from it.
             </Trans>
           )}
         </div>
@@ -4164,17 +4332,17 @@ function HistoricalPayoutsControls({
             <Trans>Include historical Ocean payouts in lifetime earnings</Trans>
             <InlineInfoPopover ariaLabel={t`More about historical payouts backfill`}>
               <Trans>
-                When on, lifetime earnings count every coinbase tx ever credited to this
-                payout address - including payouts you have already swept to another
-                wallet. When off, only outputs still sitting at the address are counted
-                (the pre-1.7.5 behaviour). Most users want this on; turn it off if you
-                rotate to a fresh payout address per accounting period.
+                When on, lifetime earnings count every payout tx ever credited to this payout
+                address - including payouts you have already swept to another wallet. When off, only
+                outputs still sitting at the address are counted (the pre-1.7.5 behaviour). Most
+                users want this on; turn it off if you rotate to a fresh payout address per
+                accounting period.
               </Trans>
               <span className="block mt-2">
                 <Trans>
-                  The "Backfill now" button walks the full address history via your
-                  Electrum server and adds any historical Ocean coinbase payouts that
-                  aren't already recorded. Safe to run repeatedly.
+                  The "Backfill now" button walks the full address history via your Electrum server
+                  and adds any historical Ocean payouts that aren't already recorded. Safe to run
+                  repeatedly.
                 </Trans>
               </span>
             </InlineInfoPopover>
@@ -4212,11 +4380,11 @@ function HistoricalPayoutsControls({
           <Trans>Pre-installation earnings</Trans>
           <InlineInfoPopover ariaLabel={t`More about the pre-installation earnings offset`}>
             <Trans>
-              One-shot offset for earnings the on-chain payout observer can't see -
-              Lightning payouts, Ocean payouts that landed and were swept before you
-              installed the autopilot, etc. Shifts the lifetime-earnings chart's
-              starting value up by this amount and folds into the net P&L. Leave 0 if
-              everything is already covered by the on-chain backfill above.
+              One-shot offset for earnings the on-chain payout observer can't see - Lightning
+              payouts, Ocean payouts that landed and were swept before you installed the autopilot,
+              etc. Shifts the lifetime-earnings chart's starting value up by this amount and folds
+              into the net P&L. Leave 0 if everything is already covered by the on-chain backfill
+              above.
             </Trans>
           </InlineInfoPopover>
         </label>
@@ -4271,10 +4439,7 @@ function SaveStatus({
   }
   if (isError) {
     return (
-      <span
-        className="text-xs text-red-400 max-w-xs truncate"
-        title={errorMessage ?? undefined}
-      >
+      <span className="text-xs text-red-400 max-w-xs truncate" title={errorMessage ?? undefined}>
         <Trans>save failed:</Trans> {errorMessage}
       </span>
     );
@@ -4336,7 +4501,11 @@ function ElectrsFields({
           className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-1.5 text-sm font-mono"
         />
         <span className="block text-xs text-slate-500 mt-1">
-          <Trans>On StartOS use electrs.startos. Enter a host name or IP only, without http:// or a path.</Trans>
+          <Trans>
+            On StartOS use electrs.startos. Otherwise, read the host and port off your Electrum
+            server's own connection page - the same applies to Electrs, Fulcrum, or ElectrumX, on
+            Umbrel, Docker, StartOS, or bare metal.
+          </Trans>
         </span>
       </label>
       <label className="block">
@@ -4351,7 +4520,7 @@ function ElectrsFields({
           noGrouping
         />
         <span className="block text-xs text-slate-500 mt-1">
-          <Trans>Default 50001.</Trans>
+          <Trans>Shown on the same connection page as the host.</Trans>
         </span>
       </label>
       <div className="self-start mt-[26px]">
@@ -4368,16 +4537,11 @@ function ElectrsFields({
         <div className="col-span-2 sm:col-span-3 text-xs font-mono break-words">
           {test.data && test.data.ok && (
             <span className="text-emerald-300">
-              <Trans>OK</Trans> · <Trans>genesis version</Trans>{' '}
-              {test.data.genesis_version ?? '?'}
+              <Trans>OK</Trans> · <Trans>genesis version</Trans> {test.data.genesis_version ?? '?'}
             </span>
           )}
-          {test.data && !test.data.ok && (
-            <span className="text-red-400">{test.data.error}</span>
-          )}
-          {test.isError && (
-            <span className="text-red-400">{(test.error as Error).message}</span>
-          )}
+          {test.data && !test.data.ok && <span className="text-red-400">{test.data.error}</span>}
+          {test.isError && <span className="text-red-400">{(test.error as Error).message}</span>}
         </div>
       )}
     </div>
@@ -4411,8 +4575,8 @@ function BitcoindRpcFields({
         </h4>
         <p className="text-xs text-slate-500 mt-1">
           <Trans>
-            Used by the on-chain payout balance check (when "Bitcoin Knots RPC" is
-            selected as the backend above), AND by the{' '}
+            Used by the on-chain payout balance check (when "Bitcoin Knots RPC" is selected as the
+            backend above), AND by the{' '}
             <a
               href="https://bip110.org/"
               target="_blank"
@@ -4421,10 +4585,9 @@ function BitcoindRpcFields({
             >
               BIP 110
             </a>{' '}
-            yellow-cube marker on the Hashrate chart and the BIP 110 scan card on
-            Status - those last two call bitcoind regardless of which payout backend
-            is selected. The Test button below validates the values currently in
-            the form, before saving.
+            yellow-cube marker on the Hashrate chart and the BIP 110 scan card on Status - those
+            last two call bitcoind regardless of which payout backend is selected. The Test button
+            below validates the values currently in the form, before saving.
           </Trans>
         </p>
       </header>
@@ -4451,22 +4614,20 @@ function BitcoindRpcFields({
           </div>
           <span className="block text-xs text-slate-500 mt-1">
             <Trans>
-              On StartOS use <code className="text-slate-300">http://bitcoind.startos:8332</code>
-              {' '}with RPC credentials generated by Bitcoin Knots/Core. Do not use the external
-              StartOS proxy URL.
+              On StartOS use <code className="text-slate-300">http://bitcoind.startos:8332</code>{' '}
+              with RPC credentials generated by Bitcoin Knots/Core. Do not use the external StartOS
+              proxy URL.
             </Trans>
           </span>
           {test.data && test.data.ok && (
             <div className="mt-2 text-xs text-emerald-300 font-mono">
-              <Trans>OK</Trans> · {test.data.chain ?? '?'} ·{' '}
-              <Trans>blocks</Trans> {test.data.blocks?.toLocaleString() ?? '-'} ·{' '}
-              <Trans>headers</Trans> {test.data.headers?.toLocaleString() ?? '-'}
+              <Trans>OK</Trans> · {test.data.chain ?? '?'} · <Trans>blocks</Trans>{' '}
+              {test.data.blocks?.toLocaleString() ?? '-'} · <Trans>headers</Trans>{' '}
+              {test.data.headers?.toLocaleString() ?? '-'}
             </div>
           )}
           {test.data && !test.data.ok && (
-            <div className="mt-2 text-xs text-red-400 font-mono break-words">
-              {test.data.error}
-            </div>
+            <div className="mt-2 text-xs text-red-400 font-mono break-words">{test.data.error}</div>
           )}
           {test.isError && (
             <div className="mt-2 text-xs text-red-400 font-mono break-words">
@@ -4524,7 +4685,9 @@ function Field({
   const denomination = useDenomination();
 
   if (spec.key === 'bid_budget_sat' && spec.kind === 'integer') {
-    return <BidBudgetField spec={spec} value={value as number} locale={locale} onChange={onChange} />;
+    return (
+      <BidBudgetField spec={spec} value={value as number} locale={locale} onChange={onChange} />
+    );
   }
 
   if (
@@ -4534,7 +4697,9 @@ function Field({
       spec.key === 'decisions_eventful_retention_days' ||
       spec.key === 'alerts_retention_days')
   ) {
-    return <RetentionField spec={spec} value={value as number} locale={locale} onChange={onChange} />;
+    return (
+      <RetentionField spec={spec} value={value as number} locale={locale} onChange={onChange} />
+    );
   }
 
   if (spec.kind === 'radio') {
@@ -4626,6 +4791,10 @@ function Field({
     // page is just as protective.
     const isWorker = spec.key === 'destination_pool_worker_name';
     const addr = (draft.btc_payout_address as string | null) ?? '';
+    // #309: the BTC payout address must be a real mainnet address.
+    // A stray `c` once got saved and silently broke Ocean crediting.
+    const isPayoutAddr = spec.key === 'btc_payout_address';
+    const addrInvalid = isPayoutAddr && v.trim().length > 0 && !isValidBtcPayoutAddress(v);
     const noPeriod = isWorker && v.length > 0 && !v.includes('.');
     const prefixMismatch =
       isWorker &&
@@ -4657,15 +4826,29 @@ function Field({
             onChange={(e) => onChange(spec.key, e.target.value as never)}
             className={
               'w-full bg-slate-800 border rounded px-3 py-1.5 text-sm font-mono ' +
-              (showWarning ? 'border-amber-600' : 'border-slate-700')
+              (addrInvalid
+                ? 'border-red-600'
+                : showWarning
+                  ? 'border-amber-600'
+                  : 'border-slate-700')
             }
           />
+        )}
+        {addrInvalid && (
+          <span className="block text-xs text-red-400 mt-1 leading-snug">
+            <Trans>
+              <strong>Not a valid Bitcoin address.</strong> Enter a mainnet bech32 address (starts
+              with <code className="text-slate-200">bc1q</code>) or a Taproot address (
+              <code className="text-slate-200">bc1p</code>). An invalid address here is not saved,
+              and would route your rented hashrate to nobody on Ocean.
+            </Trans>
+          </span>
         )}
         {noPeriod && (
           <span className="block text-xs text-amber-400 mt-1">
             <Trans>
-              ⚠ No period found. Ocean TIDES requires "&lt;BTC address&gt;.&lt;label&gt;".
-              Without the address prefix, shares go uncredited.
+              ⚠ No period found. Ocean TIDES requires "&lt;BTC address&gt;.&lt;label&gt;". Without
+              the address prefix, shares go uncredited.
             </Trans>
           </span>
         )}
@@ -4673,9 +4856,9 @@ function Field({
           <span className="block text-xs text-red-400 mt-1 leading-snug">
             <Trans>
               <strong>Mismatch:</strong> the worker identity must start with{' '}
-              <code className="text-slate-200">{addr}.</code> - otherwise Ocean credits shares
-              to a different address (or nobody). Edit the BTC payout address above; this
-              field follows it automatically.
+              <code className="text-slate-200">{addr}.</code> - otherwise Ocean credits shares to a
+              different address (or nobody). Edit the BTC payout address above; this field follows
+              it automatically.
             </Trans>
           </span>
         )}
@@ -4687,9 +4870,11 @@ function Field({
             <Trans>⚠ This is Datum Gateway's HTTP dashboard/API port.</Trans>
             <InlineInfoPopover ariaLabel={t`More about Datum stats polling`}>
               <Trans>
-                Hashrate Autopilot first tries Datum's <code className="text-slate-200">/umbrel-api</code>
-                JSON stats endpoint. If that endpoint is absent, as on the StartOS Datum package,
-                it falls back to parsing the Datum dashboard at <code className="text-slate-200">/</code>.
+                Hashrate Autopilot first tries Datum's{' '}
+                <code className="text-slate-200">/umbrel-api</code>
+                JSON stats endpoint. If that endpoint is absent, as on the StartOS Datum package, it
+                falls back to parsing the Datum dashboard at{' '}
+                <code className="text-slate-200">/</code>.
               </Trans>{' '}
               <a
                 href="https://github.com/rdouma/hashrate-autopilot/blob/main/docs/setup-datum-api.md#background"
@@ -4718,8 +4903,8 @@ function Field({
                 No-IP. Configure DDNS in the <strong>Dynamic DNS</strong> panel below; once set up,
                 point Pool URL at the hostname (e.g.{' '}
                 <code className="text-slate-200">stratum+tcp://yourname.duckdns.org:23334</code>)
-                and the daemon keeps the hostname mapped to your current IP automatically. Static IPs
-                / VPS / business connections can keep using a raw IP and ignore this note.
+                and the daemon keeps the hostname mapped to your current IP automatically. Static
+                IPs / VPS / business connections can keep using a raw IP and ignore this note.
               </Trans>
             </InlineInfoPopover>
           </span>
@@ -4861,12 +5046,17 @@ function Field({
     // sat/EH/day = 1000 × sat/PH/day, so divide by 1000 first.
     const satPerUnitDay = raw === null ? 0 : (raw / EH_PER_PH) * unitFactor;
     const displayValue = useBtc ? satPerUnitDay / 100_000_000 : satPerUnitDay;
-    const suffix = useBtc ? `₿/${unit}/day` : <><SatSymbol />/{unit}/day</>;
+    const suffix = useBtc ? (
+      `₿/${unit}/day`
+    ) : (
+      <>
+        <SatSymbol />/{unit}/day
+      </>
+    );
     // BTC needs many decimals to be usable for typical 47k sat/PH/day
     // values (~ 0.00047 ₿/PH/day); sat at TH needs 3 decimals to keep
     // single-tick spreads visible. Otherwise integer.
-    const stepKind: 'integer' | 'any' =
-      useBtc || unit === 'TH' ? 'any' : 'integer';
+    const stepKind: 'integer' | 'any' = useBtc || unit === 'TH' ? 'any' : 'integer';
     return (
       <label className="block">
         <span className="block text-sm text-slate-300 mb-1">{spec.label}</span>
@@ -4897,10 +5087,7 @@ function Field({
 
   // Hashrate fields (target / floor / cheap-target) - declared with
   // unit: 'PH/s'; scale display by the toggle but keep storage in PH/s.
-  if (
-    (spec.kind === 'decimal' || spec.kind === 'integer') &&
-    spec.unit === 'PH/s'
-  ) {
+  if ((spec.kind === 'decimal' || spec.kind === 'integer') && spec.unit === 'PH/s') {
     const raw = (value as number | null) ?? 0;
     const unit = denomination.hashrateUnit;
     const factor = unit === 'TH' ? 1000 : unit === 'EH' ? 0.001 : 1;
@@ -5059,33 +5246,27 @@ function FieldWithTestButton({
         <div className="mt-2 text-xs font-mono break-words">
           {test.data && test.data.ok && (
             <span className="text-emerald-300">
-              {kind === 'pool' ? (
-                (() => {
-                  const d = test.data as PoolUrlTestResponse;
-                  return d.latency_ms !== null && d.latency_ms !== undefined ? (
-                    <Trans>OK · connected in {d.latency_ms}ms</Trans>
-                  ) : (
-                    <Trans>OK</Trans>
-                  );
-                })()
-              ) : (
-                (() => {
-                  const d = test.data as DatumTestResponse;
-                  return (
-                    <Trans>
-                      OK · {d.connections ?? '-'} connections, {d.hashrate_ph ?? '-'} PH/s
-                    </Trans>
-                  );
-                })()
-              )}
+              {kind === 'pool'
+                ? (() => {
+                    const d = test.data as PoolUrlTestResponse;
+                    return d.latency_ms !== null && d.latency_ms !== undefined ? (
+                      <Trans>OK · connected in {d.latency_ms}ms</Trans>
+                    ) : (
+                      <Trans>OK</Trans>
+                    );
+                  })()
+                : (() => {
+                    const d = test.data as DatumTestResponse;
+                    return (
+                      <Trans>
+                        OK · {d.connections ?? '-'} connections, {d.hashrate_ph ?? '-'} PH/s
+                      </Trans>
+                    );
+                  })()}
             </span>
           )}
-          {test.data && !test.data.ok && (
-            <span className="text-red-400">{test.data.error}</span>
-          )}
-          {test.isError && (
-            <span className="text-red-400">{(test.error as Error).message}</span>
-          )}
+          {test.data && !test.data.ok && <span className="text-red-400">{test.data.error}</span>}
+          {test.isError && <span className="text-red-400">{(test.error as Error).message}</span>}
         </div>
       )}
     </div>
@@ -5158,8 +5339,7 @@ function DdnsCredentialFields({
         update_url: draft.ddns_update_url,
       }),
   });
-  const hasUsernameField =
-    draft.ddns_provider === 'noip' || draft.ddns_provider === 'dyndns2';
+  const hasUsernameField = draft.ddns_provider === 'noip' || draft.ddns_provider === 'dyndns2';
   const hasUpdateUrlField = draft.ddns_provider === 'dyndns2';
   const ready =
     draft.ddns_provider !== '' &&
@@ -5193,11 +5373,11 @@ function DdnsCredentialFields({
         </div>
         <span className="block text-xs text-slate-500 mt-1">
           <Trans>
-            The hostname being maintained. For No-IP DDNS Key groups (the modern auth flow
-            that doesn't expose your account password), use the special hostname
-            all.ddnskey.com - that updates every hostname assigned to the DDNS Key's
-            group in one call. Test connection pushes a real update with the values
-            currently in the form (without saving). `nochg` and `good` are both success.
+            The hostname being maintained. For No-IP DDNS Key groups (the modern auth flow that
+            doesn't expose your account password), use the special hostname all.ddnskey.com - that
+            updates every hostname assigned to the DDNS Key's group in one call. Test connection
+            pushes a real update with the values currently in the form (without saving). `nochg` and
+            `good` are both success.
           </Trans>
         </span>
         {test.data && test.data.ok && (
@@ -5208,9 +5388,7 @@ function DdnsCredentialFields({
           </div>
         )}
         {test.data && !test.data.ok && (
-          <div className="mt-2 text-xs text-red-400 font-mono break-words">
-            {test.data.error}
-          </div>
+          <div className="mt-2 text-xs text-red-400 font-mono break-words">{test.data.error}</div>
         )}
         {test.isError && (
           <div className="mt-2 text-xs text-red-400 font-mono break-words">
@@ -5248,8 +5426,8 @@ function DdnsCredentialFields({
         />
         <span className="block text-xs text-slate-500 mt-1">
           <Trans>
-            Stored in the daemon's SQLite config. Use a per-hostname DDNS Key, not your
-            main account password.
+            Stored in the daemon's SQLite config. Use a per-hostname DDNS Key, not your main account
+            password.
           </Trans>
         </span>
       </label>
@@ -5270,8 +5448,8 @@ function DdnsCredentialFields({
             <Trans>
               The provider's dyndns2-compatible update endpoint. Examples: Dynu uses
               https://api.dynu.com/nic/update; FreeDNS / afraid.org uses
-              https://freedns.afraid.org/nic/update; many self-hosted DDNS scripts speak
-              the same protocol.
+              https://freedns.afraid.org/nic/update; many self-hosted DDNS scripts speak the same
+              protocol.
             </Trans>
           </span>
         </label>
@@ -5313,7 +5491,11 @@ function DdnsSection({
         </h3>
         <p className="text-xs text-slate-500 mt-1">
           <Trans>
-            Keep the Pool URL's hostname pointed at this box's current public IP. Replaces the router-firmware-based DDNS client. Supports No-IP (sign up at no-ip.com - create a hostname, then generate a DDNS Key under DDNS Keys / Groups), DuckDNS (sign up at duckdns.org - free, no expiration, no monthly re-confirm), and "Other" for any provider that speaks the dyndns2 protocol (Dynu, FreeDNS / afraid.org, many self-hosted scripts).
+            Keep the Pool URL's hostname pointed at this box's current public IP. Replaces the
+            router-firmware-based DDNS client. Supports No-IP (sign up at no-ip.com - create a
+            hostname, then generate a DDNS Key under DDNS Keys / Groups), DuckDNS (sign up at
+            duckdns.org - free, no expiration, no monthly re-confirm), and "Other" for any provider
+            that speaks the dyndns2 protocol (Dynu, FreeDNS / afraid.org, many self-hosted scripts).
           </Trans>
         </p>
       </header>
@@ -5364,9 +5546,9 @@ function DdnsSection({
             ) : (
               <span className="text-red-400">
                 <Trans>
-                  Mismatch. If your daemon and Datum Gateway are on the same home network,
-                  these should match. Usually this means your DDNS hasn't updated since the
-                  ISP changed your public IP - configure DDNS below to fix it.
+                  Mismatch. If your daemon and Datum Gateway are on the same home network, these
+                  should match. Usually this means your DDNS hasn't updated since the ISP changed
+                  your public IP - configure DDNS below to fix it.
                 </Trans>
               </span>
             )}
@@ -5394,9 +5576,9 @@ function DdnsSection({
           </select>
           <span className="block text-xs text-slate-500 mt-1">
             <Trans>
-              Leave Disabled if you maintain DDNS elsewhere (router, VPS, static IP). When
-              set, the daemon pushes an update every 5 minutes (and at minimum hourly to
-              keep free hostnames active).
+              Leave Disabled if you maintain DDNS elsewhere (router, VPS, static IP). When set, the
+              daemon pushes an update every 5 minutes (and at minimum hourly to keep free hostnames
+              active).
             </Trans>
           </span>
         </label>
@@ -5420,9 +5602,11 @@ function DdnsSection({
                         : 'text-slate-500'
                   }
                 >
-                  {r?.ddns.last_status
-                    ? localizeDdnsStatus(r.ddns.last_status)
-                    : <Trans>(no push attempted yet)</Trans>}
+                  {r?.ddns.last_status ? (
+                    localizeDdnsStatus(r.ddns.last_status)
+                  ) : (
+                    <Trans>(no push attempted yet)</Trans>
+                  )}
                 </span>
               </div>
               <div className="flex flex-wrap gap-x-4">
@@ -5547,9 +5731,8 @@ function DiagnosticsSection() {
         <p className="text-xs text-slate-500 mt-1">
           <Trans>
             One-click support bundle: probes every external service the daemon talks to
-            (marketplace, pool, node, price providers) and snapshots the configuration with
-            all secrets stripped. Use "Copy as Markdown" to paste the result into a bug
-            report.
+            (marketplace, pool, node, price providers) and snapshots the configuration with all
+            secrets stripped. Use "Copy as Markdown" to paste the result into a bug report.
           </Trans>
         </p>
       </header>
@@ -5574,9 +5757,7 @@ function DiagnosticsSection() {
         )}
       </div>
       {diag.isError && (
-        <div className="mt-2 text-xs text-red-400 font-mono break-words">
-          {diag.error.message}
-        </div>
+        <div className="mt-2 text-xs text-red-400 font-mono break-words">{diag.error.message}</div>
       )}
       {d && (
         <div className="mt-4 space-y-4 text-xs">
@@ -5588,10 +5769,18 @@ function DiagnosticsSection() {
           <table className="w-full text-left">
             <thead>
               <tr className="text-slate-500">
-                <th className="py-1 pr-3 font-normal"><Trans>Target</Trans></th>
-                <th className="py-1 pr-3 font-normal"><Trans>Status</Trans></th>
-                <th className="py-1 pr-3 font-normal"><Trans>Latency</Trans></th>
-                <th className="py-1 font-normal"><Trans>Detail</Trans></th>
+                <th className="py-1 pr-3 font-normal">
+                  <Trans>Target</Trans>
+                </th>
+                <th className="py-1 pr-3 font-normal">
+                  <Trans>Status</Trans>
+                </th>
+                <th className="py-1 pr-3 font-normal">
+                  <Trans>Latency</Trans>
+                </th>
+                <th className="py-1 font-normal">
+                  <Trans>Detail</Trans>
+                </th>
               </tr>
             </thead>
             <tbody className="font-mono">
@@ -5608,10 +5797,16 @@ function DiagnosticsSection() {
                           : 'text-slate-500')
                     }
                   >
-                    {probe.status === 'ok' ? 'OK' : probe.status === 'failed' ? t`failed` : t`not configured`}
+                    {probe.status === 'ok'
+                      ? 'OK'
+                      : probe.status === 'failed'
+                        ? t`failed`
+                        : t`not configured`}
                   </td>
                   <td className="py-1 pr-3 whitespace-nowrap text-slate-400">
-                    {probe.latency_ms !== null && probe.status === 'ok' ? `${probe.latency_ms} ms` : ''}
+                    {probe.latency_ms !== null && probe.status === 'ok'
+                      ? `${probe.latency_ms} ms`
+                      : ''}
                   </td>
                   <td className="py-1 break-words text-slate-400">
                     {probe.detail ?? probe.error ?? ''}
@@ -5661,9 +5856,20 @@ function diagnosticsToMarkdown(d: DiagnosticsResponse): string {
   lines.push('|---|---|---|---|');
   for (const probe of d.connectivity) {
     const status =
-      probe.status === 'ok' ? '✅ ok' : probe.status === 'failed' ? '❌ failed' : '– not configured';
-    const latency = probe.latency_ms !== null && probe.status === 'ok' ? `${probe.latency_ms} ms` : '';
-    const detail = (probe.detail ?? probe.error ?? '').replace(/\|/g, '\\|');
+      probe.status === 'ok'
+        ? '✅ ok'
+        : probe.status === 'failed'
+          ? '❌ failed'
+          : '– not configured';
+    const latency =
+      probe.latency_ms !== null && probe.status === 'ok' ? `${probe.latency_ms} ms` : '';
+    // Escape for a markdown table cell: backslash first (else it would
+    // double-escape the pipe we add next), then the pipe, then collapse
+    // any newline so a multi-line error can't break the table row.
+    const detail = (probe.detail ?? probe.error ?? '')
+      .replace(/\\/g, '\\\\')
+      .replace(/\|/g, '\\|')
+      .replace(/\r?\n/g, ' ');
     lines.push(`| ${probe.target} | ${status} | ${latency} | ${detail} |`);
   }
   lines.push('');
