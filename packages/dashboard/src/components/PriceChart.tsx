@@ -528,7 +528,13 @@ export const PriceChart = memo(function PriceChart({
   const dateTimeLocale = useDateTimeLocale();
   const denomination = useDenomination();
 
-  const chartData = useMemo(() => {
+  // #perf: viewport-independent series derivations, split out of
+  // chartData. chartData recomputes on every drag frame (its deps
+  // include viewportSince/Until) and on UI-only keys (chartHeight,
+  // focusEventId); the O(n × window) effective-rate accumulation and
+  // the base series maps below depend only on the fetched points and
+  // the smoothing setting, so they must not re-run per frame.
+  const baseSeries = useMemo(() => {
     const pricePoints: PricePoint[] = points
       .filter((p) => Number.isFinite(p.our_primary_price_sat_per_ph_day))
       .map((p) => ({ t: p.tick_at, v: p.our_primary_price_sat_per_ph_day as number }));
@@ -745,6 +751,11 @@ export const PriceChart = memo(function PriceChart({
         }
       }
     }
+    return { pricePoints, hashpricePoints, fillablePoints, effectivePoints, settledPoints };
+  }, [points, priceSmoothingMinutes]);
+
+  const chartData = useMemo(() => {
+    const { pricePoints, hashpricePoints, fillablePoints, effectivePoints, settledPoints } = baseSeries;
 
     // The line the operator actually cares about: the effective cap
     // that decide() uses each tick, which is the tighter of the fixed
@@ -1404,7 +1415,7 @@ export const PriceChart = memo(function PriceChart({
     // crosshair readout - the bid row mirrors the smoothed line the
     // chart draws, the cap row mirrors the per-tick effective cap.
     return { pricePoints, xs, smoothedPriceByTick, capByTick, minX, maxX, dataMinX, dataMaxX, hasPrice, priceMin, priceMax, xScale, yScale, pricePath, priceAreaPath, hashpricePath, fillablePath, fillableHasData: fillablePoints.length > 0, effectivePath, effectiveHasData: effectivePoints.length > 0, capPath, capExclusionPolygon, yTicks, xTickInterval, xTicks, visibleEvents, rightAxis, hasRightAxis, rightAxisPath, rightYTicks, rightYScale, padRight, marketplaceEmptyIntervals, braiinsUnreachableIntervals, daemonOfflineIntervals };
-  }, [points, events, showEventKinds, focusEventId, priceSmoothingMinutes, historicalPayoutsOffsetSat, maxOverpayVsHashpriceSatPerPhDay, chartHeight, rightAxisSeries, soloSeries, denomination, intlLocale, viewportSince, viewportUntil, hidden]);
+  }, [baseSeries, points, events, showEventKinds, focusEventId, priceSmoothingMinutes, historicalPayoutsOffsetSat, maxOverpayVsHashpriceSatPerPhDay, chartHeight, rightAxisSeries, soloSeries, denomination, intlLocale, viewportSince, viewportUntil, hidden]);
 
   const eventPriceAt = useCallback((e: BidEventView): number | null => {
     const pricePoints = chartData?.pricePoints ?? [];

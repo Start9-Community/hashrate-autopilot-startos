@@ -2,6 +2,10 @@
 
 ## 2026-07-04
 
+### `[Perf]` Smoother chart panning: heavy math no longer re-runs per drag frame
+
+Dragging a chart re-ran the price chart's full effective-rate accumulation (a nested loop over up to a million point-pair combinations) on every frame of the drag, because it lived in the same computation block as the viewport-dependent scales. It now only recomputes when new data actually arrives. The pool-luck block markers also swap a linear scan per block for a binary search, shaving another chunk off chart rebuilds when a luck axis is selected.
+
 ### `[Perf]` Fewer duplicate requests: shared query cache and calmer refocus behavior
 
 The Timeline page fetched the Ocean, payout and deposit data under its own cache keys, so with it open the same endpoints were polled twice concurrently. It now shares one cache with the rest of the app. Queries also get a 15-second freshness window, so returning to the tab or switching pages refetches only data that has actually had a chance to change instead of refiring every query at once. The Config page additionally stops re-serializing the whole config three times per keystroke for its unsaved-changes check.

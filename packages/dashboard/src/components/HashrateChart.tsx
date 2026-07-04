@@ -71,6 +71,22 @@ import { localizedRangeLabel } from '../lib/range-label';
 
 const WIDTH = 880;
 const HEIGHT = 200;
+
+/** Binary search: first index whose tick_at >= t, or -1 when every
+ *  point precedes t. Points are time-sorted by contract. */
+function firstIdxAtOrAfter(
+  points: ReadonlyArray<{ readonly tick_at: number }>,
+  t: number,
+): number {
+  let lo = 0;
+  let hi = points.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (points[mid]!.tick_at >= t) hi = mid;
+    else lo = mid + 1;
+  }
+  return lo < points.length ? lo : -1;
+}
 // #280: stable empty array so a hidden speed-marker series doesn't
 // allocate a new array each render and thrash SpeedEditMarkers' memo.
 const EMPTY_SPEED_EVENTS: ReadonlyArray<SpeedEditMarkerEvent> = [];
@@ -1468,13 +1484,10 @@ export const HashrateChart = memo(function HashrateChart({
         const t =
           kind === 'in' ? block.timestamp_ms : block.timestamp_ms + windowMs;
         if (t < dataMinX || t > dataMaxX) continue;
-        let afterIdx = -1;
-        for (let i = 0; i < points.length; i++) {
-          if (points[i]!.tick_at >= t) {
-            afterIdx = i;
-            break;
-          }
-        }
+        // points are time-sorted; a linear scan from 0 here was
+        // O(blocks × points) (~1.8M iterations at 360 blocks × 5k
+        // points) per recompute.
+        const afterIdx = firstIdxAtOrAfter(points, t);
         if (afterIdx < 0) continue;
         staged.push({ kind, t, block, afterIdx });
       }
@@ -1522,9 +1535,10 @@ export const HashrateChart = memo(function HashrateChart({
     // the next event so adjacent events don't pollute each other.
     const SCAN_WINDOW_TICKS = 60;
     const groupAfterIdxs = [...byTick.keys()].sort((a, b) => a - b);
+    const groupPosByIdx = new Map(groupAfterIdxs.map((v, i) => [v, i] as const));
     const out: typeof empty = [];
     for (const [afterIdx, events] of byTick) {
-      const groupPos = groupAfterIdxs.indexOf(afterIdx);
+      const groupPos = groupPosByIdx.get(afterIdx)!;
       const nextGroupAfterIdx =
         groupPos < groupAfterIdxs.length - 1
           ? groupAfterIdxs[groupPos + 1]!
