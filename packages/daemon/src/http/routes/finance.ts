@@ -283,8 +283,10 @@ export async function registerFinanceRoute(
     let spent_sat: number;
     let spent_closed_sat: number | null = null;
     let spent_active_sat: number | null = null;
+    let spendSnap: Awaited<ReturnType<NonNullable<typeof deps.accountSpend>['getLifetimeSpend']>> | null = null;
     if (scope === 'account' && deps.accountSpend) {
       const snap = await deps.accountSpend.getLifetimeSpend();
+      spendSnap = snap;
       if (snap) {
         spent_sat = snap.total_settlement_sat;
         spent_closed_sat = snap.closed_sat;
@@ -375,7 +377,9 @@ export async function registerFinanceRoute(
       checked_at_ms: oldestSourceTimestamp(
         oceanStats?.fetched_at_ms ?? null,
         deps.payoutObserver?.getLastSnapshot()?.checked_at ?? null,
-        scope === 'account' ? (await deps.accountSpend?.getLifetimeSpend())?.fetched_at_ms ?? null : null,
+        // Reuse the snapshot fetched above - this was a second full
+        // getLifetimeSpend() call for just its timestamp.
+        spendSnap?.fetched_at_ms ?? null,
       ),
     };
   });

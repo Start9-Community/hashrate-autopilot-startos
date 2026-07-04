@@ -11,6 +11,7 @@
  */
 
 import fastifyBasicAuth from '@fastify/basic-auth';
+import fastifyCompress from '@fastify/compress';
 import fastifyCors from '@fastify/cors';
 import fastifyStatic from '@fastify/static';
 import Fastify, { type FastifyInstance } from 'fastify';
@@ -154,6 +155,17 @@ export async function createHttpServer(deps: HttpServerDeps): Promise<HttpServer
   await app.register(fastifyCors, {
     origin: true,
     credentials: true,
+  });
+
+  // Response compression. /api/metrics returns up to multi-MB JSON
+  // bodies re-polled every minute; on a remote/Umbrel link the
+  // transfer dominates chart latency. JSON compresses ~10x. Small
+  // bodies skip compression (threshold) so cheap endpoints don't pay
+  // CPU for nothing.
+  await app.register(fastifyCompress, {
+    global: true,
+    threshold: 2048,
+    encodings: ['gzip', 'deflate'],
   });
 
   await app.register(fastifyBasicAuth, {

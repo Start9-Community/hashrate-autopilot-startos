@@ -118,6 +118,18 @@ export async function registerOceanRoute(
     blockVersionService: BlockVersionService | null;
   },
 ): Promise<void> {
+  // Assembled-response cache. The block/luck/share-log assembly below
+  // runs hundreds of SQLite lookups (a nearestShareLogPct join per
+  // recent block, plus luck-window scans), but every input refreshes
+  // at tick cadence and the upstream Ocean fetch is itself cached for
+  // 60s. The dashboard polls this route from several places (Status,
+  // History at 15s, the block-found sound), so re-assembling per poll
+  // is pure waste. Keyed on address + the upstream snapshot timestamp,
+  // with a TTL backstop for the now-anchored fields (ago_text, luck
+  // window edges drift by seconds - invisible at their granularity).
+  const ASSEMBLY_TTL_MS = 60_000;
+  let assemblyCache: { key: string; at: number; response: OceanResponse } | null = null;
+
   app.get('/api/ocean', async (): Promise<OceanResponse> => {
     if (!deps.oceanClient) {
       return {
@@ -180,6 +192,15 @@ export async function registerOceanRoute(
         user: null,
         fetched_at_ms: null,
       };
+    }
+
+    const cacheKey = `${address}|${stats.fetched_at_ms ?? 'na'}`;
+    if (
+      assemblyCache &&
+      assemblyCache.key === cacheKey &&
+      Date.now() - assemblyCache.at < ASSEMBLY_TTL_MS
+    ) {
+      return assemblyCache.response;
     }
 
     const now = Date.now();
@@ -305,7 +326,7 @@ export async function registerOceanRoute(
       signals_bip110: signalsBip110ByBlock[i] ?? null,
     }));
 
-    return {
+    const response: OceanResponse = {
       configured: true,
       last_block: lastBlock
         ? {
@@ -341,6 +362,8 @@ export async function registerOceanRoute(
       },
       fetched_at_ms: stats.fetched_at_ms,
     };
+    assemblyCache = { key: cacheKey, at: Date.now(), response };
+    return response;
   });
 }
 

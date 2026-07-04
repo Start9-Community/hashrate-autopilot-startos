@@ -141,8 +141,20 @@ export interface AggregatedTickMetricRow {
 export class TickMetricsRepo {
   constructor(private readonly db: Kysely<Database>) {}
 
+  /** Cached MIN(tick_at). `undefined` = not yet computed. The value
+   *  only changes on the first-ever insert (null -> value) or on
+   *  retention pruning, yet every /api/metrics poll asks for it -
+   *  cache instead of re-querying per request. */
+  private firstTickAtCache: number | null | undefined = undefined;
+
   async insert(args: InsertTickMetricArgs): Promise<void> {
     await this.db.insertInto('tick_metrics').values(args).execute();
+    if (
+      this.firstTickAtCache === null ||
+      (this.firstTickAtCache !== undefined && args.tick_at < this.firstTickAtCache)
+    ) {
+      this.firstTickAtCache = args.tick_at;
+    }
   }
 
   async listSince(sinceMs: number, limit = 10_000, untilMs?: number): Promise<TickMetricRow[]> {
@@ -732,11 +744,14 @@ export class TickMetricsRepo {
    * whatever history actually exists.
    */
   async firstTickAt(): Promise<number | null> {
-    const row = await this.db
-      .selectFrom('tick_metrics')
-      .select(sql<number | null>`MIN(tick_at)`.as('min_tick_at'))
-      .executeTakeFirst();
-    return row?.min_tick_at ?? null;
+    if (this.firstTickAtCache === undefined) {
+      const row = await this.db
+        .selectFrom('tick_metrics')
+        .select(sql<number | null>`MIN(tick_at)`.as('min_tick_at'))
+        .executeTakeFirst();
+      this.firstTickAtCache = row?.min_tick_at ?? null;
+    }
+    return this.firstTickAtCache;
   }
 
   /**
@@ -870,5 +885,7 @@ export class TickMetricsRepo {
 
   async pruneOlderThan(cutoffMs: number): Promise<void> {
     await this.db.deleteFrom('tick_metrics').where('tick_at', '<', cutoffMs).execute();
+    // Pruning can delete the earliest row; recompute lazily.
+    this.firstTickAtCache = undefined;
   }
 }

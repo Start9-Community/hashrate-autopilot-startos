@@ -2,6 +2,10 @@
 
 ## 2026-07-04
 
+### `[Perf]` Faster dashboard loads: compressed API responses and cached Ocean assembly
+
+All API responses over 2 KB are now gzip-compressed - the chart data endpoint returns multi-MB JSON that compresses about 10x, which is most of the chart load time on remote connections. The Ocean panel endpoint also stops re-running hundreds of database lookups on every poll: the assembled response is cached until the upstream Ocean snapshot refreshes. Two smaller cuts: the metrics endpoint no longer re-queries the first-tick timestamp per request, and the finance endpoint no longer fetches the lifetime-spend snapshot twice.
+
 ### `[Perf]` Chart crosshair no longer re-renders the whole Status page per pointer move
 
 The shared crosshair position lived in Status-page React state, so every hover tick re-rendered the entire page - tiles, pipeline cards and both full chart SVGs - just to move a vertical line. The position now lives in a small subscription store; only the crosshair line, dots, value readout and the alert-band marker fade-in re-render as the pointer moves. Behaviour is unchanged: synced hover across both charts, click-to-pin, Esc/outside-click dismissal, touch long-press scrub.
