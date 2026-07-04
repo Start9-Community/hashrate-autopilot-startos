@@ -582,21 +582,28 @@ export function History() {
 
   // #317: extra event types folded into the log. Reuse the existing
   // endpoints; these are all sparse so a single fetch each is fine.
+  // Query keys are shared with Status / the block-found sound - a
+  // page-private key (['history-ocean'] etc.) meant the same endpoint
+  // was polled twice concurrently under two cache entries whenever
+  // this page was open. Same key = one shared cache + request dedup;
+  // each observer keeps its own refetchInterval.
   const payoutsQuery = useQuery({
-    queryKey: ['history-reward-events'],
-    queryFn: () => api.rewardEvents(),
+    queryKey: ['reward-events'],
+    // Same fetch shape as Status (limit 500). Reward events are
+    // sparse on-chain receipts; 500 covers years.
+    queryFn: () => api.rewardEvents(500),
     placeholderData: keepPreviousData,
     refetchInterval: extraRefetchMs,
   });
   const depositsQuery = useQuery({
-    queryKey: ['history-deposits'],
+    queryKey: ['deposits'],
     queryFn: () => api.deposits(),
     placeholderData: keepPreviousData,
     refetchInterval: extraRefetchMs,
   });
   const oceanQuery = useQuery({
-    queryKey: ['history-ocean'],
-    queryFn: () => api.ocean(),
+    queryKey: ['ocean'],
+    queryFn: api.ocean,
     placeholderData: keepPreviousData,
     refetchInterval: extraRefetchMs,
   });

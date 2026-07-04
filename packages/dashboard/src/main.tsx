@@ -27,6 +27,14 @@ const queryClient = new QueryClient({
       // back. Refetch on focus so the dashboard catches up immediately
       // instead of waiting a full polling tick to re-render.
       refetchOnWindowFocus: true,
+      // With the default staleTime of 0, every tab refocus and every
+      // page navigation refired all ~10-14 mounted queries at once -
+      // including the multi-MB metrics fetch - producing a request
+      // burst and a main-thread parse storm right when the operator
+      // looks at the screen. 15s means focus/remount only refetches
+      // data that's actually had a chance to change (the daemon ticks
+      // every 60s); explicit invalidateQueries calls still bypass it.
+      staleTime: 15_000,
       retry: 1,
     },
   },

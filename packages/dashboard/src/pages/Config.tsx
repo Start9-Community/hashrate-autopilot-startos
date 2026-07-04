@@ -641,10 +641,15 @@ export function Config() {
   // Dirty check by deep-equal of the JSON shape. AppConfig is a flat
   // object of primitives, so the stringify cost is trivial vs. a hand-
   // rolled equality. Falsy when either side is null (still loading).
-  const isDirty =
-    draft !== null &&
-    lastSavedSnapshot !== null &&
-    JSON.stringify(draft) !== JSON.stringify(lastSavedSnapshot);
+  // Memoized per object identity: this component re-renders per
+  // keystroke, and unmemoized it serialized the full config three
+  // times per render (twice here, once in the autosave effect).
+  const draftJson = useMemo(() => (draft !== null ? JSON.stringify(draft) : null), [draft]);
+  const savedJson = useMemo(
+    () => (lastSavedSnapshot !== null ? JSON.stringify(lastSavedSnapshot) : null),
+    [lastSavedSnapshot],
+  );
+  const isDirty = draftJson !== null && savedJson !== null && draftJson !== savedJson;
 
   // #98 - debounced autosave. Fires AUTOSAVE_DEBOUNCE_MS after the last
   // edit, only when (a) auto-save is on, (b) the form is dirty vs the
@@ -666,7 +671,7 @@ export function Config() {
     if (!draft || !isDirty) return;
     if (!payoutAddressOk) return;
     if (mutation.isPending) return;
-    const draftKey = JSON.stringify(draft);
+    const draftKey = draftJson ?? JSON.stringify(draft);
     if (mutation.isError && lastAttemptedRef.current === draftKey) return;
     const timer = window.setTimeout(() => {
       lastAttemptedRef.current = draftKey;

@@ -2,6 +2,10 @@
 
 ## 2026-07-04
 
+### `[Perf]` Fewer duplicate requests: shared query cache and calmer refocus behavior
+
+The Timeline page fetched the Ocean, payout and deposit data under its own cache keys, so with it open the same endpoints were polled twice concurrently. It now shares one cache with the rest of the app. Queries also get a 15-second freshness window, so returning to the tab or switching pages refetches only data that has actually had a chance to change instead of refiring every query at once. The Config page additionally stops re-serializing the whole config three times per keystroke for its unsaved-changes check.
+
 ### `[Perf]` Faster dashboard loads: compressed API responses and cached Ocean assembly
 
 All API responses over 2 KB are now gzip-compressed - the chart data endpoint returns multi-MB JSON that compresses about 10x, which is most of the chart load time on remote connections. The Ocean panel endpoint also stops re-running hundreds of database lookups on every poll: the assembled response is cached until the upstream Ocean snapshot refreshes. Two smaller cuts: the metrics endpoint no longer re-queries the first-tick timestamp per request, and the finance endpoint no longer fetches the lifetime-spend snapshot twice.
