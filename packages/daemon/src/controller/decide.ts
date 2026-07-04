@@ -68,18 +68,20 @@ export function decide(state: State): readonly Proposal[] {
 
   // Cancel all owned bids when Datum stratum has been down for 3+
   // consecutive ticks (#199). No point paying for hashrate that
-  // cannot reach the pool.
-  const DATUM_DOWN_CANCEL_THRESHOLD = 3;
-  if (
-    state.datum !== null &&
-    state.datum.consecutive_failures >= DATUM_DOWN_CANCEL_THRESHOLD
-  ) {
+  // cannot reach the pool. Keys on the MANDATORY stratum TCP probe
+  // (state.pool, host:port from destination_pool_url), NOT the
+  // optional Datum stats API (state.datum): the stats API may be
+  // absent (datum_api_url unset - the protection must still work)
+  // and its failures don't imply the share path is down (an
+  // auth-proxy blip must not cancel every bid). Spec §9.
+  const STRATUM_DOWN_CANCEL_THRESHOLD = 3;
+  if (state.pool.consecutive_failures >= STRATUM_DOWN_CANCEL_THRESHOLD) {
     const cancellable = state.owned_bids.filter((b) => !isPendingCancel(b));
     if (cancellable.length === 0) return [];
     return cancellable.map((bid) => ({
       kind: 'CANCEL_BID' as const,
       braiins_order_id: bid.braiins_order_id,
-      reason: `Datum stratum down: ${state.datum!.consecutive_failures} consecutive failures - cancelling to stop spend`,
+      reason: `Datum stratum down: ${state.pool.consecutive_failures} consecutive probe failures - cancelling to stop spend`,
     }));
   }
 
@@ -194,6 +196,22 @@ export function decide(state: State): readonly Proposal[] {
 
   // Case: no owned bids → CREATE at the target price.
   if (owned_bids.length === 0) {
+    // #319: only create when the empty snapshot is
+    // CONFIRMED, not a bid-list blip. Two ways `owned_bids` goes empty
+    // without us actually owning nothing:
+    //   1. getCurrentBids() failed this tick (bids_fetch_ok === false)
+    //      → we simply don't know; acting blind would duplicate a live
+    //      bid.
+    //   2. the fetch succeeded but didn't include a bid our ledger still
+    //      believes is live (active_ledger_bid_count > 0) → an
+    //      eventual-consistency gap; the prune path clears the ledger
+    //      entry (after a grace window) if the bid is genuinely gone,
+    //      at which point a legitimate create resumes.
+    // In both cases we wait rather than place a duplicate that the
+    // "multiple owned bids" guard below would then have to cancel -
+    // wasteful (a few minutes of paid-for hashrate on a doomed bid) and
+    // confusing in the timeline.
+    if (!state.bids_fetch_ok || state.active_ledger_bid_count > 0) return [];
     // Budget resolution (#40). 0 = use full wallet balance, clamped to
     // 1 BTC. Skip the tick silently when balance is missing or empty.
     let effectiveBudgetSat: number;

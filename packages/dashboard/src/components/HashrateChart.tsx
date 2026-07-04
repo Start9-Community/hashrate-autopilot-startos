@@ -13,6 +13,7 @@ import { Trans } from '@lingui/react/macro';
 import { t } from '@lingui/core/macro';
 import { useLingui } from '@lingui/react';
 import { memo, useCallback, useEffect, useMemo, useState, useRef, useLayoutEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { sideTooltipPosition } from '../lib/tooltipPosition';
 import { pickLuckStepDot } from '../lib/luckStepDot';
 import type React from 'react';
@@ -24,7 +25,9 @@ import {
   pickTimeTickInterval,
 } from '@hashrate-autopilot/shared';
 
-import type { MetricPoint, OurBlockMarker } from '../lib/api';
+import type { AlertConditionInterval, MetricPoint, OurBlockMarker } from '../lib/api';
+import { AlertConditionBands } from './AlertConditionBands';
+import { MarkerBeacon } from './MarkerBeacon';
 import {
   clientXToTickAt,
   CrosshairReadout,
@@ -332,6 +335,12 @@ export const HashrateChart = memo(function HashrateChart({
   markersHiddenCount = 0,
   bidPauseIntervals = [],
   idleModeIntervals = [],
+  alertConditionIntervals = [],
+  focusSpanOpenId = null,
+  focusSpanEdge = 'start',
+  focusBlockHash = null,
+  focusMarker = null,
+  onAlertSpanClick,
   viewportHandlers,
   wheelRef,
   isDragging = false,
@@ -396,6 +405,27 @@ export const HashrateChart = memo(function HashrateChart({
    * edges line up with the power markers instead of tick boundaries.
    */
   idleModeIntervals?: ReadonlyArray<{ x0: number; x1: number; mode: 'DRY_RUN' | 'PAUSED' }>;
+  /**
+   * #316: alerted condition spans (open/recovery alert pairs). Rendered
+   * as hatched background bands tinted per condition class; only the
+   * classes that target this chart (CONDITION_SPAN_CLASSES[].charts)
+   * render here. Open-ended spans use +Infinity and clamp to the data
+   * range, same as the bid-pause bands.
+   */
+  alertConditionIntervals?: ReadonlyArray<AlertConditionInterval>;
+  /** #316: span (open_id) jumped to from History; gets a sonar beacon. */
+  focusSpanOpenId?: number | null;
+  /** #322: beacon the focused span's closing edge instead of its onset. */
+  focusSpanEdge?: 'start' | 'end';
+  /** #318: pool-block hash jumped to from a History block row; the
+   *  matching cube/crown marker gets a sonar beacon (auto-clears). */
+  focusBlockHash?: string | null;
+  /** #318 follow-up: `<kind>:<key>` of a non-block marker jumped to from
+   *  a History log row. Here it drives the IP-change (ip:<id>) and
+   *  difficulty-retarget (retarget:<tick_at>) sonar beacons. */
+  focusMarker?: string | null;
+  /** #316: clicking a condition-band marker. */
+  onAlertSpanClick?: (span: AlertConditionInterval['span'], clientX: number, clientY: number) => void;
   viewportHandlers?: {
     onPointerDown: React.PointerEventHandler<SVGSVGElement>;
     onPointerMove: React.PointerEventHandler<SVGSVGElement>;
@@ -690,6 +720,30 @@ export const HashrateChart = memo(function HashrateChart({
     }
     return out;
   }, [points, rightAxisSeries, ourBlocks]);
+
+  // #318 follow-up: resolve which retarget marker gets the sonar beacon
+  // when jumped to from a History retarget row (`retarget:<tick_at>`).
+  // Nearest-within-a-few-minutes, since the API's tick_at can differ
+  // from this chart's locally-derived epoch-boundary tick by a tick.
+  const focusRetargetTickAt = useMemo(() => {
+    if (!focusMarker || !focusMarker.startsWith('retarget:')) return null;
+    const ts = Number.parseInt(focusMarker.slice('retarget:'.length), 10);
+    if (!Number.isFinite(ts)) return null;
+    let best: number | null = null;
+    let bestDist = Infinity;
+    for (const r of difficultyRetargets) {
+      const dist = Math.abs(r.tick_at - ts);
+      if (dist < bestDist) { bestDist = dist; best = r.tick_at; }
+    }
+    return bestDist <= 10 * 60 * 1000 ? best : null;
+  }, [focusMarker, difficultyRetargets]);
+
+  // #318 follow-up: the IP-change focus target (`ip:<id>`), parsed once.
+  const focusIpId = useMemo(() => {
+    if (!focusMarker || !focusMarker.startsWith('ip:')) return null;
+    const id = Number.parseInt(focusMarker.slice('ip:'.length), 10);
+    return Number.isFinite(id) ? id : null;
+  }, [focusMarker]);
 
   const chartData = useMemo(() => {
     if (points.length < 2) return null;
@@ -1873,6 +1927,23 @@ export const HashrateChart = memo(function HashrateChart({
             </rect>
           );
         })}
+        {/* #316: alerted condition bands (below floor, zero hashrate,
+            DATUM/API unreachable, Bitaxe overheating) on this chart. */}
+        <AlertConditionBands
+          intervals={alertConditionIntervals}
+          target="hashrate"
+          xScale={xScale}
+          dataMinX={dataMinX}
+          dataMaxX={dataMaxX}
+          top={PADDING.top}
+          height={chartHeight - PADDING.top - PADDING.bottom}
+          colorOverrides={_colorOverrides}
+          idSuffix="hr"
+          focusSpanOpenId={focusSpanOpenId}
+          focusSpanEdge={focusSpanEdge}
+          hoverTickAt={crosshair?.state?.tickAt ?? null}
+          onSpanClick={onAlertSpanClick}
+        />
         {/* #280: each series render is gated on its legend toggle. */}
         {!isHidden('target') && (
           <path d={targetPath} stroke={COLOR_TARGET} strokeWidth="1.2" strokeDasharray="4 3" fill="none" opacity="0.6" />
@@ -2074,6 +2145,30 @@ export const HashrateChart = memo(function HashrateChart({
                       <path d="M12 22V12" />
                     </svg>
                   )}
+                  {/* #318: sonar beacon when jumped to from a History
+                      block row. Same scale-transform pattern as the
+                      alert-span beacon (r-animation is Blink-only). */}
+                  {focusBlockHash !== null && b.block_hash === focusBlockHash && (
+                    <g pointerEvents="none">
+                      <style>{`
+                        @keyframes blockFocusPing {
+                          0%   { transform: scale(1);   opacity: 0.95; }
+                          100% { transform: scale(6.8); opacity: 0;    }
+                        }
+                        .block-focus-ping {
+                          animation: blockFocusPing 2.4s ease-out infinite;
+                          transform-box: fill-box;
+                          transform-origin: center;
+                          vector-effect: non-scaling-stroke;
+                          fill: none;
+                          stroke-width: 2;
+                        }
+                      `}</style>
+                      <circle cx={x} cy={PADDING.top - 4} r={5} className="block-focus-ping" stroke={color} />
+                      <circle cx={x} cy={PADDING.top - 4} r={5} className="block-focus-ping" stroke={color} style={{ animationDelay: '-0.8s' }} />
+                      <circle cx={x} cy={PADDING.top - 4} r={5} className="block-focus-ping" stroke={color} style={{ animationDelay: '-1.6s' }} />
+                    </g>
+                  )}
                 </g>
               );
             })}
@@ -2120,6 +2215,9 @@ export const HashrateChart = memo(function HashrateChart({
                   <path d="M16.001 11.999a19.9 19.9 0 0 1 3.024 5.824c.444 1.369 2.26 1.676 2.603.278A13 13 0 0 0 20 8.069" />
                   <path d="M18.352 3.352a1.205 1.205 0 0 0-1.704 0l-5.296 5.296a1.205 1.205 0 0 0 0 1.704l2.296 2.296a1.205 1.205 0 0 0 1.704 0l5.296-5.296a1.205 1.205 0 0 0 0-1.704z" />
                 </svg>
+                {focusRetargetTickAt !== null && r.tick_at === focusRetargetTickAt && (
+                  <MarkerBeacon cx={x} cy={PADDING.top - 4} color={COLOR_RETARGET} />
+                )}
               </g>
             );
           })}
@@ -2133,6 +2231,7 @@ export const HashrateChart = memo(function HashrateChart({
           topY={PADDING.top}
           bottomY={chartHeight - PADDING.bottom}
           color={COLOR_IP_CHANGE}
+          focusId={focusIpId}
           onMarkerEnter={onIpChangeEnter}
           onMarkerLeave={onIpChangeLeave}
           onMarkerClick={onIpChangeClick}
@@ -2360,6 +2459,17 @@ export interface PoolBlockTooltipState {
   x: number;
   y: number;
   pinned: boolean;
+  /**
+   * #322 follow-up: set when the tooltip was opened from a step-dot on
+   * a right-axis balance line (unpaid / lifetime earnings) - the dot
+   * IS a balance event, so the tooltip explains what the balance did:
+   * the observed step this block's TIDES credit caused.
+   */
+  balance?: {
+    series: 'unpaid' | 'lifetime';
+    before_sat: number;
+    after_sat: number;
+  };
 }
 
 /**
@@ -2389,6 +2499,7 @@ export function PoolBlockTooltip({
   const { i18n } = useLingui();
   void i18n;
   const fmt = useFormatters();
+  const navigate = useNavigate();
   const { block, pinned } = tip;
   const ref = useRef<HTMLDivElement | null>(null);
   const [pos, setPos] = useState<{ left: number; top: number; ready: boolean }>({
@@ -2467,6 +2578,34 @@ export function PoolBlockTooltip({
         </div>
       )}
 
+      {tip.balance && (() => {
+        const nf = new Intl.NumberFormat(locale, { maximumFractionDigits: 0 });
+        const delta = tip.balance.after_sat - tip.balance.before_sat;
+        return (
+          <div className="mt-2 pt-2 border-t border-slate-800 space-y-0.5 text-slate-300">
+            <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-0.5">
+              {tip.balance.series === 'unpaid'
+                ? <Trans>unpaid balance at this step</Trans>
+                : <Trans>lifetime earnings at this step</Trans>}
+            </div>
+            <div className="flex justify-between gap-3">
+              <span className="text-slate-500"><Trans>before</Trans></span>
+              <span className="font-mono tabular-nums">{nf.format(tip.balance.before_sat)} sat</span>
+            </div>
+            <div className="flex justify-between gap-3">
+              <span className="text-slate-500"><Trans>after</Trans></span>
+              <span className="font-mono tabular-nums">{nf.format(tip.balance.after_sat)} sat</span>
+            </div>
+            <div className="flex justify-between gap-3">
+              <span className="text-slate-500"><Trans>credited</Trans></span>
+              <span className={`font-mono tabular-nums ${delta >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>
+                {delta >= 0 ? '+' : ''}{nf.format(delta)} sat
+              </span>
+            </div>
+          </div>
+        );
+      })()}
+
       {(() => {
         // Prefer the per-block historical share_log captured at the
         // block's moment; only fall back to the live share_log (with
@@ -2511,7 +2650,7 @@ export function PoolBlockTooltip({
         );
       })()}
 
-      <div className="mt-3 pt-2 border-t border-slate-800">
+      <div className="mt-3 pt-2 border-t border-slate-800 flex flex-col gap-1.5">
         <a
           href={url}
           target="_blank"
@@ -2520,6 +2659,16 @@ export function PoolBlockTooltip({
         >
           <Trans>open in block explorer →</Trans>
         </a>
+        {pinned && (
+          <button
+            type="button"
+            onClick={() => navigate(`/history?focus=block:${block.block_hash}&ts=${block.timestamp_ms}`)}
+            className="text-amber-300 hover:text-amber-200 inline-flex items-center gap-1 text-[11px] self-start"
+          >
+            <Trans>View in timeline</Trans>
+            <span aria-hidden="true">→</span>
+          </button>
+        )}
       </div>
     </div>
   );
@@ -2545,6 +2694,7 @@ export function RetargetTooltip({
 }) {
   void dateTimeLocale;
   const fmt = useFormatters();
+  const navigate = useNavigate();
   const { i18n } = useLingui();
   void i18n;
   const { event, pinned } = tip;
@@ -2696,6 +2846,18 @@ export function RetargetTooltip({
             <span className="text-slate-500"><Trans>luck before</Trans></span>
             <span className="font-mono tabular-nums text-slate-400">{fmtLuck(event.luckBefore!)}x</span>
           </div>
+        </div>
+      )}
+      {pinned && (
+        <div className="mt-2 pt-2 border-t border-slate-800">
+          <button
+            type="button"
+            onClick={() => navigate(`/history?focus=retarget:${event.tick_at}&ts=${event.tick_at}`)}
+            className="text-amber-300 hover:text-amber-200 inline-flex items-center gap-1 text-[11px]"
+          >
+            <Trans>View in timeline</Trans>
+            <span aria-hidden="true">→</span>
+          </button>
         </div>
       )}
     </div>

@@ -35,7 +35,6 @@ export interface ConfigTable {
   /** #135: dedicated minute threshold for the sustained_paused alert (was pool_outage_blip_tolerance_seconds × 5). */
   sustained_paused_alert_after_minutes: number;
   api_outage_alert_after_minutes: number;
-  handover_window_minutes: number;
   btc_payout_address: string;
   /** #100: Telegram chat id the notifier POSTs into. Empty string = unconfigured. */
   telegram_chat_id: string;
@@ -275,6 +274,19 @@ export interface IpChangeEventsTable {
   occurred_at: number;
   old_ip: string | null;
   new_ip: string;
+}
+
+// ---------------------------------------------------------------------------
+// system_events (#318): config changes + daemon boots for the History log
+// ---------------------------------------------------------------------------
+export interface SystemEventsTable {
+  id: Generated<number>;
+  occurred_at: number;
+  kind: string;
+  field: string | null;
+  old_value: string | null;
+  new_value: string | null;
+  detail: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -668,6 +680,7 @@ export interface Database {
   solo_miner_samples: SoloMinerSamplesTable;
   solo_best_difficulty_events: SoloBestDifficultyEventsTable;
   ip_change_events: IpChangeEventsTable;
+  system_events: SystemEventsTable;
   _migrations: MigrationsTable;
 }
 

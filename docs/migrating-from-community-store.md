@@ -27,7 +27,7 @@ Umbrel stores every app's persistent data under `~/umbrel/app-data/<app-id>/`. B
 
 If you just click **Install** in the official store while keeping the community version, you end up with two instances running side by side, the new one with an empty database. If you uninstall the community version after installing the official one without migrating, your history goes with it.
 
-The Docker image is identical (at the time of writing, both installs pull `ghcr.io/rdouma/hashrate-autopilot:1.15.1`),
+The Docker image is identical (at the time of writing, both installs pull `ghcr.io/rdouma/hashrate-autopilot:1.16.0`),
 so the only thing that has to move between the two on-host directories is the SQLite database. That's what the steps below do.
 
 ## Step by step

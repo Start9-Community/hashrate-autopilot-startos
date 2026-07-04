@@ -252,6 +252,35 @@ export interface BidEventView {
   max_overpay_vs_hashprice_sat_per_ph_day: number | null;
 }
 
+/**
+ * #316: a condition span derived from an open/recovery alert pair.
+ * `end_ms` is null while the condition is still open. Mirrors the
+ * daemon's AlertConditionSpan.
+ */
+export interface AlertConditionSpanView {
+  open_id: number;
+  event_class: string;
+  severity: 'INFO' | 'WARNING' | 'IMPORTANT';
+  title: string;
+  body: string;
+  start_ms: number;
+  end_ms: number | null;
+  /** #322: the paired recovery alert's body; null when the span closed
+   *  implicitly or is still open. Non-null = a real recovery moment. */
+  recovery_body: string | null;
+}
+
+/**
+ * #316: an alerted condition span projected to chart x-coords. `x1` is
+ * +Infinity while the condition is still open; charts clamp to their
+ * data range. `span` carries the source alert (tooltip + class lookup).
+ */
+export interface AlertConditionInterval {
+  x0: number;
+  x1: number;
+  span: AlertConditionSpanView;
+}
+
 export interface PayoutsResponse {
   address: string | null;
   total_unspent_sat: number | null;
@@ -385,7 +414,6 @@ export interface AppConfig {
   datum_unreachable_alert_after_minutes: number;
   sustained_paused_alert_after_minutes: number;
   api_outage_alert_after_minutes: number;
-  handover_window_minutes: number;
   btc_payout_address: string;
   telegram_chat_id: string;
   telegram_bot_token: string;
@@ -613,6 +641,24 @@ export interface IpChangeEvent {
   new_ip: string;
 }
 
+/** #317: a difficulty retarget event for the History log. */
+export interface RetargetView {
+  tick_at: number;
+  difficulty: number;
+  previous: number;
+}
+
+/** #318: a config-change or daemon-boot event for the History log. */
+export interface SystemEventView {
+  id: number;
+  occurred_at: number;
+  kind: string;
+  field: string | null;
+  old_value: string | null;
+  new_value: string | null;
+  detail: string | null;
+}
+
 export interface DdnsRouteResponse {
   daemon_public_ip: string | null;
   daemon_public_ip_checked_at: number | null;
@@ -775,6 +821,12 @@ export const api = {
         visibleSpan != null ? `&span=${visibleSpan}` : ''
       }`,
     ),
+  // #316: condition spans (open/recovery alert pairs) overlapping the
+  // viewport, for the timeline band layer on both charts.
+  alertSpans: (since: number, until: number) =>
+    request<{ spans: AlertConditionSpanView[] }>(
+      `/api/alert-spans?since_ms=${since}&until_ms=${until}`,
+    ),
   // #256 follow-up: history page endpoints.
   bidHistorySummaries: (limit = 20, beforeMs?: number) =>
     request<BidHistoryPage>(
@@ -789,7 +841,10 @@ export const api = {
     const qs = new URLSearchParams();
     qs.set('limit', String(limit));
     if (beforeId !== undefined) qs.set('before_id', String(beforeId));
-    if (filters.kinds && filters.kinds.length > 0) qs.set('kinds', filters.kinds.join(','));
+    // #318 follow-up: opt-out action filter. Send `kinds` whenever it's
+    // defined - including the empty string (`?kinds=`) which means "hide
+    // every action" - and omit it only when undefined (no filter).
+    if (filters.kinds !== undefined) qs.set('kinds', filters.kinds.join(','));
     if (filters.source) qs.set('source', filters.source);
     if (filters.orderIdContains) qs.set('order_id', filters.orderIdContains);
     if (filters.sinceMs != null) qs.set('since_ms', String(filters.sinceMs));
@@ -803,6 +858,16 @@ export const api = {
   ipChangesViewport: (since: number, until: number) =>
     request<{ events: IpChangeEvent[] }>(
       `/api/ip-changes?since=${since}&until=${until}`,
+    ),
+  // #317: difficulty-retarget events for the unified History log.
+  retargets: (since: number, until: number) =>
+    request<{ retargets: RetargetView[] }>(
+      `/api/retargets?since_ms=${since}&until_ms=${until}`,
+    ),
+  // #318: config-change + daemon-boot events for the unified History log.
+  systemEvents: (since: number, until: number) =>
+    request<{ events: SystemEventView[] }>(
+      `/api/system-events?since_ms=${since}&until_ms=${until}`,
     ),
   payouts: () => request<PayoutsResponse>('/api/payouts'),
   scanPayouts: () => request<{ ok: boolean; error?: string }>('/api/payouts/scan', { method: 'POST' }),

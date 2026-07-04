@@ -28,6 +28,7 @@ import {
 
 import {
   api,
+  type AlertConditionInterval,
   type BidEventView,
   type DecisionDetail,
   type DecisionSummary,
@@ -36,6 +37,8 @@ import {
   type OurBlockMarker,
   type RewardEventView,
 } from '../lib/api';
+import { AlertConditionBands } from './AlertConditionBands';
+import { MarkerBeacon } from './MarkerBeacon';
 import {
   countPriorEpochPoolBlocks,
   inferRetargetBlockHeight,
@@ -55,6 +58,7 @@ import { darkenHex, getChartColor, parseOverrides } from '../lib/chartColors';
 import { useSeriesVisibility } from '../lib/seriesVisibility';
 import { copyToClipboard } from '../lib/clipboard';
 import { useDenomination } from '../lib/denomination';
+import { ReasonText } from './DenomUnit';
 import {
   formatAgeMinutes,
   formatCompactNumber,
@@ -229,6 +233,20 @@ function formatSatCompact(
   return formatCompactNumber(sat, locale, axisSpan);
 }
 
+/** #320: a daemon-start (boot) event rendered as a chart marker. */
+export interface BootMarker {
+  id: number;
+  occurred_at: number;
+  detail: string | null;
+}
+
+interface BootTooltipState {
+  boot: BootMarker;
+  x: number;
+  y: number;
+  pinned: boolean;
+}
+
 export const PriceChart = memo(function PriceChart({
   points,
   events = [],
@@ -241,6 +259,7 @@ export const PriceChart = memo(function PriceChart({
   rewardEvents = [],
   deposits = [],
   ourBlocks = [],
+  bootEvents = [],
   blockExplorerTemplate,
   txExplorerTemplate,
   shareLogPct = null,
@@ -249,6 +268,10 @@ export const PriceChart = memo(function PriceChart({
   soloSeries = [],
   bidPauseIntervals = [],
   idleModeIntervals = [],
+  alertConditionIntervals = [],
+  focusSpanOpenId = null,
+  focusSpanEdge = 'start',
+  onAlertSpanClick,
   viewportHandlers,
   wheelRef,
   isDragging = false,
@@ -258,6 +281,7 @@ export const PriceChart = memo(function PriceChart({
   chartColorOverrides,
   crosshair,
   focusEventId = null,
+  focusMarker = null,
   onFocusEventRendered,
 }: {
   points: readonly MetricPoint[];
@@ -337,7 +361,13 @@ export const PriceChart = memo(function PriceChart({
    * chart they hovered.
    */
   ourBlocks?: readonly OurBlockMarker[];
-  /** #250: public-IP change events accepted for parity with the hashrate chart. */
+  /**
+   * #320: daemon-start (boot) events, drawn as always-visible top-edge
+   * power-glyph markers with a dashed guide line - the chart counterpart
+   * to the Timeline's "daemon started" rows, for bidirectional jumping.
+   */
+  bootEvents?: readonly BootMarker[];
+  /** #250: public-IP change events, drawn as router-icon markers. */
   ipChangeEvents?: ReadonlyArray<IpChangeMarkerEvent>;
   /** Block-explorer URL template for pool-block markers (`{hash}` / `{height}` placeholders). */
   blockExplorerTemplate?: string;
@@ -373,6 +403,14 @@ export const PriceChart = memo(function PriceChart({
    * edges line up with the power markers instead of tick boundaries.
    */
   idleModeIntervals?: ReadonlyArray<{ x0: number; x1: number; mode: 'DRY_RUN' | 'PAUSED' }>;
+  /** #316: alerted condition spans; only price-targeted classes render here. */
+  alertConditionIntervals?: ReadonlyArray<AlertConditionInterval>;
+  /** #316: span (open_id) jumped to from History; gets a sonar beacon. */
+  focusSpanOpenId?: number | null;
+  /** #322: beacon the focused span's closing edge instead of its onset. */
+  focusSpanEdge?: 'start' | 'end';
+  /** #316: clicking a condition-band marker. */
+  onAlertSpanClick?: (span: AlertConditionInterval['span'], clientX: number, clientY: number) => void;
   viewportHandlers?: {
     onPointerDown: React.PointerEventHandler<SVGSVGElement>;
     onPointerMove: React.PointerEventHandler<SVGSVGElement>;
@@ -397,6 +435,11 @@ export const PriceChart = memo(function PriceChart({
    *  through the normal onMarkerClick path. Status clears this back
    *  to null a few seconds after onFocusEventRendered fires. */
   focusEventId?: number | null;
+  /** #318 follow-up: `<kind>:<key>` of a non-bid marker jumped to from a
+   *  History log row (payout:<id>, deposit:<txid>, unpaid:<ts>). The
+   *  matching payout gem / deposit fuel / unpaid-drop marker renders a
+   *  MarkerBeacon. Status clears it back to null after ~6 s. */
+  focusMarker?: string | null;
   /** #288: fired (possibly more than once) when the focused event's
    *  marker is actually present in the rendered set. Status starts
    *  the beacon's clear countdown on the first call, so slow metrics/
@@ -432,6 +475,10 @@ export const PriceChart = memo(function PriceChart({
   const COLOR_MODE_CHANGE = getChartColor('events.mode_change', _colorOverrides);
   const COLOR_BID_PAUSED = getChartColor('events.bid_paused', _colorOverrides);
   const COLOR_BID_RESUMED = getChartColor('events.bid_resumed', _colorOverrides);
+  // #320: daemon-start (boot) marker - emerald, matching the Timeline
+  // log's boot glyph (#34d399). Not operator-configurable; a boot is a
+  // fixed system event, not a tunable overlay.
+  const COLOR_BOOT = '#34d399';
   const COLOR_RIGHT_AXIS = getChartColor('price.right_axis', _colorOverrides);
   // #280: clickable-legend series visibility, persisted per device
   // under this chart's own key. `hidden` feeds the Y-axis autoscale
@@ -1377,10 +1424,10 @@ export const PriceChart = memo(function PriceChart({
 
   // Pool-block dots (right-axis = ocean_unpaid_sat or lifetime_earnings_sat).
   const onPoolBlockEnter = useCallback(
-    (block: OurBlockMarker) => (e: React.MouseEvent) => {
+    (block: OurBlockMarker, balance?: PoolBlockTooltipState['balance']) => (e: React.MouseEvent) => {
       setPoolBlockTip((prev) => {
         if (prev?.pinned) return prev;
-        return { block, x: e.clientX, y: e.clientY, pinned: false };
+        return { block, balance, x: e.clientX, y: e.clientY, pinned: false };
       });
     },
     [],
@@ -1389,9 +1436,9 @@ export const PriceChart = memo(function PriceChart({
     setPoolBlockTip((prev) => (prev?.pinned ? prev : null));
   }, []);
   const onPoolBlockClick = useCallback(
-    (block: OurBlockMarker) => (e: React.MouseEvent) => {
+    (block: OurBlockMarker, balance?: PoolBlockTooltipState['balance']) => (e: React.MouseEvent) => {
       e.stopPropagation();
-      setPoolBlockTip({ block, x: e.clientX, y: e.clientY, pinned: true });
+      setPoolBlockTip({ block, balance, x: e.clientX, y: e.clientY, pinned: true });
     },
     [],
   );
@@ -1478,6 +1525,30 @@ export const PriceChart = memo(function PriceChart({
     [],
   );
   const closeDepositTip = useCallback(() => setDepositTip(null), []);
+
+  // #320: daemon-start (boot) markers - same hover/pin pattern as the
+  // reward/deposit dots.
+  const [bootTip, setBootTip] = useState<BootTooltipState | null>(null);
+  const onBootEnter = useCallback(
+    (boot: BootMarker) => (e: React.MouseEvent) => {
+      setBootTip((prev) => {
+        if (prev?.pinned) return prev;
+        return { boot, x: e.clientX, y: e.clientY, pinned: false };
+      });
+    },
+    [],
+  );
+  const onBootLeave = useCallback(() => {
+    setBootTip((prev) => (prev?.pinned ? prev : null));
+  }, []);
+  const onBootClick = useCallback(
+    (boot: BootMarker) => (e: React.MouseEvent) => {
+      e.stopPropagation();
+      setBootTip({ boot, x: e.clientX, y: e.clientY, pinned: true });
+    },
+    [],
+  );
+  const closeBootTip = useCallback(() => setBootTip(null), []);
 
   const onUnpaidDropEnter = useCallback(
     (d: { tick_at: number; prev: number; cur: number }) => (e: React.MouseEvent) => {
@@ -1575,6 +1646,22 @@ export const PriceChart = memo(function PriceChart({
   }, [unpaidDropTip?.pinned]);
 
   useEffect(() => {
+    if (!bootTip?.pinned) return;
+    const onDocClick = (ev: MouseEvent) => {
+      const target = ev.target as Node | null;
+      if (
+        target &&
+        document.getElementById('price-chart-pinned-boot-tooltip')?.contains(target)
+      ) {
+        return;
+      }
+      setBootTip(null);
+    };
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, [bootTip?.pinned]);
+
+  useEffect(() => {
     if (!tooltip?.pinned) return;
     const onDocClick = (ev: MouseEvent) => {
       const target = ev.target as Node | null;
@@ -1643,8 +1730,9 @@ export const PriceChart = memo(function PriceChart({
     return out;
   }, [chartData, showRewardMarkers, rewardEvents, points]);
 
+  type PoolBlockBalance = NonNullable<PoolBlockTooltipState['balance']>;
   const visiblePoolBlockMarkers = useMemo(() => {
-    const empty: Array<{ block: OurBlockMarker; cx: number; cy: number; blockCx: number }> = [];
+    const empty: Array<{ block: OurBlockMarker; cx: number; cy: number; blockCx: number; balance: PoolBlockBalance | null }> = [];
     if (!chartData || !showPoolBlockMarkers || !chartData.rightAxis) return empty;
     const { dataMinX, dataMaxX, xScale, rightYScale, rightAxis } = chartData;
     let lastNonNull: number | null = null;
@@ -1664,7 +1752,13 @@ export const PriceChart = memo(function PriceChart({
       cy: number;
       blockCx: number;
       steppedIdx: number;
+      balance: PoolBlockBalance | null;
     }> = [];
+    // #322 follow-up: the dot sits ON the balance line, so the tooltip
+    // should say what the balance did there - carry the step's
+    // before/after values along with the geometry.
+    const balanceSeries: PoolBlockBalance['series'] =
+      rightAxisSeries === 'ocean_unpaid_sat' ? 'unpaid' : 'lifetime';
     // ourBlocks comes from /api/ocean newest-first, so sort ASC so the
     // two-pointer cursor walk lines up with `points` (also ASC).
     const sortedBlocks = [...ourBlocks].sort((a, b) => a.timestamp_ms - b.timestamp_ms);
@@ -1702,6 +1796,7 @@ export const PriceChart = memo(function PriceChart({
     let scanFromIdx = 0;
     let lastClaimedSteppedIdx = -1;
     let lastClaimedValue: number | null = null;
+    let lastClaimedBaseline: number | null = null;
     for (const b of sortedBlocks) {
       if (b.timestamp_ms < dataMinX || b.timestamp_ms > dataMaxX) continue;
       while (cursor < points.length && points[cursor]!.tick_at < b.timestamp_ms) {
@@ -1712,6 +1807,7 @@ export const PriceChart = memo(function PriceChart({
       const scanFrom = Math.max(cursor, scanFromIdx);
       let v: number | null = null;
       let steppedIdx = -1;
+      let balance: PoolBlockBalance | null = null;
       if (scanFrom < points.length) {
         // Baseline = value at the tick just before scanFrom. For block
         // 1 this is the pre-block tick. For block N+1 this is the
@@ -1738,6 +1834,10 @@ export const PriceChart = memo(function PriceChart({
           scanFromIdx = steppedIdx + 1;
           lastClaimedSteppedIdx = steppedIdx;
           lastClaimedValue = stepped;
+          lastClaimedBaseline = baselineIsNum ? (baseline as number) : null;
+          if (lastClaimedBaseline !== null) {
+            balance = { series: balanceSeries, before_sat: lastClaimedBaseline, after_sat: stepped };
+          }
         } else if (
           lastClaimedSteppedIdx >= 0 &&
           lastClaimedValue !== null &&
@@ -1761,6 +1861,12 @@ export const PriceChart = memo(function PriceChart({
           // pass below pulls the dots apart visually.
           steppedIdx = lastClaimedSteppedIdx;
           v = lastClaimedValue;
+          // Batched case: Ocean folded this block's credit into the
+          // previous step - the observed before/after describes the
+          // combined step, shared by both blocks.
+          if (lastClaimedBaseline !== null && lastClaimedValue !== null) {
+            balance = { series: balanceSeries, before_sat: lastClaimedBaseline, after_sat: lastClaimedValue };
+          }
         } else {
           const c = rightAxis.values[cursor];
           if (typeof c === 'number' && Number.isFinite(c)) v = c;
@@ -1776,6 +1882,7 @@ export const PriceChart = memo(function PriceChart({
         cy: rightYScale(v),
         blockCx: xScale(b.timestamp_ms),
         steppedIdx,
+        balance,
       });
     }
     // #221: shared-step stagger. After the scan-advancing pass above,
@@ -1791,7 +1898,7 @@ export const PriceChart = memo(function PriceChart({
     const out: typeof empty = [];
     for (const p of projected) {
       if (p.steppedIdx < 0) {
-        out.push({ block: p.block, cx: p.cx, cy: p.cy, blockCx: p.blockCx });
+        out.push({ block: p.block, cx: p.cx, cy: p.cy, blockCx: p.blockCx, balance: p.balance });
         continue;
       }
       const rank = stepCounts.get(p.steppedIdx) ?? 0;
@@ -1801,10 +1908,11 @@ export const PriceChart = memo(function PriceChart({
         cx: p.cx + rank * STAGGER_PX,
         cy: p.cy,
         blockCx: p.blockCx,
+        balance: p.balance,
       });
     }
     return out;
-  }, [chartData, showPoolBlockMarkers, ourBlocks, points]);
+  }, [chartData, showPoolBlockMarkers, ourBlocks, points, rightAxisSeries]);
 
   const unpaidDropMarkers = useMemo(() => {
     const empty: Array<{ cx: number; cy: number; tick_at: number; prev: number; cur: number }> = [];
@@ -1829,6 +1937,23 @@ export const PriceChart = memo(function PriceChart({
     }
     return out;
   }, [chartData, rightAxisSeries, points]);
+
+  // #318 follow-up: the "payout initiated" log row targets the
+  // unpaid-drop marker, but the point-alert and the tick-derived drop
+  // aren't id-linked - so resolve which drop to beacon by nearest tick
+  // to the jumped-to timestamp (`unpaid:<ts>`), within an hour.
+  const focusUnpaidTickAt = useMemo(() => {
+    if (!focusMarker || !focusMarker.startsWith('unpaid:')) return null;
+    const ts = Number.parseInt(focusMarker.slice('unpaid:'.length), 10);
+    if (!Number.isFinite(ts)) return null;
+    let best: number | null = null;
+    let bestDist = Infinity;
+    for (const d of unpaidDropMarkers) {
+      const dist = Math.abs(d.tick_at - ts);
+      if (dist < bestDist) { bestDist = dist; best = d.tick_at; }
+    }
+    return bestDist <= 60 * 60 * 1000 ? best : null;
+  }, [focusMarker, unpaidDropMarkers]);
 
   const difficultyRetargets = useMemo<RetargetEvent[]>(() => {
     const n = points.length;
@@ -1870,6 +1995,23 @@ export const PriceChart = memo(function PriceChart({
     }
     return out;
   }, [points, ourBlocks]);
+
+  // #318 follow-up: the log's retarget key is the API's tick_at, which
+  // can differ from this chart's locally-derived epoch-boundary tick by
+  // a tick or two - so resolve the beacon target by nearest, within a
+  // few minutes.
+  const focusRetargetTickAt = useMemo(() => {
+    if (!focusMarker || !focusMarker.startsWith('retarget:')) return null;
+    const ts = Number.parseInt(focusMarker.slice('retarget:'.length), 10);
+    if (!Number.isFinite(ts)) return null;
+    let best: number | null = null;
+    let bestDist = Infinity;
+    for (const r of difficultyRetargets) {
+      const dist = Math.abs(r.tick_at - ts);
+      if (dist < bestDist) { bestDist = dist; best = r.tick_at; }
+    }
+    return bestDist <= 10 * 60 * 1000 ? best : null;
+  }, [focusMarker, difficultyRetargets]);
 
   // #257: crosshair wiring - mirror of the HashrateChart block. The
   // svg ref is shared with the wheel-zoom ref callback; pointer
@@ -2369,6 +2511,23 @@ export const PriceChart = memo(function PriceChart({
             </rect>
           );
         })}
+        {/* #316: alerted condition bands targeting the price chart
+            (DATUM/API unreachable, low wallet runway). */}
+        <AlertConditionBands
+          intervals={alertConditionIntervals}
+          target="price"
+          xScale={xScale}
+          dataMinX={dataMinX}
+          dataMaxX={dataMaxX}
+          top={PADDING.top}
+          height={chartHeight - PADDING.top - PADDING.bottom}
+          colorOverrides={_colorOverrides}
+          idSuffix="px"
+          focusSpanOpenId={focusSpanOpenId}
+          focusSpanEdge={focusSpanEdge}
+          hoverTickAt={crosshair?.state?.tickAt ?? null}
+          onSpanClick={onAlertSpanClick}
+        />
         {capExclusionPolygon && !isHidden('maxBid') && (
           <>
             <defs>
@@ -2444,9 +2603,10 @@ export const PriceChart = memo(function PriceChart({
           // #287 follow-up: mode-change and pause/resume markers have
           // no price anchor (no bid price on the row), so they render
           // like pool blocks: top-edge glyph + full-height dashed
-          // guide line down to the plot baseline. One shared power
-          // icon for every mode change regardless of direction
-          // (operator: "let's not overdo it"); the tooltip's reason
+          // guide line down to the plot baseline. One shared
+          // arrow-left-right icon for every mode change regardless of
+          // direction (operator: "let's not overdo it"; was `power`,
+          // now reserved for daemon-started); the tooltip's reason
           // line carries the transition / Braiins pause reason.
           if (e.kind === 'MODE_CHANGE' || e.kind === 'BID_PAUSED' || e.kind === 'BID_RESUMED') {
             const stroke =
@@ -2466,9 +2626,12 @@ export const PriceChart = memo(function PriceChart({
                 >
                   {e.kind === 'MODE_CHANGE' ? (
                     <>
-                      {/* Lucide `power`. */}
-                      <path d="M12 2v10" />
-                      <path d="M18.4 6.6a9 9 0 1 1-12.77.04" />
+                      {/* Lucide `arrow-left-right` - run-mode switch (was
+                          `power`, which collided with daemon-started). */}
+                      <path d="M8 3 4 7l4 4" />
+                      <path d="M4 7h16" />
+                      <path d="m16 21 4-4-4-4" />
+                      <path d="M20 17H4" />
                     </>
                   ) : e.kind === 'BID_PAUSED' ? (
                     <>
@@ -2763,20 +2926,23 @@ export const PriceChart = memo(function PriceChart({
               strokeWidth="1.5"
             />
             <rect x={d.cx - 9} y={d.cy - 9} width="18" height="18" fill="transparent" />
+            {focusUnpaidTickAt !== null && d.tick_at === focusUnpaidTickAt && (
+              <MarkerBeacon cx={d.cx} cy={d.cy} color={COLOR_DEPOSIT} />
+            )}
           </g>
         ))}
 
         {/* Pool-block dots on the right-axis line. Click opens the
             same rich tooltip the Hashrate chart uses (reward, our
             share, BIP-110 signal, explorer link). */}
-        {visiblePoolBlockMarkers.map(({ block: b, cx, cy, blockCx }) => {
+        {visiblePoolBlockMarkers.map(({ block: b, cx, cy, blockCx, balance }) => {
           const fill = b.found_by_us ? COLOR_OUR_BLOCK : COLOR_POOL_BLOCK;
           return (
             <g
               key={`pool-block-${b.block_hash || b.height}`}
-              onMouseEnter={onPoolBlockEnter(b)}
+              onMouseEnter={onPoolBlockEnter(b, balance ?? undefined)}
               onMouseLeave={onPoolBlockLeave}
-              onClick={onPoolBlockClick(b)}
+              onClick={onPoolBlockClick(b, balance ?? undefined)}
               style={{ cursor: 'pointer' }}
             >
               {Math.abs(cx - blockCx) > 2 && (
@@ -2889,6 +3055,9 @@ export const PriceChart = memo(function PriceChart({
                   <path d="M2 9h20" />
                   <path d="M10.5 3 8 9l4 13 4-13-2.5-6" />
                 </svg>
+                {focusMarker === `payout:${r.id}` && (
+                  <MarkerBeacon cx={x} cy={PADDING.top - 4} color={COLOR_PAYOUT_GEM} />
+                )}
               </g>
             );
           })}
@@ -2987,10 +3156,57 @@ export const PriceChart = memo(function PriceChart({
                   <path d="M2 21h13" />
                   <path d="M3 9h11" />
                 </svg>
+                {focusMarker === `deposit:${d.tx_id}` && (
+                  <MarkerBeacon cx={x} cy={PADDING.top - 4} color={COLOR_DEPOSIT} />
+                )}
               </g>
             );
           });
         })()}
+
+        {/* #320: daemon-start (boot) markers. Always-visible top-edge
+            power glyph + full-height dashed guide line (no price anchor),
+            mirroring the mode-change marker idiom. Clicking pins a
+            tooltip with a "View in timeline" jump; the reverse jump
+            (log -> chart) beacons via focusMarker `boot:<id>`. */}
+        {bootEvents
+          .filter((b) => b.occurred_at >= dataMinX && b.occurred_at <= dataMaxX)
+          .map((b) => {
+            const x = xScale(b.occurred_at);
+            return (
+              <g
+                key={`boot-icon-${b.id}`}
+                onMouseEnter={onBootEnter(b)}
+                onMouseLeave={onBootLeave}
+                onClick={onBootClick(b)}
+                style={{ cursor: 'pointer' }}
+              >
+                <line
+                  x1={x} x2={x}
+                  y1={PADDING.top + 8} y2={chartHeight - PADDING.bottom}
+                  stroke={COLOR_BOOT}
+                  strokeWidth="1"
+                  strokeDasharray="2 4"
+                  opacity="0.55"
+                  pointerEvents="none"
+                />
+                <rect x={x - 9} y={PADDING.top - 13} width={18} height={18} fill="transparent" />
+                <svg
+                  x={x - 7} y={PADDING.top - 11}
+                  width="14" height="14" viewBox="0 0 24 24"
+                  fill="none" stroke={COLOR_BOOT} strokeWidth="2"
+                  strokeLinecap="round" strokeLinejoin="round"
+                >
+                  {/* Lucide `power` - reserved for daemon-started. */}
+                  <path d="M12 2v10" />
+                  <path d="M18.4 6.6a9 9 0 1 1-12.77.04" />
+                </svg>
+                {focusMarker === `boot:${b.id}` && (
+                  <MarkerBeacon cx={x} cy={PADDING.top - 4} color={COLOR_BOOT} />
+                )}
+              </g>
+            );
+          })}
 
         {difficultyRetargets
           .filter((r) => r.tick_at >= dataMinX && r.tick_at <= dataMaxX)
@@ -3023,6 +3239,9 @@ export const PriceChart = memo(function PriceChart({
                   <path d="M16.001 11.999a19.9 19.9 0 0 1 3.024 5.824c.444 1.369 2.26 1.676 2.603.278A13 13 0 0 0 20 8.069" />
                   <path d="M18.352 3.352a1.205 1.205 0 0 0-1.704 0l-5.296 5.296a1.205 1.205 0 0 0 0 1.704l2.296 2.296a1.205 1.205 0 0 0 1.704 0l5.296-5.296a1.205 1.205 0 0 0 0-1.704z" />
                 </svg>
+                {focusRetargetTickAt !== null && r.tick_at === focusRetargetTickAt && (
+                  <MarkerBeacon cx={x} cy={PADDING.top - 4} color={COLOR_RETARGET} />
+                )}
               </g>
             );
           })}
@@ -3085,7 +3304,8 @@ export const PriceChart = memo(function PriceChart({
         (rewardTip !== null && !rewardTip.pinned) ||
         (depositTip !== null && !depositTip.pinned) ||
         (retargetTip !== null && !retargetTip.pinned) ||
-        (unpaidDropTip !== null && !unpaidDropTip.pinned)
+        (unpaidDropTip !== null && !unpaidDropTip.pinned) ||
+        (bootTip !== null && !bootTip.pinned)
       ) && (
         <CrosshairReadout
           chartId="price"
@@ -3142,6 +3362,8 @@ export const PriceChart = memo(function PriceChart({
           onClose={closeUnpaidDropTip}
         />
       )}
+
+      {bootTip && <BootTooltip tip={bootTip} onClose={closeBootTip} />}
 
       {tooltip && (
         <EventTooltip
@@ -3218,6 +3440,7 @@ function RewardEventTooltip({
   void i18n;
   void dateTimeLocale;
   const fmt = useFormatters();
+  const navigate = useNavigate();
   const { reward, pinned } = tip;
   const ref = useRef<HTMLDivElement | null>(null);
   const [pos, setPos] = useState<{ left: number; top: number; ready: boolean }>({
@@ -3292,16 +3515,107 @@ function RewardEventTooltip({
         <span className="font-mono tabular-nums">{valueText}</span>
       </div>
 
-      {url && (
-        <div className="mt-3 pt-2 border-t border-slate-800">
-          <a
-            href={url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-sky-400 hover:text-sky-300 underline text-[11px]"
+      {(url || pinned) && (
+        <div className="mt-3 pt-2 border-t border-slate-800 flex flex-col gap-1.5">
+          {url && (
+            <a
+              href={url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sky-400 hover:text-sky-300 underline text-[11px]"
+            >
+              <Trans>open in block explorer →</Trans>
+            </a>
+          )}
+          {pinned && (
+            <button
+              type="button"
+              onClick={() => navigate(`/history?focus=payout:${reward.id}&ts=${reward.detected_at}`)}
+              className="text-amber-300 hover:text-amber-200 inline-flex items-center gap-1 text-[11px] self-start"
+            >
+              <Trans>View in timeline</Trans>
+              <span aria-hidden="true">→</span>
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * #320: tooltip for a daemon-start (boot) marker. Mirrors the reward /
+ * deposit tooltips: timestamp + the boot detail line (build · version ·
+ * hash), and when pinned a "View in timeline" jump to the matching log
+ * row (`focus=boot:<id>`).
+ */
+function BootTooltip({
+  tip,
+  onClose,
+}: {
+  tip: BootTooltipState;
+  onClose: () => void;
+}) {
+  const { i18n } = useLingui();
+  void i18n;
+  const fmt = useFormatters();
+  const navigate = useNavigate();
+  const { boot, pinned } = tip;
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [pos, setPos] = useState<{ left: number; top: number; ready: boolean }>({
+    left: tip.x + 12,
+    top: tip.y + 12,
+    ready: false,
+  });
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const { left, top } = sideTooltipPosition(tip.x, tip.y, rect);
+    setPos({ left, top, ready: true });
+  }, [tip.x, tip.y, boot.id]);
+
+  return (
+    <div
+      ref={ref}
+      id={pinned ? 'price-chart-pinned-boot-tooltip' : undefined}
+      className={`fixed z-50 bg-slate-950 border rounded-lg shadow-lg p-3 text-xs whitespace-nowrap ${pinned ? 'border-slate-500 pointer-events-auto' : 'border-slate-700 pointer-events-none'} ${pos.ready ? '' : 'invisible'}`}
+      style={{ left: pos.left, top: pos.top }}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <span className="font-semibold uppercase tracking-wider text-emerald-400">
+          <Trans>DAEMON STARTED</Trans>
+        </span>
+        {pinned && (
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label={t`close`}
+            className="text-slate-500 hover:text-slate-200 leading-none text-base -mt-0.5 -mr-0.5"
           >
-            <Trans>open in block explorer →</Trans>
-          </a>
+            ×
+          </button>
+        )}
+      </div>
+      <div className="text-slate-300 mt-1">
+        {fmt.timestamp(boot.occurred_at)}
+        <span className="text-slate-500 ml-2">· {formatAgeMinutes(boot.occurred_at)}</span>
+      </div>
+      <div className="text-slate-500 text-[10px]">{formatTimestampUtc(boot.occurred_at)}</div>
+      {boot.detail && (
+        <div className="mt-2 text-slate-300 font-mono text-[11px]">{boot.detail}</div>
+      )}
+      {pinned && (
+        <div className="mt-3 pt-2 border-t border-slate-800">
+          <button
+            type="button"
+            onClick={() => navigate(`/history?focus=boot:${boot.id}&ts=${boot.occurred_at}`)}
+            className="text-amber-300 hover:text-amber-200 inline-flex items-center gap-1 text-[11px] self-start"
+          >
+            <Trans>View in timeline</Trans>
+            <span aria-hidden="true">→</span>
+          </button>
         </div>
       )}
     </div>
@@ -3324,6 +3638,7 @@ function DepositTooltip({
   const { i18n } = useLingui();
   void i18n;
   const fmt = useFormatters();
+  const navigate = useNavigate();
   const { deposit, pinned } = tip;
   const ref = useRef<HTMLDivElement | null>(null);
   const [pos, setPos] = useState<{ left: number; top: number; ready: boolean }>({
@@ -3419,16 +3734,28 @@ function DepositTooltip({
         </div>
       )}
 
-      {url && (
-        <div className="mt-3 pt-2 border-t border-slate-800">
-          <a
-            href={url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-sky-400 hover:text-sky-300 underline text-[11px]"
-          >
-            <Trans>open in block explorer →</Trans>
-          </a>
+      {(url || pinned) && (
+        <div className="mt-3 pt-2 border-t border-slate-800 flex flex-col gap-1.5">
+          {url && (
+            <a
+              href={url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sky-400 hover:text-sky-300 underline text-[11px]"
+            >
+              <Trans>open in block explorer →</Trans>
+            </a>
+          )}
+          {pinned && (
+            <button
+              type="button"
+              onClick={() => navigate(`/history?focus=deposit:${deposit.tx_id}&ts=${deposit.tx_timestamp_ms ?? deposit.credited_at_ms ?? deposit.first_seen_at_ms}`)}
+              className="text-amber-300 hover:text-amber-200 inline-flex items-center gap-1 text-[11px] self-start"
+            >
+              <Trans>View in timeline</Trans>
+              <span aria-hidden="true">→</span>
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -3451,9 +3778,20 @@ function EventTooltip({
   const { i18n } = useLingui();
   void i18n;
   const fmt = useFormatters();
+  const denomination = useDenomination();
   const navigate = useNavigate();
   const ref = useRef<HTMLDivElement>(null);
   const [copied, setCopied] = useState(false);
+
+  // Rate values in the active denomination. `rate` returns the full
+  // string incl. unit (single-value rows); `rateVal` returns the bare
+  // number for compound rows that append the unit once. The shared Row
+  // helper mutes the trailing unit via splitUnit.
+  const rate = (satPerPhDay: number | null): string =>
+    denomination.formatSatPerPhDay(satPerPhDay);
+  const rateVal = (satPerPhDay: number | null): string =>
+    denomination.formatSatPerPhDayValue(satPerPhDay);
+  const rateUnit = denomination.rateSuffix;
 
   // Find the tick_metrics row for the event's timestamp so the
   // tooltip can surface fillable / hashprice / max_bid at that
@@ -3663,9 +4001,9 @@ function EventTooltip({
 
       {e.kind === 'CREATE_BID' && (
         <div className="mt-2 space-y-0.5 text-slate-300">
-          <Row label={t`price`} value={`${formatNumber(Math.round(e.new_price_sat_per_ph_day ?? 0))} sat/PH/day`} />
-          <Row label={t`speed`} value={`${e.speed_limit_ph ?? '-'} PH/s`} />
-          <Row label={t`budget`} value={`${formatNumber(e.amount_sat ?? 0)} sat`} />
+          <Row label={t`price`} value={rate(e.new_price_sat_per_ph_day ?? null)} />
+          <Row label={t`speed`} value={denomination.formatHashrate(e.speed_limit_ph)} />
+          <Row label={t`budget`} value={denomination.formatSat(e.amount_sat ?? null)} />
         </div>
       )}
 
@@ -3673,14 +4011,14 @@ function EventTooltip({
         <div className="mt-2 space-y-0.5 text-slate-300">
           <Row
             label={t`price`}
-            value={`${formatNumber(Math.round(e.old_price_sat_per_ph_day ?? 0))} → ${formatNumber(Math.round(e.new_price_sat_per_ph_day ?? 0))} sat/PH/day`}
+            value={`${rateVal(e.old_price_sat_per_ph_day ?? null)} → ${rateVal(e.new_price_sat_per_ph_day ?? null)} ${rateUnit}`}
           />
           {e.old_price_sat_per_ph_day !== null && e.new_price_sat_per_ph_day !== null && (
             <Row
               label={t`delta`}
-              value={`${e.new_price_sat_per_ph_day >= e.old_price_sat_per_ph_day ? '+' : ''}${formatNumber(
-                Math.round(e.new_price_sat_per_ph_day - e.old_price_sat_per_ph_day),
-              )} sat/PH/day`}
+              value={`${e.new_price_sat_per_ph_day > e.old_price_sat_per_ph_day ? '+' : ''}${rateVal(
+                e.new_price_sat_per_ph_day - e.old_price_sat_per_ph_day,
+              )} ${rateUnit}`}
             />
           )}
         </div>
@@ -3688,7 +4026,7 @@ function EventTooltip({
 
       {e.kind === 'EDIT_SPEED' && (
         <div className="mt-2 space-y-0.5 text-slate-300">
-          <Row label={t`new speed`} value={`${e.speed_limit_ph ?? '-'} PH/s`} />
+          <Row label={t`new speed`} value={denomination.formatHashrate(e.speed_limit_ph)} />
         </div>
       )}
 
@@ -3698,53 +4036,31 @@ function EventTooltip({
             <Trans>market at this tick</Trans>
           </div>
           {marketAtEvent.fillable_ask_sat_per_ph_day !== null && (
-            <Row
-              label={t`fillable`}
-              value={`${formatNumber(Math.round(marketAtEvent.fillable_ask_sat_per_ph_day))} sat/PH/day`}
-            />
+            <Row label={t`fillable`} value={rate(marketAtEvent.fillable_ask_sat_per_ph_day)} />
           )}
           {overpayAtEvent !== null && (
-            <Row
-              label={t`overpay`}
-              value={`${formatNumber(Math.round(overpayAtEvent))} sat/PH/day`}
-            />
+            <Row label={t`overpay`} value={rate(overpayAtEvent)} />
           )}
           {marketAtEvent.hashprice_sat_per_ph_day !== null ? (
-            <Row
-              label={t`hashprice`}
-              value={`${formatNumber(Math.round(marketAtEvent.hashprice_sat_per_ph_day))} sat/PH/day`}
-            />
+            <Row label={t`hashprice`} value={rate(marketAtEvent.hashprice_sat_per_ph_day)} />
           ) : (
             <Row label={t`hashprice`} value={t`- (not recorded this tick)`} />
           )}
           {maxOverpayAtEvent !== null && (
-            <Row
-              label={t`max overpay vs hashprice`}
-              value={`${formatNumber(Math.round(maxOverpayAtEvent))} sat/PH/day`}
-            />
+            <Row label={t`max overpay vs hashprice`} value={rate(maxOverpayAtEvent)} />
           )}
           {maxOverpayAtEvent !== null &&
             marketAtEvent.hashprice_sat_per_ph_day !== null && (
               <Row
                 label={t`hashprice + max overpay`}
-                value={`${formatNumber(
-                  Math.round(
-                    marketAtEvent.hashprice_sat_per_ph_day + maxOverpayAtEvent,
-                  ),
-                )} sat/PH/day`}
+                value={rate(marketAtEvent.hashprice_sat_per_ph_day + maxOverpayAtEvent)}
               />
             )}
           {marketAtEvent.max_bid_sat_per_ph_day !== null && (
-            <Row
-              label={t`max bid`}
-              value={`${formatNumber(Math.round(marketAtEvent.max_bid_sat_per_ph_day))} sat/PH/day`}
-            />
+            <Row label={t`max bid`} value={rate(marketAtEvent.max_bid_sat_per_ph_day)} />
           )}
           {effectiveCapAtEvent !== null && (
-            <Row
-              label={t`effective cap`}
-              value={`${formatNumber(Math.round(effectiveCapAtEvent))} sat/PH/day`}
-            />
+            <Row label={t`effective cap`} value={rate(effectiveCapAtEvent)} />
           )}
           {/* #224 (#222): deadband at the tick. Shown as a percentage
               with the equivalent sat/PH/day floor inline so the
@@ -3765,15 +4081,8 @@ function EventTooltip({
               <span className="font-mono tabular-nums">
                 {formatNumber(marketAtEvent.bid_edit_deadband_pct)}
                 <span className="text-slate-500 text-[11px] ml-1">% ≈</span>{' '}
-                {formatNumber(
-                  Math.round(
-                    (overpayAtEvent * marketAtEvent.bid_edit_deadband_pct) / 100,
-                  ),
-                )}
-                <span className="text-slate-500 text-[11px] ml-1">
-                  <SatSymbol className="opacity-70" />
-                  {t`/PH/day`}
-                </span>
+                {rateVal((overpayAtEvent * marketAtEvent.bid_edit_deadband_pct) / 100)}
+                <span className="text-slate-500 text-[11px] ml-1">{rateUnit}</span>
               </span>
             </div>
           )}
@@ -3790,7 +4099,7 @@ function EventTooltip({
         // long sentence doesn't blow the tooltip off-screen, but cap
         // the width so it stays readable.
         <div className="mt-2 text-[11px] text-slate-400 italic whitespace-normal max-w-[20rem]">
-          {e.reason}
+          <ReasonText reason={e.reason} denomination={denomination} />
         </div>
       )}
       {tip.pinned && (
@@ -3801,11 +4110,11 @@ function EventTooltip({
               /history. */}
           <button
             type="button"
-            onClick={() => navigate(`/history?focus_event=${e.id}`)}
+            onClick={() => navigate(`/history?focus_event=${e.id}&ts=${e.occurred_at}`)}
             className="text-[10px] text-amber-300 hover:underline"
             title={t`Open the History row for this event`}
           >
-            <Trans>Show in history</Trans>{' →'}
+            <Trans>Show in timeline</Trans>{' →'}
           </button>
           <button
             type="button"
@@ -3852,18 +4161,26 @@ function Row({ label, value }: { label: string; value: string }) {
  * doesn't import from pages/.
  */
 function splitUnit(v: string): { num: string; unit: string } | null {
-  const m = v.match(/^(.+?)\s+(sat\/PH\/day|PH\/s|PH·h|sat)(\s*(?:\(.*\))?)$/);
+  // Space-separated unit: any denomination rate ("48,288 sat/EH/day",
+  // "0.48288000 ₿/PH/day"), any hashrate ("3.00 EH/s"), legacy PH·h, or
+  // bare sat. The rate suffix now varies with the units toggle, so the
+  // hashrate portion is TH|PH|EH rather than a hardcoded PH.
+  const m = v.match(/^(.+?)\s+((?:sat|₿)\/(?:TH|PH|EH)\/day|(?:TH|PH|EH)\/s|PH·h|sat)(\s*(?:\(.*\))?)$/);
   if (m?.[1] && m[2]) return { num: m[1], unit: m[2] + (m[3] ?? '') };
-  const usdPhDay = v.match(/^(.+?)(\/PH\/day)$/);
-  if (usdPhDay?.[1] && usdPhDay[2]) return { num: usdPhDay[1], unit: usdPhDay[2] };
+  // USD rate has the symbol on the number and no space before the slash:
+  // "$28,756.80/EH/day".
+  const usd = v.match(/^(.+?)(\/(?:TH|PH|EH)\/day)$/);
+  if (usd?.[1] && usd[2]) return { num: usd[1], unit: usd[2] };
   return null;
 }
 
 function SatUnit({ unit }: { unit: string }) {
-  // Localize the `/PH/day` slug before rendering. Mirror of Status.tsx
-  // SatUnit so chart tooltips translate in NL/ES alongside the rest.
-  const phDayLabel = t`/PH/day`;
-  const localized = unit.replace('/PH/day', phDayLabel);
+  // Localize the trailing `day` slug for any hashrate unit (NL "dag",
+  // ES "dia") and swap a leading "sat" for the ≡ glyph. Mirror of
+  // Status.tsx SatUnit so chart tooltips translate alongside the rest.
+  const phDay = t`/PH/day`;
+  const dayWord = phDay.slice(phDay.lastIndexOf('/') + 1);
+  const localized = unit.replace(/day$/, dayWord);
   if (localized.startsWith('sat')) {
     return (
       <>
@@ -3987,8 +4304,10 @@ function EventLegend({ kinds, colors }: { kinds: readonly BidEventKind[]; colors
       {has('MODE_CHANGE') && (
         <span className="flex items-center gap-1 whitespace-nowrap">
           <svg {...iconProps} stroke={colors.MODE_CHANGE}>
-            <path d="M12 2v10" />
-            <path d="M18.4 6.6a9 9 0 1 1-12.77.04" />
+            <path d="M8 3 4 7l4 4" />
+            <path d="M4 7h16" />
+            <path d="m16 21 4-4-4-4" />
+            <path d="M20 17H4" />
           </svg>
           <Trans>mode change</Trans>
         </span>
@@ -4030,6 +4349,7 @@ function UnpaidDropTooltip({
   const { i18n } = useLingui();
   void i18n;
   const fmt = useFormatters();
+  const navigate = useNavigate();
   const { pinned } = tip;
   const ref = useRef<HTMLDivElement | null>(null);
   const [pos, setPos] = useState<{ left: number; top: number; ready: boolean }>({
@@ -4094,6 +4414,18 @@ function UnpaidDropTooltip({
       <div className="mt-1 text-[10px] text-slate-500">
         <Trans>Ocean debited the unpaid balance. On-chain transaction follows shortly.</Trans>
       </div>
+      {pinned && (
+        <div className="mt-2 pt-2 border-t border-slate-800">
+          <button
+            type="button"
+            onClick={() => navigate(`/history?jump_ts=${tip.tick_at}`)}
+            className="text-amber-300 hover:text-amber-200 inline-flex items-center gap-1 text-[11px]"
+          >
+            <Trans>View in timeline</Trans>
+            <span aria-hidden="true">→</span>
+          </button>
+        </div>
+      )}
     </div>
   );
 }

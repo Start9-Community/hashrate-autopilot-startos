@@ -20,10 +20,11 @@
     "@hashrate-autopilot/shared": "workspace:*",
     "@lingui/core": "^6.4.0",
     "@lingui/react": "^6.4.0",
-    "@tanstack/react-query": "^5.101.0",
+    "@tanstack/react-query": "^5.101.2",
+    "fflate": "^0.8.3",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
-    "react-router-dom": "^7.18.0"
+    "react-router-dom": "^7.18.1"
   },
   "devDependencies": {
     "@babel/core": "^8.0.1",
@@ -32,11 +33,11 @@
     "@lingui/format-po": "^6.4.0",
     "@lingui/vite-plugin": "^6.4.0",
     "@rolldown/plugin-babel": "^0.2.3",
-    "@tailwindcss/vite": "^4.3.1",
+    "@tailwindcss/vite": "^4.3.2",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "^6.0.2",
-    "tailwindcss": "^4.3.1",
-    "vite": "^8.0.16"
+    "@vitejs/plugin-react": "^6.0.3",
+    "tailwindcss": "^4.3.2",
+    "vite": "^8.1.0"
   }
 }

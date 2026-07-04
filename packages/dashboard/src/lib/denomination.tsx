@@ -33,12 +33,34 @@ const DENOMINATION_STORAGE_KEY = 'hashrate-autopilot.denomination';
 const HASHRATE_UNIT_STORAGE_KEY = 'hashrate-autopilot.hashrateUnit';
 const POLL_INTERVAL_MS = 5 * 60_000;
 
-const SAT_PER_BTC = 100_000_000;
+export const SAT_PER_BTC = 100_000_000;
 const PH_PER_TH = 0.001;
 const PH_PER_EH = 1000;
 
 export type DenominationMode = 'sats' | 'btc' | 'usd';
 export type HashrateUnit = 'TH' | 'PH' | 'EH';
+
+/**
+ * Multiplier to turn a canonical PH/s hashrate into the given unit.
+ * PH stays 1×, TH is ×1000, EH is ×0.001. Exported so non-React code
+ * (e.g. the Excel exporter) can convert without duplicating the ratios.
+ */
+export function hashrateUnitMultiplier(unit: HashrateUnit): number {
+  return unit === 'TH' ? 1 / PH_PER_TH : unit === 'EH' ? 1 / PH_PER_EH : 1;
+}
+
+/**
+ * Multiplier to turn a canonical sat/PH/day rate into sat/<unit>/day.
+ * PH stays 1×, TH is ×0.001, EH is ×1000.
+ */
+export function rateUnitMultiplier(unit: HashrateUnit): number {
+  return unit === 'TH' ? PH_PER_TH : unit === 'EH' ? PH_PER_EH : 1;
+}
+
+/** Convert a sat amount to USD at the given price. */
+export function satToUsd(sat: number, usdPerBtc: number): number {
+  return (sat / SAT_PER_BTC) * usdPerBtc;
+}
 
 export interface DenominationContextValue {
   /** Current currency denomination. */
@@ -70,6 +92,17 @@ export interface DenominationContextValue {
    * Returns "--" for null.
    */
   formatSatPerPhDay: (satPerPhDay: number | null, locale?: string) => string;
+  /**
+   * Like {@link formatSatPerPhDay} but WITHOUT the unit suffix (and
+   * without a currency symbol), for dense tables where the unit lives in
+   * the column header. Same conversion + decimal precision; the sign is
+   * preserved. Examples (input = 47,928 sat/PH/day):
+   *   sats + PH:  "47,928"
+   *   BTC  + EH:  "0.47928000"
+   *   USD  + EH:  "28,756.80"
+   * Returns "--" for null.
+   */
+  formatSatPerPhDayValue: (satPerPhDay: number | null, locale?: string) => string;
   /**
    * Format a hashrate (input PH/s) in the current hashrate unit.
    * Examples (input = 3.14):
@@ -107,10 +140,6 @@ function setStoredHashrateUnit(unit: HashrateUnit): void {
   window.localStorage.setItem(HASHRATE_UNIT_STORAGE_KEY, unit);
 }
 
-function satToUsd(sat: number, usdPerBtc: number): number {
-  return (sat / SAT_PER_BTC) * usdPerBtc;
-}
-
 function formatUsd(usd: number, locale?: string): string {
   // Plain "$" prefix instead of Intl currency formatting - in
   // non-en-US locales (e.g. nl-NL) the `style: 'currency'` path
@@ -134,6 +163,7 @@ const defaultContext: DenominationContextValue = {
   setHashrateUnit: () => undefined,
   formatSat: () => '-',
   formatSatPerPhDay: () => '-',
+  formatSatPerPhDayValue: () => '-',
   formatHashrate: () => '-',
   hashrateSuffix: 'PH/s',
   rateSuffix: 'sat/PH/day',
@@ -256,6 +286,21 @@ export function DenominationProvider({ children }: { children: ReactNode }) {
       return `${(pickNf(nfRate, locale) ?? new Intl.NumberFormat(locale, { minimumFractionDigits: rateDigits, maximumFractionDigits: rateDigits })).format(scaled)} sat/${hashrateUnit}/day`;
     };
 
+    const formatSatPerPhDayValue = (
+      satPerPhDay: number | null,
+      locale: string | undefined = defaultLocale,
+    ): string => {
+      if (satPerPhDay === null) return '-';
+      const scaled = satPerPhDay * rateMultiplier;
+      if (effectiveMode === 'usd' && btcPrice !== null) {
+        return (pickNf(nfUsd, locale) ?? new Intl.NumberFormat(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })).format(satToUsd(scaled, btcPrice));
+      }
+      if (effectiveMode === 'btc') {
+        return (pickNf(nfBtc8, locale) ?? new Intl.NumberFormat(locale, { minimumFractionDigits: 8, maximumFractionDigits: 8 })).format(scaled / SAT_PER_BTC);
+      }
+      return (pickNf(nfRate, locale) ?? new Intl.NumberFormat(locale, { minimumFractionDigits: rateDigits, maximumFractionDigits: rateDigits })).format(scaled);
+    };
+
     const formatHashrate = (
       ph: number | null,
       locale: string | undefined = defaultLocale,
@@ -281,6 +326,7 @@ export function DenominationProvider({ children }: { children: ReactNode }) {
       setHashrateUnit,
       formatSat,
       formatSatPerPhDay,
+      formatSatPerPhDayValue,
       formatHashrate,
       hashrateSuffix,
       rateSuffix,

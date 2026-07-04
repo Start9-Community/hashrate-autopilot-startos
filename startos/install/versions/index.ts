@@ -48,3 +48,10 @@ export const v1_15_1_0 = VersionInfo.of({
     'Updates Hashrate Autopilot to upstream v1.15.1. Includes historically accurate effective-cap charting, BTC payout address validation, P&L refresh fixes, actionable Datum API errors, Electrum connection-help updates, and the upstream dependency and pnpm compatibility updates.',
   migrations: {},
 });
+
+export const v1_16_0_0 = VersionInfo.of({
+  version: '1.16.0:0',
+  releaseNotes:
+    'Updates Hashrate Autopilot to upstream v1.16.0. Includes the Timeline release with unified event history, alert recovery rows, bidirectional chart jumps, denomination-aware Excel export, daemon-start markers, duplicate-bid protection, Datum stratum-probe auto-cancel fixes, and migrations 0114-0115.',
+  migrations: {},
+});

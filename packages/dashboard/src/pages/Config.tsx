@@ -2241,6 +2241,10 @@ function ChartColorsSection({
             { key: 'hashrate.marker_ip_change', label: t`public-IP change` },
             { key: 'price.marker_payout_gem', label: t`on-chain payout` },
             { key: 'price.marker_deposit', label: t`Braiins deposit` },
+            // #316/#318: one shared color for every alert-condition band +
+            // its onset/recovery markers (the band label carries the
+            // meaning, so a per-condition palette wasn't worth it).
+            { key: 'events.alert_condition', label: t`alert condition` },
           ],
         },
       ],
@@ -2560,6 +2564,8 @@ function ChartColorRowIcon({ keyId, color }: { keyId: ChartColorKey; color: stri
   // from the marker rendering in PriceChart.tsx. The mode-change and
   // bid-paused colors also tint the idle background bands.
   if (keyId === 'events.mode_change') {
+    // Lucide `arrow-left-right` - run-mode switch (was `power`, which
+    // collided with the daemon-started glyph in the timeline).
     return (
       <svg
         width="14"
@@ -2572,8 +2578,10 @@ function ChartColorRowIcon({ keyId, color }: { keyId: ChartColorKey; color: stri
         strokeLinecap="round"
         strokeLinejoin="round"
       >
-        <path d="M12 2v10" />
-        <path d="M18.4 6.6a9 9 0 1 1-12.77.04" />
+        <path d="M8 3 4 7l4 4" />
+        <path d="M4 7h16" />
+        <path d="m16 21 4-4-4-4" />
+        <path d="M20 17H4" />
       </svg>
     );
   }
@@ -2611,6 +2619,16 @@ function ChartColorRowIcon({ keyId, color }: { keyId: ChartColorKey; color: stri
       >
         <circle cx="12" cy="12" r="10" />
         <polygon points="10 8 16 12 10 16 10 8" />
+      </svg>
+    );
+  }
+  // #316: alert condition bands - the chart draws a filled down-triangle
+  // at the onset (and a hollow up-triangle at the recovery). Show the
+  // onset triangle here so the row reads as the marker it controls.
+  if (keyId.startsWith('events.alert_')) {
+    return (
+      <svg width="14" height="14" viewBox="0 0 14 14" className="shrink-0">
+        <path d="M2 3 L12 3 L7 11 Z" fill={color} />
       </svg>
     );
   }

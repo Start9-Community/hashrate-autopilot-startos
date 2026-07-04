@@ -1,11 +1,206 @@
 # Changelog
 
+## 2026-07-04
+
+### `[Infra]` StartOS package tracks upstream v1.16.0
+
+The StartOS wrapper now points at upstream Hashrate Autopilot v1.16.0, adds the `1.16.0:0` package version to the StartOS version graph, refreshes downstream README/spec/package metadata, and regenerates release catalogs and checksums.
+
+## 2026-07-03
+
+### `[Release]` v1.16.0
+
+The Timeline release. One unified chronological event log (bid actions, alert spans with recovery rows, payouts, deposits, all pool blocks, retargets, IP changes, config edits, daemon restarts) with bidirectional chart jumps and sonar beacons; streaming denomination-aware Excel export with no row cap; follow live-tail; daemon-started chart markers; fully denomination-aware values everywhere including rewritten reason text. Controller safety: the #319 duplicate-bid guard and the stratum-probe datum-down cancel. Exact TIDES credits in pool-block alerts (#321). Migration 0115. Docs audited to spec v2.17 with a fresh screenshot set.
+
+### `[UI]` Unpaid-line block dots explain the balance step
+
+Clicking a dot on the unpaid-earnings (or lifetime-earnings) line showed only the pool-block tooltip - block reward, share, explorer link - but nothing about the thing the dot actually sits on: your balance. The tooltip now adds a "unpaid balance at this step" section with before, after, and the credited delta as Ocean observed it. The top-edge block cubes (which aren't balance events) keep the plain block tooltip.
+
+### `[UI]` BIP 110 scanner: reward and fees always show 8 decimals
+
+The block table stripped trailing zeros from the BTC amounts, so every row had a different width (3.132358 next to 3.13594278) and the reward/fees columns were hard to scan. Both now always render the full 8 decimals.
+
+### `[Feature]` Timeline: alert recoveries are rows too (#322)
+
+When an alert condition heals (hashrate back above floor, DATUM reachable again, ...), the Timeline now shows a second row at the recovery moment - emerald check glyph, "below floor resolved", with the recovery message ("Hashrate back at or above floor - was below for 17m") in the Reason column. Previously only the opening row existed and the recovery left no trace in the feed. Recovery rows toggle with the same condition chip as their opening row (no extra filter) and are included in the Excel export. Spans closed implicitly (a next episode, or a stale orphan bound) have no real recovery moment and get no fabricated row. Clicking a recovery row opens a recovery-flavored drawer (emerald "resolved" header, the recovery message), and its "View on chart" jumps to the band's closing edge and pulses the beacon there - not at the onset. The two log-only condition classes (marketplace empty, bid paused sustained) draw no chart band of their own - the fillable-gap and bid-pause hatches already cover them - so their jump used to land on nothing; they now get a beacon-plus-guide-line anchor on the price chart at the jumped-to moment.
+
+## 2026-07-02
+
+### `[Fix]` Pool-block-credited alert reports the exact credit, not the ~ estimate
+
+The "Credited to you" number in the pool-block Telegram/alert was falling back to the `~share × reward` estimate (consistently ~1% high) whenever the daemon had restarted since the previous block - which during active development was nearly always. The alert already waits for Ocean's unpaid balance to include the credit before firing, so the exact number was always available at that moment: it now uses the unpaid delta against the block's own noticing-time baseline, which needs no memory of any previous alert. The `~` estimate remains only for genuine unknowns (multiple blocks in one tick, or the payout-block failsafe where unpaid went down instead of up).
+
+### `[UI]` Timeline: all filters are now sticky; follow live-tails every source
+
+The Alerts and Events chip groups and the follow toggle now persist per browser like the rest of the toolbar filters (they used to reset to "all on"/off on every reload). And while following, the merged sources (payouts, deposits, blocks, IP changes, retargets, alerts, system events) poll at the same 15 s as the bid feed, so a fresh payout no longer lags up to a minute behind the rows around it.
+
+### `[Fix]` Config-layer cleanup from the code-vs-spec audit
+
+Three small config fixes. The dynamic hashprice cap's schema default now matches what fresh installs actually get (2,000,000 sat/EH/day, cap ON - the Zod default said "disabled" while first-run seeding enabled it; existing installs keep whatever they have, including an explicit "disabled"). The dead `handover_window_minutes` field is dropped (migration 0115) - it belonged to a manual-override system that was retired before it ever shipped. And `BHA_WALLET_RUNWAY_ALERT_DAYS` now accepts fractional days (e.g. `0.5`) via environment variable, matching what the dashboard and docs always allowed.
+
+### `[Fix]` Datum-down auto-cancel now keys on the stratum probe, not the optional stats API
+
+The stop-spend rule (cancel all bids after 3 consecutive ticks of Datum being unreachable, #199) was reading the optional Datum stats-API poller instead of the mandatory stratum TCP probe. Two failure modes fixed: with no stats API configured the protection could never fire during a real stratum outage, and a stats-API-only glitch (healthy share path) cancelled every bid. Found in a code-vs-spec audit; the spec always said "stratum".
+
+## 2026-07-01
+
+### `[UI]` "Daemon started" markers on the price chart (bidirectional jump)
+
+Daemon restarts now show up as an always-visible power-glyph marker on the price chart (emerald, with a dashed guide line), the same idiom as the run-mode / pause / resume markers. Clicking one opens a small tooltip with the build/version and a "View in timeline" jump; and the reverse - the Timeline's "daemon started" row now has a "View on chart" button that pans there and pulses the marker. So a restart that explains a gap is reachable from either view, closing the last event kind that only jumped one way.
+
+### `[UI]` Timeline rate units use the Satoshi glyph + a fixed second line
+
+The Timeline's rate column headers now put the unit on its own second line ("Fillable" then "(≡/PH/day)") instead of wrapping at an arbitrary spot, and the word "sat" is replaced by the Satoshi glyph in the headers, the Δ-price filter label, and the reason text - shorter, cleaner, and consistent with the rest of the dashboard. The Excel export keeps the plain "sat" wording (a font glyph can't render in a spreadsheet).
+
+### `[UI]` Reason text respects the display denomination
+
+The last raw-unit holdout: bid-event Reason lines (e.g. "track fillable: 48,288 sat/PH/day → 47,817 sat/PH/day") are generated by the daemon in canonical sat/PH/day and PH/s. They now get their numeric+unit tokens rewritten into the active denomination wherever the reason appears (Timeline table, detail drawer, chart tooltip, and the Excel export), so the sentence reads in the same units as the columns beside it (e.g. "0.48288000 ₿/EH/day → 0.47817000 ₿/EH/day"). The surrounding audit wording is untouched, and any token the daemon might word differently in future is left as-is rather than mangled.
+
+### `[UI]` Clearer filter controls + a spinning export indicator
+
+The bulk filter controls now read as controls: each group's "all · none" is a segmented button pair (bordered pills) instead of faint gray text that didn't look clickable, and the global control is two plain "select all" / "select none" buttons in the toolbar cluster (reset stays alongside). The export button now shows a spinning loader while it works instead of a "…", so it's obvious something is happening.
+
+### `[UI]` Timeline: global "Filters all · none" toggle
+
+Next to the reset button there's now a global **all · none** that flips every chip in all three filter groups (Actions, Alerts, Events) at once - a quick way to start from "everything" or "nothing" and then pick. Reset stays as the full reset (also clears the text/date filters).
+
+### `[UI]` Timeline "follow" (live tail) button
+
+A **follow** toggle in the timeline toolbar tails the feed live: it refetches faster and, as new events land, keeps you pinned to the newest ones (only when you're already near the top, so scrolling down to read isn't interrupted). Turning it on jumps to the live edge. Click again to stop.
+
+### `[UI]` Chart event tooltip respects the display denomination
+
+The price-chart marker tooltip (click a bid event on the chart) was the last surface still printing price / fillable / hashprice / overpay / max bid / effective cap / deadband in raw sat/PH/day. It now follows the units toggle like everything else, with the unit muted beside each value.
+
+### `[UI]` Timeline table + bid-event detail respect the display denomination
+
+The on-screen Timeline was still showing Fillable, Price before/after and Δ price in raw sat/PH/day regardless of the units toggle (only the Excel export and the Speed column had been converted). Those columns now follow the active denomination, with the unit shown once in each column header (e.g. "Fillable (BTC/EH/day)") and the numbers bare below. The bid-event detail drawer (click a row) gets the same treatment across all its rate rows (price, delta, fillable, hashprice, overpay, max bid, effective cap), plus budget and speed.
+
+### `[UI]` Excel export respects the display denomination; faster to open
+
+The exported spreadsheet now honours the global units toggle: with EH + BTC selected (for example), fillable/prices/Δ and speed are written in BTC/EH/day and EH/s instead of always sat/PH/day and PH/s, and each column header spells out its unit (e.g. "Fillable (BTC/EH/day)", "Speed (EH/s)"). Decimals follow the denomination too, so speed now carries the same precision as the dashboard (e.g. "3.00 PH/s") rather than rounding to a whole number. Columns use fixed widths instead of Excel's best-fit auto-sizing, which had to rescan every cell when the file opened - noticeably slow on large (20k+ row) exports.
+
+### `[UI]` Timeline: "payout initiated" no longer looks like an alarm; reset re-enables everything; localized export
+
+Grab-bag of timeline fixes. "Payout initiated" was drawn with the alarm bell in alert-amber, which read as a problem - it now uses a payout (hand-coins) glyph in payout green, since it's good news. The **reset** button now re-enables every filter group (Actions, Alerts, and Events), not just the actions. And the Excel export now follows the interface language (headers + sheet tab translated to nl/es; the values were already localized).
+
+### `[UI]` Filter chips show their real icons; "View in block explorer" button on on-chain events
+
+The Alerts and Events filter chips now carry the same glyph as their timeline rows instead of a generic colored dot - so the daemon-started chip shows the power icon (and is finally recognizable as its filter), payout shows the gem, deposit the fuel pump, alerts the warning triangle, and so on. And on-chain events (payout, deposit, pool block) get a proper **"View in block explorer"** button next to "View on chart" in the detail panel, replacing the small text link.
+
+### `[UI]` Mode-change gets its own icon so it stops colliding with daemon-started
+
+The "mode" action and the "daemon started" event both drew the Lucide power icon, so the mode filter chip looked like it might be a daemon-started filter. Mode-change now uses a distinct left-right arrow (⇄) everywhere - timeline rows + filter chip, chart markers, and the Config color swatch - leaving the power icon to mean daemon-started. (The daemon-started filter already lives in the Events row.)
+
+### `[UI]` Richer timeline detail panels: build on daemon-start, human-readable config changes, explorer links
+
+Three improvements to the timeline side panels: a **daemon started** row now shows the build that launched (e.g. `build 721 · v1.15.1 · abc1234`). A **config change** now reads in plain language and your chosen hashrate unit - `max_overpay_vs_hashprice_sat_per_eh_day: 2000000 -> 1500000` becomes "Max overpay vs hashprice: 2,000 → 1,500 sat/PH/day". And **deposit / payout / pool-block** panels now carry an "open in block explorer" link. (The daemon-start build detail only appears for boots after this update.)
+
+### `[Perf]` Timeline export is now streaming, with no row cap (#320)
+
+Replaced the Excel writer (exceljs, which held every cell in memory and forced the 200k-row cap) with a streaming one built on fflate: the worksheet is written and compressed row-by-row, so memory stays flat regardless of size - it runs comfortably on the light hardware Hashrate Autopilot targets. The row cap is gone. The Excel library also shrank from ~930 kB to ~8 kB.
+
+### `[Fix]` Autopilot no longer places a duplicate bid on a bid-list fetch blip (#319)
+
+When the Braiins bid-list read transiently failed (or momentarily didn't include our bid) while the orderbook read succeeded, the decision loop saw "no owned bids" and created a **second** bid, which its own "multiple owned bids" guard then cancelled a few minutes later - wasting a little hashrate spend and showing a confusing extra `create` in the Timeline. The create path now waits unless the bid-list fetch definitively succeeded AND the local ledger agrees there are no live bids, mirroring the caution already applied to ledger pruning. Strictly conservative: it can only prevent spurious creates.
+
+### `[UI]` "View in timeline" links + reveal resets filters when the target is hidden
+
+The chart tooltips' jump links now say "View/Show in timeline" (the page is the Timeline now, not "history"). And when you jump from a chart marker to a bid-event row that a filter is currently hiding - e.g. you'd turned "price" off, then clicked a price marker's "Show in timeline" - the Timeline now clears the filters that would keep that row from loading, so the reveal always lands on the row instead of silently going nowhere.
+
+### `[Feature]` Export the Timeline to a formatted Excel file (#320)
+
+An **export** button in the Timeline toolbar downloads every row matching the active filters as a formatted `.xlsx` (bold/frozen header, autofilter, column widths). It pages the bid-event feed to completion and merges in the payout / deposit / block / IP / retarget / alert / config / daemon-start rows within the active date range and group toggles - not just what's on screen. Very large pulls are capped at the most recent 200,000 bid events (a memory guard, not an Excel limit) with a heads-up to narrow the date range. The Excel library loads only when you click export, so it never weighs down the normal page.
+
+### `[UI]` Timeline detail panel mirrors the chart tooltip; long hashes are copyable
+
+Clicking a log row now opens a panel showing the same information the event's chart tooltip shows, instead of a bare summary. A pool block lists height, pool reward, subsidy, fees, your estimated share, and the BIP-110 signal - and the long block hash is now a small copyable value with a copy button rather than a wall of digits. Payout, deposit, IP-change and retarget rows get their structured detail too (txid / address are copyable).
+
+### `[Fix]` Timeline Action filter now hides what you deselect (opt-out)
+
+The Action chips were opt-in - selecting one showed *only* that kind, and deselecting everything showed *everything* - which is the opposite of the Alerts and Events groups and confused the operator: clicking "price" off didn't hide the price rows. All three groups now behave the same: every chip is on by default, and clicking one hides that kind. The Action group also gets its own "all · none" toggle, and deselecting every action now correctly shows no bid rows (previously it fell back to showing all). Fixed a latent bug where reloading dropped MODE_CHANGE / bid-paused / bid-resumed from a saved filter.
+
+### `[UI]` Timeline filter groups get "all · none" quick toggles
+
+The Alerts and Events filter groups now have a compact "all · none" control next to their label, so isolating a single event type (e.g. only `create`) is a couple of clicks instead of deselecting a dozen chips one by one.
+
+### `[UI]` Timeline polish: renamed, columns reordered, filter fields on one row, real reset button
+
+The History page is now called **Timeline** (nav tab + heading), since it's a unified log of every event, not just orders. The **Action** column moves ahead of **Bid** so the most useful column shows first - especially on mobile, where the long bid id used to hog the second slot. The filter toolbar's text/date fields (Bid id, From, To, Δ price) now share one dedicated row instead of Δ price sitting alone, and **reset** is a real amber button rather than a faint text link.
+
+## 2026-06-30
+
+### `[UI]` Universal sonar beacon when jumping from a log row to its chart marker (#318)
+
+Completes the graph <-> log round-trip: every event in the History log now pulses a sonar beacon on its chart marker when you click "View on chart" in the detail panel - not just pool blocks. Payout (gem), deposit (fuel), IP-change (router), and difficulty-retarget (pickaxe) markers each get the ping, and the "payout initiated" alert homes in on the matching unpaid-drop marker on the price chart. So from either direction - marker popup "View in history", or log row "View on chart" - you land on the counterpart with a beacon showing exactly which one. (The unpaid-drop marker only exists when the price chart's right axis is set to unpaid or lifetime earnings; the others beacon regardless of axis.)
+
+### `[UI]` History log rows open a detail panel instead of jumping straight to the chart (#318)
+
+Clicking a log entry (payout, deposit, pool block, IP change, retarget, alert, config change, daemon start) now opens a slide-over detail panel - matching how bid events and alert-condition rows already behave - instead of immediately panning the chart. The panel shows the event time and details, plus a "View on chart" button that does the jump (blocks still pulse the sonar beacon on their cube/crown; config and daemon-start events have no chart marker, so they show details only). Per-marker sonar beacons for the remaining marker types are a follow-up.
+
+### `[UI]` Pool-block log rows: crown/blue/yellow icons, reveal beacon, "View in history" for every block (#318)
+
+Follow-up to the unified log. Pool-block rows in the History log now use the same marker language as the chart: a gold crown for our own block, a blue cube for other miners' blocks, and a yellow cube for BIP-110-signalling blocks (previously every block row was a plain yellow cube). Clicking a block row now pulses a sonar beacon on the matching cube/crown on the hashrate chart when it jumps there (it just panned before, with no way to tell which cube). And a block's chart tooltip now offers "View in history" for every block, not only our own.
+
+### `[UI]` One shared "alert condition" marker color instead of six (#318)
+
+The six per-condition alert-band colors (below floor, zero hashrate, DATUM unreachable, marketplace API, wallet runway, Bitaxe overheating) are consolidated into a single **alert condition** color that tints every alert-condition band and its onset/recovery markers - the band label already tells you which condition it is. The setting moves from its own "Alert condition bands" group into the **Markers** section of Config -> Display -> Chart colors. Any custom color you'd set on one of the old rows carries over to the shared slot.
+
+### `[Feature]` Complete unified log: every alert type, config changes, daemon restarts (#318)
+
+Continuing the "one log of everything relevant" direction. The History tab now also shows: every remaining Telegram alert as a row (payout-initiated, Bitaxe best-difficulty, fee/beta-exit, plus any future alert class automatically - excluding ones already shown as a span or from a dedicated source); `marketplace_empty` and `sustained_paused` as log-only span rows (no extra chart band); **config changes, one row per changed field** (e.g. `max_bid: 49000 -> 50000`), recorded on save; and a **"daemon started"** row on every boot (so a restart shows even when the run mode didn't change). Config/boot events are stored in a new `system_events` table (migration 0114) and served by `/api/system-events`. The payout-initiated (unpaid-drop) dot on the price chart gains a "View in history" link that jumps the log to that time. Each new kind has a filter chip.
+
+### `[Feature]` Difficulty retargets in the History log (#317)
+
+Difficulty-retarget events (the pickaxe markers) now appear as rows in the History log, with a "View in history" link on their chart tooltip - so you can jump from a retarget marker to its log row like the other events. A new `/api/retargets` endpoint derives them server-side from the per-tick network-difficulty epochs (a >0.5% jump = retarget, the same threshold the chart uses). Pool-luck step markers are intentionally left out of the log - they're too frequent to be log-worthy.
+
+### `[UI]` Alert band onset/recovery markers reveal on cursor proximity (#317)
+
+The little down/up triangles that mark where a condition band starts and ends are now hidden by default - the chart just shows the hatch bands - and fade in only near the cursor, so they don't clutter the chart but are right there (and clickable) when you reach for one. The jumped-to (focused) span's markers always show. Bands themselves are unchanged.
+
+### `[UI]` Config color rows show the real marker icon; "View in history" on every event popup (#317)
+
+The six alert-condition color rows in Config -> Display -> Chart colors now show the actual marker glyph (the filled down-triangle the chart draws at a condition's onset) instead of a plain swatch, so they're recognizable next to the other marker rows. And the speed-edit marker popup on the hashrate chart gained a "View in history" link, so now every clickable chart popup that maps to a log row - bid events, alerts, payouts, deposits, blocks, IP changes, speed edits - can jump to its row. Those jumps also use the efficient date-window jump for old events.
+
+### `[Fix]` "View in history" lands on the row in context, even for old events (#317)
+
+Revealing a weeks-old event (e.g. a payout from 6 days ago) used to scroll to a row floating far below the live feed, where it drifted as more bid pages loaded - effectively unreachable. The reveal link now carries the event's timestamp and, when the event is well in the past, jumps the History feed's date window to around it (the feed loads the ~100 bid rows from that period rather than thousands from now). The target row lands in the viewport with surrounding context. Reset the date filter to return to the live feed.
+
+### `[Feature]` History becomes a unified event log with "View in history" from every marker (#317)
+
+The History tab now folds in the other notable account events as rows alongside bids and alerts: on-chain payouts, Braiins deposits, blocks your pool found, and public-IP changes - each with its own glyph, color, and an "Events" filter chip. And every clickable chart marker's pinned tooltip gains a "View in history" link that jumps to the matching row in the log and briefly highlights it, even if the event is weeks old (the row is surfaced on demand). This extends the chart-to-log jump you liked on the alert markers to the whole chart.
+
+### `[UI]` Alert chart markers open a pinned pop-up with "View in history" (#316)
+
+Clicking an alert onset/recovery marker on a chart now pins a small pop-up at the marker - the same interaction language as the other chart markers (pool blocks, IP changes) - instead of the full slide-over drawer (which stays for the History rows). The pop-up shows the condition, severity, started/recovered/duration and body, and its action is "View in history" (you're already on the chart), which jumps to and briefly highlights the matching row on the History page.
+
+### `[UI]` Alert chart markers are clickable; focus beacon auto-clears (#316)
+
+Two follow-ups from operator feedback. Clicking an onset or recovery marker on a chart band now opens the same alert detail drawer as the History rows (it had no info dialog before), with a generous click target over the small glyph. And the jump-to-chart focus beacon now auto-clears after ~6 seconds like the bid-event beacon, instead of pulsing for a full minute and re-appearing on every later zoom/pan of that span.
+
+### `[UI]` Alert timeline polish: detail drawer, onset/recovery markers, focus beacon (#316)
+
+Follow-up to the alerts-on-timeline work, from operator feedback. Clicking an alert row in History now slides out a detail drawer (like bid events) showing the condition, severity, when it started and recovered, the duration, and the full alert body, with a "View on chart" button. On the charts, each condition band now carries a small triangle marker at the top - a filled down-triangle at the onset and a hollow up-triangle at the recovery ("above floor again") - so even a few-minutes span is visible and you can see exactly when it cleared. Jumping from a History alert row pulses a sonar beacon on the band so you can spot what you landed on. History also auto-loads a few more pages on open so a recent alert just past the first page surfaces without manual scrolling.
+
+### `[Feature]` Alerted conditions now show as bands on the charts (#316)
+
+Sustained alert conditions - delivered hashrate below floor, zero hashrate, DATUM or marketplace-API unreachable, low wallet runway, Bitaxe overheating - used to live only in the Alerts tab, disconnected from the timeline. They now render as hatched background bands on the charts over the exact period each condition was open, with a dashed onset line and a hover tooltip naming the condition and its duration. Hashrate-shaped conditions band the Hashrate chart (where the floor line is); connectivity ones band both charts. Each condition has its own color. Orphan conditions - an opener with no recovery, e.g. left by a daemon restart mid-condition - are bounded (closed at the next episode of the same condition, or capped) so a stale weeks-old alert can't tile the whole chart.
+
+### `[Feature]` Alerts now appear as rows in the History timeline (#316)
+
+The second half of unifying alerts into the timeline: the History tab now interleaves alerted condition spans as rows, so a sustained problem sits in the same chronological feed as the bid activity around it. Each alert row shows the condition glyph + label (tinted to match its chart band), its duration or "ongoing", and the alert body in the Reason column; clicking it pans the price chart to when it started. A new "Alerts" chip group in the toolbar toggles each condition on or off. The six band colors are configurable under Config -> chart colors ("Alert condition bands"). Strings are translated to nl/es.
+
 ## 2026-07-01
 
 ### `[Infra]` StartOS package tracks upstream v1.15.1
 
 The StartOS wrapper now points at upstream Hashrate Autopilot v1.15.1, adds the `1.15.1:0` package version to the StartOS version graph, and refreshes downstream README, dependency metadata, and generated catalogs.
 
+## 2026-06-29
+
+### `[UI]` History filter toolbar laid out properly on mobile
+
+On a phone the Order History filter bar was a mess: the Action chips overflowed past the right edge of the card, and because the controls just wrapped in source order the From and To date fields ended up split across different rows in an illogical position, with the reset button stranded mid-bar. The toolbar is now mobile-first - Action chips wrap inside the card, Bid id and Δ price go full-width, From and To sit side-by-side as a single date-range row, and reset moves to its own right-aligned row at the bottom. The desktop layout is unchanged (the date pair dissolves back into the inline flow above the `sm` breakpoint).
 ## 2026-06-28
 
 ### `[Release]` v1.15.1

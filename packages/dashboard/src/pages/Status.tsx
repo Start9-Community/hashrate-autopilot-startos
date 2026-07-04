@@ -20,6 +20,7 @@ import { parseDashboardTiles } from '@hashrate-autopilot/shared';
 import { HashrateChart, type HashrateRightAxis } from '../components/HashrateChart';
 import { type PriceRightAxis } from '../components/PriceChart';
 import { PriceChart } from '../components/PriceChart';
+import { AlertSpanTooltip, type AlertSpanTooltipState } from '../components/AlertSpanTooltip';
 import { ModeBadge } from '../components/ModeBadge';
 import { BtcSymbol } from '../components/BtcSymbol';
 import { SatSymbol } from '../components/SatSymbol';
@@ -29,6 +30,7 @@ import { Tooltip } from '../components/Tooltip';
 import {
   api,
   UnauthorizedError,
+  type AlertConditionInterval,
   type BalanceView,
   type FinanceResponse,
   type FinanceRangeResponse,
@@ -71,6 +73,8 @@ const EMPTY_DEPOSITS: readonly never[] = Object.freeze([]) as readonly never[];
 // #250: frozen sentinel so the IP-change marker prop stays referentially
 // stable until real data arrives (charts are React.memo'd).
 const EMPTY_IP_CHANGES: readonly never[] = Object.freeze([]) as readonly never[];
+// #316: frozen sentinel for the alert-condition span prop.
+const EMPTY_ALERT_SPANS: readonly never[] = Object.freeze([]) as readonly never[];
 
 // #93: per-chart secondary Y-axis selection, persisted per-browser.
 const HASHRATE_RIGHT_AXIS_KEY = 'hashrate-autopilot.hashrateRightAxis';
@@ -239,6 +243,23 @@ export function Status() {
   // marker actually renders (handleFocusEventRendered below), with a
   // long fallback in case it never appears at all.
   const [focusedEventId, setFocusedEventId] = useState<number | null>(null);
+  // #316: span (open_id) jumped to from a History alert row -> sonar beacon.
+  const [focusedSpanId, setFocusedSpanId] = useState<number | null>(null);
+  // #322: which edge of the focused span the beacon anchors on -
+  // 'end' when the jump came from a Timeline recovery row.
+  const [focusedSpanEdge, setFocusedSpanEdge] = useState<'start' | 'end'>('start');
+  // #318: pool-block hash jumped to from a History block row -> sonar
+  // beacon on the matching cube/crown marker.
+  const [focusedBlockHash, setFocusedBlockHash] = useState<string | null>(null);
+  // #318 follow-up: generic `<kind>:<key>` of a non-block marker jumped
+  // to from a History log row (payout / deposit / IP / retarget /
+  // unpaid-drop) -> sonar beacon on the matching chart marker.
+  const [focusedMarker, setFocusedMarker] = useState<string | null>(null);
+  // #316: pinned pop-up for a condition-band marker clicked on a chart.
+  const [alertTip, setAlertTip] = useState<AlertSpanTooltipState | null>(null);
+  const focusSpanClearTimer = useRef<number | null>(null);
+  const focusBlockClearTimer = useRef<number | null>(null);
+  const focusMarkerClearTimer = useRef<number | null>(null);
   const focusClearTimer = useRef<number | null>(null);
   const focusFallbackTimer = useRef<number | null>(null);
   const focusScrollTimer = useRef<number | null>(null);
@@ -277,6 +298,9 @@ export function Status() {
       if (focusClearTimer.current !== null) window.clearTimeout(focusClearTimer.current);
       if (focusFallbackTimer.current !== null) window.clearTimeout(focusFallbackTimer.current);
       if (focusScrollTimer.current !== null) window.clearInterval(focusScrollTimer.current);
+      if (focusSpanClearTimer.current !== null) window.clearTimeout(focusSpanClearTimer.current);
+      if (focusBlockClearTimer.current !== null) window.clearTimeout(focusBlockClearTimer.current);
+      if (focusMarkerClearTimer.current !== null) window.clearTimeout(focusMarkerClearTimer.current);
     },
     [],
   );
@@ -305,6 +329,46 @@ export function Status() {
     const HOUR_MS = 60 * 60_000;
     const width = 3 * HOUR_MS;
     chartViewport.jumpToWindow(at, width);
+    // #316: ?focus_span=<open_id> from a History alert row pulses a sonar
+    // beacon on the matching condition band (auto-clears after 60 s).
+    const spanRaw = params.get('focus_span');
+    if (spanRaw) {
+      const sid = Number.parseInt(spanRaw, 10);
+      if (Number.isFinite(sid)) {
+        if (focusSpanClearTimer.current !== null) window.clearTimeout(focusSpanClearTimer.current);
+        setFocusedSpanId(sid);
+        setFocusedSpanEdge(params.get('focus_span_edge') === 'end' ? 'end' : 'start');
+        // Auto-clear after ~6 s like the bid-event beacon (#288), so the
+        // pulse doesn't linger across later zoom/pan of the same span.
+        focusSpanClearTimer.current = window.setTimeout(() => {
+          focusSpanClearTimer.current = null;
+          setFocusedSpanId(null);
+        }, 6_000);
+      }
+    }
+    // #318: ?focus_block=<hash> from a History pool-block row pulses a
+    // sonar beacon on the matching cube/crown marker (auto-clears ~6 s).
+    const blockRaw = params.get('focus_block');
+    if (blockRaw) {
+      if (focusBlockClearTimer.current !== null) window.clearTimeout(focusBlockClearTimer.current);
+      setFocusedBlockHash(blockRaw);
+      focusBlockClearTimer.current = window.setTimeout(() => {
+        focusBlockClearTimer.current = null;
+        setFocusedBlockHash(null);
+      }, 6_000);
+    }
+    // #318 follow-up: ?focus_marker=<kind>:<key> from any other History
+    // log row pulses a beacon on the matching payout / deposit / IP /
+    // retarget / unpaid-drop marker (auto-clears ~6 s).
+    const markerRaw = params.get('focus_marker');
+    if (markerRaw) {
+      if (focusMarkerClearTimer.current !== null) window.clearTimeout(focusMarkerClearTimer.current);
+      setFocusedMarker(markerRaw);
+      focusMarkerClearTimer.current = window.setTimeout(() => {
+        focusMarkerClearTimer.current = null;
+        setFocusedMarker(null);
+      }, 6_000);
+    }
     const idRaw = params.get('focus_event');
     if (idRaw) {
       const id = Number.parseInt(idRaw, 10);
@@ -331,10 +395,17 @@ export function Status() {
     // also scrolls the chart block into view. Poll briefly - the
     // block only mounts once the status query resolves, which on a
     // cold navigation from /history lands a beat after this effect.
+    // #318: pool blocks + IP-change + retarget markers live on the
+    // hashrate chart; payout / deposit / unpaid-drop live on the price
+    // chart. Scroll whichever carries the jumped-to marker into view.
+    const markerKind = markerRaw ? markerRaw.split(':')[0] : null;
+    const onHashrateChart =
+      blockRaw !== null || markerKind === 'ip' || markerKind === 'retarget';
+    const scrollTargetId = onHashrateChart ? 'hashrate-chart-block' : 'price-chart-block';
     if (focusScrollTimer.current !== null) window.clearInterval(focusScrollTimer.current);
     let scrollTries = 0;
     focusScrollTimer.current = window.setInterval(() => {
-      const el = document.getElementById('price-chart-block');
+      const el = document.getElementById(scrollTargetId);
       scrollTries += 1;
       if (el !== null) {
         el.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -347,6 +418,10 @@ export function Status() {
       }
     }, 100);
     params.delete('focus_event');
+    params.delete('focus_span');
+    params.delete('focus_span_edge');
+    params.delete('focus_block');
+    params.delete('focus_marker');
     params.delete('at');
     const next = params.toString();
     navigate(`/${next ? `?${next}` : ''}`, { replace: true });
@@ -369,6 +444,15 @@ export function Status() {
     refetchInterval: vp.liveEdge ? 60_000 : false,
   });
 
+  // #316: condition spans (open/recovery alert pairs) for the timeline
+  // band layer on both charts, keyed off the same viewport bounds.
+  const alertSpansQuery = useQuery({
+    queryKey: ['alert-spans', fetchBounds.since_ms, fetchBounds.until_ms],
+    queryFn: () => api.alertSpans(fetchBounds.since_ms, fetchBounds.until_ms),
+    placeholderData: keepPreviousData,
+    refetchInterval: vp.liveEdge ? 60_000 : false,
+  });
+
   // #250: public-IP change markers, keyed off the same viewport bounds
   // as the other chart-marker overlays.
   const ipChangesQuery = useQuery({
@@ -377,6 +461,23 @@ export function Status() {
     placeholderData: keepPreviousData,
     refetchInterval: vp.liveEdge ? 60_000 : false,
   });
+
+  // #320: daemon-start (boot) markers for the price chart, so a restart
+  // that explains a gap is a jumpable symbol - bidirectional with the
+  // Timeline's "daemon started" rows. Keyed off the same viewport bounds.
+  const systemEventsQuery = useQuery({
+    queryKey: ['system-events', fetchBounds.since_ms, fetchBounds.until_ms],
+    queryFn: () => api.systemEvents(fetchBounds.since_ms, fetchBounds.until_ms),
+    placeholderData: keepPreviousData,
+    refetchInterval: vp.liveEdge ? 60_000 : false,
+  });
+  const bootEvents = useMemo(
+    () =>
+      (systemEventsQuery.data?.events ?? [])
+        .filter((e) => e.kind === 'daemon_started')
+        .map((e) => ({ id: e.id, occurred_at: e.occurred_at, detail: e.detail })),
+    [systemEventsQuery.data],
+  );
 
   // #275: stat tiles aggregate over the VISIBLE viewport, not
   // `fetchBounds`. The fetch buffer (±1 window-width) exists so chart
@@ -725,6 +826,20 @@ export function Status() {
     return intervals;
   }, [metricsQuery.data?.points, bidEventsQuery.data?.events]);
 
+  // #316: alerted condition spans -> background bands on both charts.
+  // Each chart picks the classes it's responsible for (see
+  // CONDITION_SPAN_CLASSES.charts). An open-ended span (end_ms null,
+  // still active) runs to +Infinity; the charts clamp to their data
+  // range, same as the bid-pause bands above.
+  const alertConditionIntervals = useMemo<AlertConditionInterval[]>(() => {
+    const spans = alertSpansQuery.data?.spans ?? EMPTY_ALERT_SPANS;
+    return spans.map((s) => ({
+      x0: s.start_ms,
+      x1: s.end_ms ?? Number.POSITIVE_INFINITY,
+      span: s,
+    }));
+  }, [alertSpansQuery.data?.spans]);
+
   if (query.isError && query.error instanceof UnauthorizedError) {
     navigate('/login');
     return null;
@@ -805,7 +920,7 @@ export function Status() {
       />
     ),
     hashrate: (
-      <div className="space-y-1">
+      <div className="space-y-1" id="hashrate-chart-block">
         <div className="flex justify-end items-center gap-2 text-[11px] text-slate-400">
           <Trans>right axis</Trans>
           <select
@@ -848,6 +963,10 @@ export function Status() {
           markersHiddenCount={markersHiddenCount}
           bidPauseIntervals={bidPauseIntervals}
           idleModeIntervals={idleModeIntervals}
+          alertConditionIntervals={alertConditionIntervals}
+          focusSpanOpenId={focusedSpanId}
+          focusSpanEdge={focusedSpanEdge}
+          onAlertSpanClick={(span, x, y) => setAlertTip({ span, x, y })}
           viewportHandlers={chartViewport.handlers}
           wheelRef={chartViewport.wheelRef}
           isDragging={chartViewport.isDragging}
@@ -857,6 +976,8 @@ export function Status() {
           chartColorOverrides={configQuery.data?.config?.chart_color_overrides}
           ipChangeEvents={ipChangesQuery.data?.events ?? EMPTY_IP_CHANGES}
           crosshair={chartCrosshair}
+          focusBlockHash={focusedBlockHash}
+          focusMarker={focusedMarker}
         />
       </div>
     ),
@@ -912,11 +1033,16 @@ export function Status() {
           rewardEvents={visibleRewardEvents}
           deposits={depositsQuery.data?.deposits ?? EMPTY_DEPOSITS}
           ourBlocks={visibleOurBlocks}
+          bootEvents={bootEvents}
           blockExplorerTemplate={configQuery.data?.config?.block_explorer_url_template}
           txExplorerTemplate={configQuery.data?.config?.block_explorer_tx_url_template}
           shareLogPct={oceanQuery.data?.user?.share_log_pct ?? null}
           bidPauseIntervals={bidPauseIntervals}
           idleModeIntervals={idleModeIntervals}
+          alertConditionIntervals={alertConditionIntervals}
+          focusSpanOpenId={focusedSpanId}
+          focusSpanEdge={focusedSpanEdge}
+          onAlertSpanClick={(span, x, y) => setAlertTip({ span, x, y })}
           viewportHandlers={chartViewport.handlers}
           wheelRef={chartViewport.wheelRef}
           isDragging={chartViewport.isDragging}
@@ -927,6 +1053,7 @@ export function Status() {
           ipChangeEvents={ipChangesQuery.data?.events ?? EMPTY_IP_CHANGES}
           crosshair={chartCrosshair}
           focusEventId={focusedEventId}
+          focusMarker={focusedMarker}
           onFocusEventRendered={handleFocusEventRendered}
         />
       </div>
@@ -1290,12 +1417,17 @@ export function Status() {
         editing={rearranging}
         onReorder={cardOrder.setOrder}
       />
+      {/* #316: clicking a condition-band marker on either chart pins a
+          pop-up (same interaction language as the other chart markers). */}
+      {alertTip && (
+        <AlertSpanTooltip tip={alertTip} onClose={() => setAlertTip(null)} />
+      )}
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Hero operations card - run mode, action mode, operator avail, quiet hours.
+// Hero operations card - live bid price/hashprice, delivered hashrate, run-mode toggle.
 // ---------------------------------------------------------------------------
 
 const heroColors: Record<StatusResponse['run_mode'], string> = {
