@@ -2,6 +2,10 @@
 
 ## 2026-07-04
 
+### `[Perf]` Small chart pans reuse cached data instead of refetching
+
+Releasing a chart pan snapped the fetch window to a fixed 5-second grid, so even a tiny nudge produced a brand-new data request across five queries. The snap now scales with the visible span (about 1% of it), so small back-and-forth pans land on the same cached window and render instantly. The chart itself still draws at exact pixel positions - the snap only affects what gets fetched.
+
 ### `[Perf]` One shared clock for ticking labels, snappier chart jumps, calmer catch-up refetches
 
 All per-second countdowns and "updated Xs ago" labels now share a single clock instead of each running its own timer, so their updates land in one render batch. Jumping from the Timeline to a chart marker (and back) scrolls immediately when the target is already on screen instead of waiting for the first poll tick. And the "refreshing…" catch-up loop stops hammering the API after ~20 seconds if the daemon doesn't come back, falling back to the normal poll interval.

@@ -148,9 +148,21 @@ export function useChartViewport(): UseChartViewportReturn {
   const scheduleSettle = useCallback((vp: ViewportState) => {
     if (settleTimer.current) clearTimeout(settleTimer.current);
     settleTimer.current = setTimeout(() => {
+      // Quantize the settled bounds to ~1% of the visible span (min
+      // 5s). The settled viewport only drives fetch keys and marker
+      // windows - the chart draws from the raw viewport, and the
+      // fetch pads ±100% on each side, so a sub-1% snap never shows.
+      // At the old fixed 5s step, every pan settle on any span above
+      // a few minutes produced a brand-new since/until pair, i.e. a
+      // guaranteed query-cache miss on five client queries plus the
+      // daemon's viewport stats cache. With a span-relative step,
+      // small back-and-forth pans land on the same key and re-use
+      // the cache.
+      const span = vp.until_ms - vp.since_ms;
+      const step = Math.max(5000, Math.floor(span / 100));
       const q: ViewportState = {
-        since_ms: quantize(vp.since_ms, 5000),
-        until_ms: quantize(vp.until_ms, 5000),
+        since_ms: quantize(vp.since_ms, step),
+        until_ms: quantize(vp.until_ms, step),
         activePreset: vp.activePreset,
         liveEdge: vp.liveEdge,
       };
