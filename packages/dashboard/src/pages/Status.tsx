@@ -58,6 +58,7 @@ import { actionModeLabel, bidStatusClass, bidStatusLabel } from '../lib/labels';
 import { useDateTimeLocale, useFormatters, useLocale } from '../lib/locale';
 import { localizedRangeLabel } from '../lib/range-label';
 import { useChartViewport } from '../lib/useChartViewport';
+import { useNowSecond } from '../lib/nowTicker';
 import { useSharedCrosshair } from '../lib/chartCrosshair';
 import { useCardOrderContext } from '../lib/cardOrderContext';
 
@@ -421,7 +422,7 @@ export function Status() {
     const scrollTargetId = onHashrateChart ? 'hashrate-chart-block' : 'price-chart-block';
     if (focusScrollTimer.current !== null) window.clearInterval(focusScrollTimer.current);
     let scrollTries = 0;
-    focusScrollTimer.current = window.setInterval(() => {
+    const attemptScroll = (): boolean => {
       const el = document.getElementById(scrollTargetId);
       scrollTries += 1;
       if (el !== null) {
@@ -432,8 +433,16 @@ export function Status() {
           window.clearInterval(focusScrollTimer.current);
           focusScrollTimer.current = null;
         }
+        return true;
       }
-    }, 100);
+      return false;
+    };
+    // Immediate first attempt - the chart block is usually already
+    // mounted, and waiting for the first 100 ms interval fire added a
+    // visible beat before the scroll.
+    if (!attemptScroll()) {
+      focusScrollTimer.current = window.setInterval(() => void attemptScroll(), 100);
+    }
     params.delete('focus_event');
     params.delete('focus_span');
     params.delete('focus_span_edge');
@@ -1810,11 +1819,7 @@ function NextActionFooter({
   tickIntervalMs: number;
 }) {
   const fmt = useFormatters();
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, []);
+  const now = useNowSecond();
 
   // If the server hasn't told us when the next tick is, fall back to
   // tick_at + interval so the countdown still has something to show.
@@ -2118,16 +2123,11 @@ function NextActionProgress({ next }: { next: NextActionView }) {
   const { i18n } = useLingui();
   void i18n;
   // Re-render every second so the bar visibly creeps even between the
-  // 5s status polls. Hook is only useful when an event is queued; gate
-  // the interval below to avoid burning a timer in steady state.
+  // 5s status polls. Only useful when an event is queued; disabled
+  // otherwise so steady state doesn't re-render per tick.
   const hasEvent =
     next.eta_ms !== null && next.event_started_ms !== null && next.event_kind !== null;
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (!hasEvent) return;
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, [hasEvent]);
+  const now = useNowSecond(hasEvent);
 
   // Always reserve the progress-bar's vertical footprint (label row +
   // bar row). When no event is queued, render an invisible placeholder
@@ -2472,11 +2472,8 @@ function formatFillTime(ms: number): string {
  * "0s ago" because `checked_at_ms` was Date.now() on every response).
  */
 function TickingAge({ epochMs }: { epochMs: number | null | undefined }) {
-  const [, setTick] = useState(0);
-  useEffect(() => {
-    const id = setInterval(() => setTick((n) => n + 1), 1_000);
-    return () => clearInterval(id);
-  }, []);
+  // Shared ticker: re-render once per second so the age climbs.
+  useNowSecond();
   return <span><Trans>updated {formatAgePrecise(epochMs)}</Trans></span>;
 }
 
@@ -2505,11 +2502,7 @@ function RefreshCountdown({
   refetchQueryKey?: readonly unknown[];
 }) {
   const qc = useQueryClient();
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 1_000);
-    return () => clearInterval(id);
-  }, []);
+  const now = useNowSecond();
   useEffect(() => {
     if (!refetchQueryKey || nextAtMs == null) return;
     // Self-rescheduling timer. Naive setTimeout(..., msUntil + 300) is
@@ -2526,6 +2519,13 @@ function RefreshCountdown({
     // effect re-runs with a new dep value, and the polling stops.
     let cancelled = false;
     let handle: ReturnType<typeof setTimeout>;
+    // Cap the catch-up invalidations. A normal mid-tick overlap
+    // resolves within a couple of attempts; if `nextAtMs` stays in
+    // the past longer than this, the daemon is down or stalled, and
+    // re-fetching every 2 s just hammers a dead endpoint - the
+    // regular react-query poll interval takes over instead.
+    const MAX_CATCHUP_INVALIDATIONS = 10;
+    let invalidations = 0;
     const schedule = (delayMs: number) => {
       handle = setTimeout(() => {
         if (cancelled) return;
@@ -2539,6 +2539,8 @@ function RefreshCountdown({
           return;
         }
         qc.invalidateQueries({ queryKey: refetchQueryKey });
+        invalidations += 1;
+        if (invalidations >= MAX_CATCHUP_INVALIDATIONS) return;
         schedule(2_000);
       }, Math.max(0, delayMs));
     };

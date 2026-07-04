@@ -1130,20 +1130,29 @@ export function History() {
     if (highlightedSpanId === null) return;
     let tries = 0;
     let clearTimer: number | null = null;
-    const poll = window.setInterval(() => {
+    let poll: number | null = null;
+    const attempt = (): boolean => {
       tries += 1;
       const el = document.getElementById(`alert-span-row-${highlightedSpanId}`);
       if (el) {
         el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        window.clearInterval(poll);
+        if (poll !== null) window.clearInterval(poll);
         clearTimer = window.setTimeout(() => setHighlightedSpanId(null), 1800);
-      } else if (tries >= 40) {
-        window.clearInterval(poll);
-        setHighlightedSpanId(null);
+        return true;
       }
-    }, 100);
+      if (tries >= 40) {
+        if (poll !== null) window.clearInterval(poll);
+        setHighlightedSpanId(null);
+        return true;
+      }
+      return false;
+    };
+    // Immediate first check - on same-page jumps the row is usually
+    // already rendered, and waiting for the first 100 ms interval
+    // fire added a visible beat before the scroll.
+    if (!attempt()) poll = window.setInterval(() => void attempt(), 100);
     return () => {
-      window.clearInterval(poll);
+      if (poll !== null) window.clearInterval(poll);
       if (clearTimer !== null) window.clearTimeout(clearTimer);
     };
   }, [highlightedSpanId]);
@@ -1184,20 +1193,27 @@ export function History() {
     if (highlightedRowKey === null) return;
     let tries = 0;
     let clearTimer: number | null = null;
-    const poll = window.setInterval(() => {
+    let poll: number | null = null;
+    const attempt = (): boolean => {
       tries += 1;
       const el = document.getElementById(`log-row-${highlightedRowKey}`);
       if (el) {
         el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        window.clearInterval(poll);
+        if (poll !== null) window.clearInterval(poll);
         clearTimer = window.setTimeout(() => setHighlightedRowKey(null), 1800);
-      } else if (tries >= 40) {
-        window.clearInterval(poll);
-        setHighlightedRowKey(null);
+        return true;
       }
-    }, 100);
+      if (tries >= 40) {
+        if (poll !== null) window.clearInterval(poll);
+        setHighlightedRowKey(null);
+        return true;
+      }
+      return false;
+    };
+    // Immediate first check (see the focus_span effect above).
+    if (!attempt()) poll = window.setInterval(() => void attempt(), 100);
     return () => {
-      window.clearInterval(poll);
+      if (poll !== null) window.clearInterval(poll);
       if (clearTimer !== null) window.clearTimeout(clearTimer);
     };
   }, [highlightedRowKey]);

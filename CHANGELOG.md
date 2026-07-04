@@ -2,6 +2,10 @@
 
 ## 2026-07-04
 
+### `[Perf]` One shared clock for ticking labels, snappier chart jumps, calmer catch-up refetches
+
+All per-second countdowns and "updated Xs ago" labels now share a single clock instead of each running its own timer, so their updates land in one render batch. Jumping from the Timeline to a chart marker (and back) scrolls immediately when the target is already on screen instead of waiting for the first poll tick. And the "refreshing…" catch-up loop stops hammering the API after ~20 seconds if the daemon doesn't come back, falling back to the normal poll interval.
+
 ### `[Perf]` Smoother chart panning: heavy math no longer re-runs per drag frame
 
 Dragging a chart re-ran the price chart's full effective-rate accumulation (a nested loop over up to a million point-pair combinations) on every frame of the drag, because it lived in the same computation block as the viewport-dependent scales. It now only recomputes when new data actually arrives. The pool-luck block markers also swap a linear scan per block for a binary search, shaving another chunk off chart rebuilds when a luck axis is selected.
