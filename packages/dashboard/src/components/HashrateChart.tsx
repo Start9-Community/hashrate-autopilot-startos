@@ -33,10 +33,13 @@ import { AlertConditionBands } from './AlertConditionBands';
 import { MarkerBeacon } from './MarkerBeacon';
 import {
   clientXToTickAt,
-  CrosshairReadout,
+  CrosshairReadoutLayer,
+  CrosshairSvgLayer,
   nearestTickIndex,
   useCrosshairPointer,
   type CrosshairReadoutRow,
+  type CrosshairState,
+  type CrosshairView,
   type SharedCrosshair,
 } from '../lib/chartCrosshair';
 import {
@@ -1603,10 +1606,10 @@ export const HashrateChart = memo(function HashrateChart({
   // Marker line position + readout rows at the snapped tick. Values
   // mirror what the chart draws: smoothed delivered, null-gapped
   // datum/ocean, and the active right-axis series via its own
-  // formatter. Hidden while panning.
-  const crosshairView = useMemo(() => {
-    const cs = crosshair?.state;
-    if (!cs || !chartData || isDragging) return null;
+  // formatter. Hidden while panning. Called by the subscription-backed
+  // crosshair layers, so pointer moves never re-render this chart.
+  const computeCrosshairView = useCallback((cs: CrosshairState): CrosshairView | null => {
+    if (!chartData || isDragging) return null;
     if (cs.tickAt < chartData.minX || cs.tickAt > chartData.maxX) return null;
     const i = nearestTickIndex(chartData.xs, cs.tickAt);
     if (i < 0) return null;
@@ -1646,7 +1649,7 @@ export const HashrateChart = memo(function HashrateChart({
     }
     const x = xScale(cs.tickAt);
     return { state: cs, x, lineXFrac: x / WIDTH, rows, dots };
-  }, [crosshair?.state, chartData, isDragging, denomination, intlLocale, _colorOverrides]);
+  }, [chartData, isDragging, denomination, intlLocale, _colorOverrides]);
 
   if (!chartData) {
     return (
@@ -1989,7 +1992,7 @@ export const HashrateChart = memo(function HashrateChart({
           idSuffix="hr"
           focusSpanOpenId={focusSpanOpenId}
           focusSpanEdge={focusSpanEdge}
-          hoverTickAt={crosshair?.state?.tickAt ?? null}
+          crosshair={crosshair}
           onSpanClick={onAlertSpanClick}
         />
         {/* #280: each series render is gated on its legend toggle. */}
@@ -2310,32 +2313,15 @@ export const HashrateChart = memo(function HashrateChart({
         </defs>
 
         {/* #257: crosshair marker line + per-series dots. Pinned
-            renders solid; transient hover renders dashed. */}
-        {crosshairView && (
-          <g pointerEvents="none">
-            <line
-              x1={crosshairView.x}
-              x2={crosshairView.x}
-              y1={PADDING.top}
-              y2={chartHeight - PADDING.bottom}
-              stroke="#94a3b8"
-              strokeWidth="1"
-              strokeDasharray={crosshairView.state.pinned ? undefined : '3 3'}
-              opacity={crosshairView.state.pinned ? 0.9 : 0.6}
-            />
-            {crosshairView.dots.map((d, di) => (
-              <circle
-                key={`xh-dot-${di}`}
-                cx={crosshairView.x}
-                cy={d.cy}
-                r="3"
-                fill={d.color}
-                stroke="#0f172a"
-                strokeWidth="1"
-              />
-            ))}
-          </g>
-        )}
+            renders solid; transient hover renders dashed. Subscribes
+            to the crosshair store itself - hover doesn't re-render
+            this chart. */}
+        <CrosshairSvgLayer
+          crosshair={crosshair}
+          computeView={computeCrosshairView}
+          topY={PADDING.top}
+          bottomY={chartHeight - PADDING.bottom}
+        />
         </g>
 
         <line
@@ -2443,21 +2429,18 @@ export const HashrateChart = memo(function HashrateChart({
       {/* #257: per-chart value readout for the crosshair. Suppressed
           while a marker hover-tooltip is open - markers win on direct
           hover (pinned marker tooltips coexist fine). */}
-      {crosshairView && !(
-        (blockTip !== null && !blockTip.pinned) ||
-        (retargetTip !== null && !retargetTip.pinned) ||
-        (stepTip !== null && !stepTip.pinned) ||
-        (ipChangeTip !== null && !ipChangeTip.pinned)
-      ) && (
-        <CrosshairReadout
-          chartId="hashrate"
-          state={crosshairView.state}
-          svgEl={svgElRef.current}
-          lineXFrac={crosshairView.lineXFrac}
-          rows={crosshairView.rows}
-          onClose={() => crosshair?.clear()}
-        />
-      )}
+      <CrosshairReadoutLayer
+        chartId="hashrate"
+        crosshair={crosshair}
+        computeView={computeCrosshairView}
+        suppressed={
+          (blockTip !== null && !blockTip.pinned) ||
+          (retargetTip !== null && !retargetTip.pinned) ||
+          (stepTip !== null && !stepTip.pinned) ||
+          (ipChangeTip !== null && !ipChangeTip.pinned)
+        }
+        svgRef={svgElRef}
+      />
       {blockTip && (
         <PoolBlockTooltip
           tip={blockTip}

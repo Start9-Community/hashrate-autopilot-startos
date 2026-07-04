@@ -48,10 +48,13 @@ import { type IpChangeMarkerEvent } from './IpChangeMarkers';
 import { applyExplorerTemplate } from '../lib/blockExplorer';
 import {
   clientXToTickAt,
-  CrosshairReadout,
+  CrosshairReadoutLayer,
+  CrosshairSvgLayer,
   nearestTickIndex,
   useCrosshairPointer,
   type CrosshairReadoutRow,
+  type CrosshairState,
+  type CrosshairView,
   type SharedCrosshair,
 } from '../lib/chartCrosshair';
 import { darkenHex, getChartColor, parseOverrides } from '../lib/chartColors';
@@ -2068,9 +2071,10 @@ export const PriceChart = memo(function PriceChart({
   // the smoothed series the chart draws; fillable / hashprice come
   // straight off the tick; cap is the per-tick effective cap; the
   // right-axis series formats through its own axis formatter.
-  const crosshairView = useMemo(() => {
-    const cs = crosshair?.state;
-    if (!cs || !chartData || isDragging) return null;
+  // Called by the subscription-backed crosshair layers, so pointer
+  // moves never re-render this chart.
+  const computeCrosshairView = useCallback((cs: CrosshairState): CrosshairView | null => {
+    if (!chartData || isDragging) return null;
     if (cs.tickAt < chartData.minX || cs.tickAt > chartData.maxX) return null;
     const i = nearestTickIndex(chartData.xs, cs.tickAt);
     if (i < 0) return null;
@@ -2110,7 +2114,7 @@ export const PriceChart = memo(function PriceChart({
     }
     const x = xScale(cs.tickAt);
     return { state: cs, x, lineXFrac: x / WIDTH, rows, dots };
-  }, [crosshair?.state, chartData, isDragging, points, denomination, intlLocale, _colorOverrides]);
+  }, [chartData, isDragging, points, denomination, intlLocale, _colorOverrides]);
 
   // #288: tell Status the focused marker is actually in the rendered
   // set so the beacon's clear countdown starts at render time, not
@@ -2546,7 +2550,7 @@ export const PriceChart = memo(function PriceChart({
           idSuffix="px"
           focusSpanOpenId={focusSpanOpenId}
           focusSpanEdge={focusSpanEdge}
-          hoverTickAt={crosshair?.state?.tickAt ?? null}
+          crosshair={crosshair}
           onSpanClick={onAlertSpanClick}
         />
         {capExclusionPolygon && !isHidden('maxBid') && (
@@ -3273,32 +3277,15 @@ export const PriceChart = memo(function PriceChart({
             IP rotation), not with the price-axis content. */}
 
         {/* #257: crosshair marker line + per-series dots. Pinned
-            renders solid; transient hover renders dashed. */}
-        {crosshairView && (
-          <g pointerEvents="none">
-            <line
-              x1={crosshairView.x}
-              x2={crosshairView.x}
-              y1={PADDING.top}
-              y2={chartHeight - PADDING.bottom}
-              stroke="#94a3b8"
-              strokeWidth="1"
-              strokeDasharray={crosshairView.state.pinned ? undefined : '3 3'}
-              opacity={crosshairView.state.pinned ? 0.9 : 0.6}
-            />
-            {crosshairView.dots.map((d, di) => (
-              <circle
-                key={`xh-dot-${di}`}
-                cx={crosshairView.x}
-                cy={d.cy}
-                r="3"
-                fill={d.color}
-                stroke="#0f172a"
-                strokeWidth="1"
-              />
-            ))}
-          </g>
-        )}
+            renders solid; transient hover renders dashed. Subscribes
+            to the crosshair store itself - hover doesn't re-render
+            this chart. */}
+        <CrosshairSvgLayer
+          crosshair={crosshair}
+          computeView={computeCrosshairView}
+          topY={PADDING.top}
+          bottomY={chartHeight - PADDING.bottom}
+        />
         </g>
 
         {hasRightAxis && rightAxis && (
@@ -3319,24 +3306,21 @@ export const PriceChart = memo(function PriceChart({
       {/* #257: per-chart value readout for the crosshair. Suppressed
           while a marker hover-tooltip is open - markers win on direct
           hover (pinned marker tooltips coexist fine). */}
-      {crosshairView && !(
-        (tooltip !== null && !tooltip.pinned) ||
-        (poolBlockTip !== null && !poolBlockTip.pinned) ||
-        (rewardTip !== null && !rewardTip.pinned) ||
-        (depositTip !== null && !depositTip.pinned) ||
-        (retargetTip !== null && !retargetTip.pinned) ||
-        (unpaidDropTip !== null && !unpaidDropTip.pinned) ||
-        (bootTip !== null && !bootTip.pinned)
-      ) && (
-        <CrosshairReadout
-          chartId="price"
-          state={crosshairView.state}
-          svgEl={svgElRef.current}
-          lineXFrac={crosshairView.lineXFrac}
-          rows={crosshairView.rows}
-          onClose={() => crosshair?.clear()}
-        />
-      )}
+      <CrosshairReadoutLayer
+        chartId="price"
+        crosshair={crosshair}
+        computeView={computeCrosshairView}
+        suppressed={
+          (tooltip !== null && !tooltip.pinned) ||
+          (poolBlockTip !== null && !poolBlockTip.pinned) ||
+          (rewardTip !== null && !rewardTip.pinned) ||
+          (depositTip !== null && !depositTip.pinned) ||
+          (retargetTip !== null && !retargetTip.pinned) ||
+          (unpaidDropTip !== null && !unpaidDropTip.pinned) ||
+          (bootTip !== null && !bootTip.pinned)
+        }
+        svgRef={svgElRef}
+      />
 
       {poolBlockTip && (
         <PoolBlockTooltip
