@@ -16,7 +16,7 @@ import {
 import { Bip110ScanCard } from '../components/Bip110ScanCard';
 import { SoloMinersCard } from '../components/SoloMinersCard';
 import { TilesBar } from '../components/TilesBar';
-import { parseDashboardTiles } from '@hashrate-autopilot/shared';
+import { parseDashboardTiles, type DashboardTileId } from '@hashrate-autopilot/shared';
 import { HashrateChart, type HashrateRightAxis } from '../components/HashrateChart';
 import { type PriceRightAxis } from '../components/PriceChart';
 import { PriceChart } from '../components/PriceChart';
@@ -80,6 +80,12 @@ const EMPTY_DEPOSITS: readonly never[] = Object.freeze([]) as readonly never[];
 const EMPTY_IP_CHANGES: readonly never[] = Object.freeze([]) as readonly never[];
 // #316: frozen sentinel for the alert-condition span prop.
 const EMPTY_ALERT_SPANS: readonly never[] = Object.freeze([]) as readonly never[];
+// Solo-mining props: with the master toggle off (the common case) an
+// inline `[]` fallback allocated per render sat in both charts'
+// chartData dep arrays, forcing the heaviest transform in the app to
+// recompute on every Status render.
+const EMPTY_SOLO_SERIES: readonly never[] = Object.freeze([]) as readonly never[];
+const EMPTY_BEST_DIFF_EVENTS: readonly never[] = Object.freeze([]) as readonly never[];
 
 // #93: per-chart secondary Y-axis selection, persisted per-browser.
 const HASHRATE_RIGHT_AXIS_KEY = 'hashrate-autopilot.hashrateRightAxis';
@@ -262,6 +268,12 @@ export function Status() {
   const [focusedMarker, setFocusedMarker] = useState<string | null>(null);
   // #316: pinned pop-up for a condition-band marker clicked on a chart.
   const [alertTip, setAlertTip] = useState<AlertSpanTooltipState | null>(null);
+  // Stable identity: an inline arrow here broke both charts' React.memo
+  // on every Status render (poll ticks + crosshair moves).
+  const handleAlertSpanClick = useCallback(
+    (span: AlertConditionInterval['span'], x: number, y: number) => setAlertTip({ span, x, y }),
+    [],
+  );
   const focusSpanClearTimer = useRef<number | null>(null);
   const focusBlockClearTimer = useRef<number | null>(null);
   const focusMarkerClearTimer = useRef<number | null>(null);
@@ -611,7 +623,7 @@ export function Status() {
     enabled: soloMiningEnabled,
     refetchInterval: vp.activePreset ? 60_000 : false,
   });
-  const soloSeries = soloMiningEnabled ? (soloSeriesQuery.data?.rows ?? []) : [];
+  const soloSeries = soloMiningEnabled ? (soloSeriesQuery.data?.rows ?? EMPTY_SOLO_SERIES) : EMPTY_SOLO_SERIES;
 
   const bestDiffEventsQuery = useQuery({
     queryKey: vp.activePreset
@@ -621,7 +633,37 @@ export function Status() {
     enabled: soloMiningEnabled,
     refetchInterval: vp.activePreset ? 60_000 : false,
   });
-  const bestDiffEvents = soloMiningEnabled ? (bestDiffEventsQuery.data?.events ?? []) : [];
+  const bestDiffEvents = soloMiningEnabled ? (bestDiffEventsQuery.data?.events ?? EMPTY_BEST_DIFF_EVENTS) : EMPTY_BEST_DIFF_EVENTS;
+
+  // Referentially-stable chart/tile props. Computed inline these
+  // produced a fresh array/closure per render, defeating React.memo
+  // on the charts and TilesBar (see the frozen-empty block up top).
+  const showEventKinds = useMemo(
+    () =>
+      vp.activePreset
+        ? CHART_RANGE_SPECS[vp.activePreset].showEventKinds
+        : showEventKindsForSpan(vp.until_ms - vp.since_ms),
+    [vp.activePreset, vp.until_ms, vp.since_ms],
+  );
+  const dashboardTilesJson = configQuery.data?.config?.dashboard_tiles;
+  const dashboardTileIds = useMemo(
+    () => parseDashboardTiles(dashboardTilesJson),
+    [dashboardTilesJson],
+  );
+  const configForTiles = configQuery.data?.config;
+  const handleTilesChange = useCallback((next: DashboardTileId[]) => {
+    // PATCH /api/config with the new tile list. Optimistic - we don't
+    // bounce the cache; React Query will refetch on the next interval.
+    // Persist failure surfaces in the existing config mutation error UI.
+    if (!configForTiles) return;
+    const cfg = {
+      ...configForTiles,
+      dashboard_tiles: JSON.stringify(next),
+    };
+    void api.updateConfig(cfg).then(() => {
+      qc.invalidateQueries({ queryKey: ['config'] });
+    });
+  }, [configForTiles, qc]);
 
   // Operator availability removed from the UI (API bids bypass 2FA;
   // see research.md §0.9). Backend field remains in case Braiins
@@ -904,26 +946,13 @@ export function Status() {
     ),
     indicators: (
       <TilesBar
-        tileIds={parseDashboardTiles(configQuery.data?.config?.dashboard_tiles)}
+        tileIds={dashboardTileIds}
         statsData={statsQuery.data}
         statusData={query.data}
         oceanData={oceanQuery.data}
         soloMinersData={soloMinersQuery.data}
         financeRangeData={financeRangeQuery.data}
-        onTilesChange={(next) => {
-          // PATCH /api/config with the new tile list. Optimistic
-          // - we don't bounce the cache; React Query will refetch
-          // - on the next interval. Persist failure surfaces in the
-          // - existing config mutation error UI.
-          if (!configQuery.data?.config) return;
-          const cfg = {
-            ...configQuery.data.config,
-            dashboard_tiles: JSON.stringify(next),
-          };
-          void api.updateConfig(cfg).then(() => {
-            qc.invalidateQueries({ queryKey: ['config'] });
-          });
-        }}
+        onTilesChange={handleTilesChange}
       />
     ),
     hashrate: (
@@ -975,7 +1004,7 @@ export function Status() {
           alertConditionIntervals={alertConditionIntervals}
           focusSpanOpenId={focusedSpanId}
           focusSpanEdge={focusedSpanEdge}
-          onAlertSpanClick={(span, x, y) => setAlertTip({ span, x, y })}
+          onAlertSpanClick={handleAlertSpanClick}
           viewportHandlers={chartViewport.handlers}
           wheelRef={chartViewport.wheelRef}
           isDragging={chartViewport.isDragging}
@@ -1024,9 +1053,7 @@ export function Status() {
           events={chartBidEvents}
           markersHiddenKind={markersHiddenKind}
           markersHiddenCount={markersHiddenCount}
-          showEventKinds={vp.activePreset
-            ? CHART_RANGE_SPECS[vp.activePreset].showEventKinds
-            : showEventKindsForSpan(vp.until_ms - vp.since_ms)}
+          showEventKinds={showEventKinds}
           maxOverpayVsHashpriceSatPerPhDay={s.config_summary.max_overpay_vs_hashprice_sat_per_ph_day}
           overpaySatPerPhDay={
             configQuery.data?.config?.overpay_sat_per_eh_day != null
@@ -1051,7 +1078,7 @@ export function Status() {
           alertConditionIntervals={alertConditionIntervals}
           focusSpanOpenId={focusedSpanId}
           focusSpanEdge={focusedSpanEdge}
-          onAlertSpanClick={(span, x, y) => setAlertTip({ span, x, y })}
+          onAlertSpanClick={handleAlertSpanClick}
           viewportHandlers={chartViewport.handlers}
           wheelRef={chartViewport.wheelRef}
           isDragging={chartViewport.isDragging}

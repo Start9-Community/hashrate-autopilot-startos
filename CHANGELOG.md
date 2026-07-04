@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-07-04
+
+### `[Perf]` Status page stops re-rendering the charts on every hover and poll tick
+
+Both charts are wrapped in React.memo, but several props (pointer handlers, solo-mining arrays, event-kind filters, inline callbacks) got a fresh identity on every Status render, so the memo never hit and the heaviest chart transforms recomputed at pointer-move frequency. Those props are now referentially stable, Intl.NumberFormat instances are cached instead of rebuilt per axis label, the tiles bar and chart marker layers only re-render when their data changes, and the locale context no longer invalidates all consumers on unrelated renders. Hovering, panning and live polling on the Status page now do a fraction of the work per frame.
+
 ## 2026-07-03
 
 ### `[Release]` v1.16.0

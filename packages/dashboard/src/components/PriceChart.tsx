@@ -60,6 +60,7 @@ import { copyToClipboard } from '../lib/clipboard';
 import { useDenomination } from '../lib/denomination';
 import { ReasonText } from './DenomUnit';
 import {
+  cachedNumberFormat,
   formatAgeMinutes,
   formatCompactNumber,
   formatDuration,
@@ -238,7 +239,7 @@ function formatSatCompact(
       return Math.max(base, spanDigits + 1);
     };
     const fmt = (decimals: number): string =>
-      new Intl.NumberFormat(locale, {
+      cachedNumberFormat(locale, {
         minimumFractionDigits: 0,
         maximumFractionDigits: decimals,
       }).format(btc);
@@ -908,7 +909,7 @@ export const PriceChart = memo(function PriceChart({
             stroke: COLOR_RIGHT_AXIS,
             axisLabel: 'effective (sat/PH/day)',
             formatTick: (v) =>
-              new Intl.NumberFormat(intlLocale, {
+              cachedNumberFormat(intlLocale, {
                 maximumFractionDigits: 0,
               }).format(v),
           };
@@ -931,7 +932,7 @@ export const PriceChart = memo(function PriceChart({
             formatTick: (v) => {
               const abs = Math.abs(v);
               const fmt = (x: number, d: number): string =>
-                new Intl.NumberFormat(intlLocale, {
+                cachedNumberFormat(intlLocale, {
                   minimumFractionDigits: d,
                   maximumFractionDigits: d,
                 }).format(x);
@@ -979,7 +980,7 @@ export const PriceChart = memo(function PriceChart({
             // fleets are typically 15-100W where kW scale would round
             // to zero.
             formatTick: (v) =>
-              `${new Intl.NumberFormat(intlLocale, { maximumFractionDigits: 1 }).format(v)} W`,
+              `${cachedNumberFormat(intlLocale, { maximumFractionDigits: 1 }).format(v)} W`,
           };
         }
         case 'lifetime_earnings_sat':
@@ -1001,7 +1002,7 @@ export const PriceChart = memo(function PriceChart({
             stroke: COLOR_RIGHT_AXIS,
             axisLabel: 'avg overpay intent (sat/PH/day)',
             formatTick: (v) =>
-              new Intl.NumberFormat(intlLocale, {
+              cachedNumberFormat(intlLocale, {
                 maximumFractionDigits: 0,
               }).format(v),
           };
@@ -1011,7 +1012,7 @@ export const PriceChart = memo(function PriceChart({
             stroke: COLOR_RIGHT_AXIS,
             axisLabel: 'avg overpay settled (sat/PH/day)',
             formatTick: (v) =>
-              new Intl.NumberFormat(intlLocale, {
+              cachedNumberFormat(intlLocale, {
                 maximumFractionDigits: 0,
               }).format(v),
           };
@@ -2169,7 +2170,7 @@ export const PriceChart = memo(function PriceChart({
       // Adaptive decimals - keep tick labels narrow without losing
       // legibility. Drop trailing zeros so "0,4840" reads as "0,484".
       const fmt = (decimals: number): string =>
-        new Intl.NumberFormat(intlLocale, {
+        cachedNumberFormat(intlLocale, {
           minimumFractionDigits: 0,
           maximumFractionDigits: decimals,
         }).format(btc);
@@ -3488,16 +3489,16 @@ function RewardEventTooltip({
   const btc = reward.value_sat / 1e8;
   const valueText =
     denomination.mode === 'usd' && denomination.btcPrice !== null
-      ? `$${new Intl.NumberFormat(locale, {
+      ? `$${cachedNumberFormat(locale, {
           minimumFractionDigits: 2,
           maximumFractionDigits: 2,
         }).format(btc * denomination.btcPrice)}`
       : denomination.mode === 'btc'
-        ? `₿ ${new Intl.NumberFormat(locale, {
+        ? `₿ ${cachedNumberFormat(locale, {
             minimumFractionDigits: 8,
             maximumFractionDigits: 8,
           }).format(btc)}`
-        : `${new Intl.NumberFormat(locale, {
+        : `${cachedNumberFormat(locale, {
             minimumFractionDigits: 0,
             maximumFractionDigits: 0,
           }).format(reward.value_sat)} sat`;
@@ -3681,16 +3682,16 @@ function DepositTooltip({
   const btc = deposit.amount_sat / 1e8;
   const valueText =
     denomination.mode === 'usd' && denomination.btcPrice !== null
-      ? `$${new Intl.NumberFormat(locale, {
+      ? `$${cachedNumberFormat(locale, {
           minimumFractionDigits: 2,
           maximumFractionDigits: 2,
         }).format(btc * denomination.btcPrice)}`
       : denomination.mode === 'btc'
-        ? `₿ ${new Intl.NumberFormat(locale, {
+        ? `₿ ${cachedNumberFormat(locale, {
             minimumFractionDigits: 8,
             maximumFractionDigits: 8,
           }).format(btc)}`
-        : `${new Intl.NumberFormat(locale, {
+        : `${cachedNumberFormat(locale, {
             minimumFractionDigits: 0,
             maximumFractionDigits: 0,
           }).format(deposit.amount_sat)} sat`;
@@ -4393,12 +4394,12 @@ function UnpaidDropTooltip({
   const formatVal = (sat: number) => {
     const btc = sat / 1e8;
     if (denomination.mode === 'usd' && denomination.btcPrice !== null) {
-      return `$${new Intl.NumberFormat(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(btc * denomination.btcPrice)}`;
+      return `$${cachedNumberFormat(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(btc * denomination.btcPrice)}`;
     }
     if (denomination.mode === 'btc') {
-      return `₿ ${new Intl.NumberFormat(locale, { minimumFractionDigits: 8, maximumFractionDigits: 8 }).format(btc)}`;
+      return `₿ ${cachedNumberFormat(locale, { minimumFractionDigits: 8, maximumFractionDigits: 8 }).format(btc)}`;
     }
-    return `${new Intl.NumberFormat(locale, { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(sat)} sat`;
+    return `${cachedNumberFormat(locale, { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(sat)} sat`;
   };
 
   return (

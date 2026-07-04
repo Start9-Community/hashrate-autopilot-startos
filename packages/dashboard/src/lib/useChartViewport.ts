@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   type ChartRange,
@@ -346,24 +346,30 @@ export function useChartViewport(): UseChartViewportReturn {
     return svgWidth * (rightFrac - leftFrac);
   }, []);
 
+  // Pointer handlers read viewport/updateViewport through refs (same
+  // pattern as the wheel handler above) so their identities - and the
+  // memoized `handlers` object below - stay stable across renders.
+  // Both charts are React.memo'd; a fresh handlers object per render
+  // would defeat that memo on every poll tick and crosshair move.
   const onPointerDown = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
     svgRef.current = e.currentTarget;
     if (e.button !== 0) return;
+    const vp = viewportRef.current;
     const ds = dataStartRef.current;
-    let effSince = viewport.since_ms;
+    let effSince = vp.since_ms;
     if (ds !== null && effSince < ds) {
-      const span = viewport.until_ms - ds;
+      const span = vp.until_ms - ds;
       effSince = Math.max(0, ds - span * 0.02);
     }
     dragStart.current = {
       clientX: e.clientX,
-      viewport,
+      viewport: vp,
       pointerId: e.pointerId,
       captured: false,
       dataWidthPx: computeDataWidthPx(e.currentTarget),
-      effectiveDuration: viewport.until_ms - effSince,
+      effectiveDuration: vp.until_ms - effSince,
     };
-  }, [viewport, computeDataWidthPx]);
+  }, [computeDataWidthPx]);
 
   const onPointerMove = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
     if (!dragStart.current) return;
@@ -392,20 +398,23 @@ export function useChartViewport(): UseChartViewportReturn {
     if (wasDrag) {
       e.currentTarget.releasePointerCapture(e.pointerId);
       const startVp = dragStart.current.viewport;
-      const live = isAtLiveEdge(viewport);
-      const vp: ViewportState = { ...viewport, activePreset: startVp.activePreset, liveEdge: live };
-      updateViewport(vp);
+      const current = viewportRef.current;
+      const live = isAtLiveEdge(current);
+      const vp: ViewportState = { ...current, activePreset: startVp.activePreset, liveEdge: live };
+      updateViewportRef.current(vp);
     } else if (!focusedRef.current) {
       focusedRef.current = true;
       setIsFocused(true);
     }
     dragStart.current = null;
     setIsDragging(false);
-  }, [viewport, updateViewport]);
+  }, []);
 
+  const goLiveRef = useRef(goLive);
+  goLiveRef.current = goLive;
   const onDoubleClick = useCallback(() => {
-    goLive();
-  }, [goLive]);
+    goLiveRef.current();
+  }, []);
 
   useEffect(() => {
     const blur = () => {
@@ -426,6 +435,11 @@ export function useChartViewport(): UseChartViewportReturn {
     };
   }, []);
 
+  const handlers = useMemo(
+    () => ({ onPointerDown, onPointerMove, onPointerUp, onDoubleClick }),
+    [onPointerDown, onPointerMove, onPointerUp, onDoubleClick],
+  );
+
   return {
     viewport,
     settledViewport,
@@ -435,7 +449,7 @@ export function useChartViewport(): UseChartViewportReturn {
     setDataStart,
     jumpToWindow,
     wheelRef,
-    handlers: { onPointerDown, onPointerMove, onPointerUp, onDoubleClick },
+    handlers,
     isDragging,
     isLiveEdge: viewport.liveEdge,
     isFocused,

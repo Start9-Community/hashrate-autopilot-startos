@@ -34,6 +34,29 @@ function defaultLocale(): Locale {
   return stored;
 }
 
+/**
+ * Cached Intl.NumberFormat instances. Construction costs ~50-200µs;
+ * axis labels and crosshair readouts format dozens of values per
+ * chart render, which happens at pointer-move frequency. Instances
+ * are immutable, so caching per locale+options is safe. The key
+ * space is bounded by the handful of distinct option sets used in
+ * the UI times the selectable locales.
+ */
+const numberFormatCache = new Map<string, Intl.NumberFormat>();
+
+export function cachedNumberFormat(
+  locale: Locale,
+  opts: Intl.NumberFormatOptions = {},
+): Intl.NumberFormat {
+  const key = `${locale ?? ''}|${JSON.stringify(opts)}`;
+  let fmt = numberFormatCache.get(key);
+  if (!fmt) {
+    fmt = new Intl.NumberFormat(locale, opts);
+    numberFormatCache.set(key, fmt);
+  }
+  return fmt;
+}
+
 function defaultDateLayout(): DateLayout {
   if (typeof window === 'undefined') return 'system';
   const stored = window.localStorage.getItem(DATE_LAYOUT_STORAGE_KEY);
@@ -81,7 +104,7 @@ export function formatNumber(
   opts: Intl.NumberFormatOptions = {},
   locale: Locale = defaultLocale(),
 ): string {
-  return new Intl.NumberFormat(locale, { maximumFractionDigits: 0, ...opts }).format(n);
+  return cachedNumberFormat(locale, { maximumFractionDigits: 0, ...opts }).format(n);
 }
 
 /**
@@ -113,7 +136,7 @@ export function formatCompactNumber(
   if (!Number.isFinite(n)) return '-';
   const abs = Math.abs(n);
   const fmt = (v: number, minDecimals: number, maxDecimals: number): string =>
-    new Intl.NumberFormat(locale, {
+    cachedNumberFormat(locale, {
       minimumFractionDigits: minDecimals,
       maximumFractionDigits: maxDecimals,
     }).format(v);
@@ -206,7 +229,7 @@ export function formatHashratePH(
   locale: Locale = defaultLocale(),
 ): string {
   if (n === null || n === undefined) return '-';
-  return `${new Intl.NumberFormat(locale, {
+  return `${cachedNumberFormat(locale, {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(n)} PH/s`;

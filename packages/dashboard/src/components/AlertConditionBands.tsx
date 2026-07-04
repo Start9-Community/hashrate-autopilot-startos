@@ -35,8 +35,13 @@ import {
   type ChartColorKey,
 } from '../lib/chartColors';
 import { formatDuration } from '../lib/format';
+import { memo } from 'react';
 
-export function AlertConditionBands({
+// memo: the parent chart re-renders at crosshair/poll frequency; the
+// band layer only needs to when its spans or scales change.
+export const AlertConditionBands = memo(AlertConditionBandsImpl);
+
+function AlertConditionBandsImpl({
   intervals,
   target,
   xScale,

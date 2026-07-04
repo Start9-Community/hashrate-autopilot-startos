@@ -10,7 +10,7 @@
 // handlers - the tooltip lives outside the SVG so the chart owns the
 // hovered-state machinery.
 
-import { useLayoutEffect, useRef, useState } from 'react';
+import { memo, useLayoutEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { t } from '@lingui/core/macro';
@@ -37,7 +37,11 @@ export interface IpChangeTooltipState {
 
 const DEFAULT_COLOR = '#38bdf8'; // sky-400: distinct from retarget purple / block gold
 
-export function IpChangeMarkers({
+// memo: the parent chart re-renders at crosshair/poll frequency; the
+// marker layer only needs to when its events or scales change.
+export const IpChangeMarkers = memo(IpChangeMarkersImpl);
+
+function IpChangeMarkersImpl({
   events,
   xScale,
   dataMinX,

@@ -54,6 +54,7 @@ import {
 import { darkenHex, getChartColor, parseOverrides } from '../lib/chartColors';
 import { useSeriesVisibility } from '../lib/seriesVisibility';
 import {
+  cachedNumberFormat,
   formatAgeMinutes,
   formatCompactNumber,
   formatDuration,
@@ -834,7 +835,7 @@ export const HashrateChart = memo(function HashrateChart({
           return {
             values: points.map((p) => p.share_log_pct),
             formatTick: (v) =>
-              `${new Intl.NumberFormat(intlLocale, {
+              `${cachedNumberFormat(intlLocale, {
                 minimumFractionDigits: 4,
                 maximumFractionDigits: 4,
               }).format(v)}%`,
@@ -949,7 +950,7 @@ export const HashrateChart = memo(function HashrateChart({
           return {
             values: points.map((p) => p[key]),
             formatTick: (v) =>
-              `${new Intl.NumberFormat(intlLocale, {
+              `${cachedNumberFormat(intlLocale, {
                 minimumFractionDigits: 2,
                 maximumFractionDigits: 2,
               }).format(v)}×`,
@@ -1041,7 +1042,7 @@ export const HashrateChart = memo(function HashrateChart({
           return {
             values,
             formatTick: (v) =>
-              `${new Intl.NumberFormat(intlLocale, {
+              `${cachedNumberFormat(intlLocale, {
                 minimumFractionDigits: 2,
                 maximumFractionDigits: 2,
               }).format(v)}%`,
@@ -2626,7 +2627,7 @@ export function PoolBlockTooltip({
       )}
 
       {tip.balance && (() => {
-        const nf = new Intl.NumberFormat(locale, { maximumFractionDigits: 0 });
+        const nf = cachedNumberFormat(locale, { maximumFractionDigits: 0 });
         const delta = tip.balance.after_sat - tip.balance.before_sat;
         return (
           <div className="mt-2 pt-2 border-t border-slate-800 space-y-0.5 text-slate-300">
@@ -2674,7 +2675,7 @@ export function PoolBlockTooltip({
             <div className="flex justify-between gap-3">
               <span className="text-slate-500"><Trans>share log</Trans></span>
               <span className="font-mono tabular-nums">
-                {new Intl.NumberFormat(locale, {
+                {cachedNumberFormat(locale, {
                   minimumFractionDigits: 4,
                   maximumFractionDigits: 4,
                 }).format(effective)}%
@@ -2761,7 +2762,7 @@ export function RetargetTooltip({
   }, [tip.x, tip.y, event.tick_at]);
 
   const pct = ((event.difficulty - event.previous) / event.previous) * 100;
-  const pctText = `${pct >= 0 ? '+' : ''}${new Intl.NumberFormat(locale, {
+  const pctText = `${pct >= 0 ? '+' : ''}${cachedNumberFormat(locale, {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(pct)}%`;
@@ -2776,7 +2777,7 @@ export function RetargetTooltip({
   });
   const hasLuck = event.luckBefore != null && event.luckAfter != null;
   const fmtLuck = (v: number) =>
-    new Intl.NumberFormat(locale, {
+    cachedNumberFormat(locale, {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     }).format(v);
@@ -2797,13 +2798,13 @@ export function RetargetTooltip({
   // gives H/s. Bitcoin's network is in the high-hundreds-of-EH range
   // at retarget time so always render EH/s with one decimal.
   const hashrateEHs = event.difficulty * 2 ** 32 / 600 / 1e18;
-  const hashrateText = new Intl.NumberFormat(locale, {
+  const hashrateText = cachedNumberFormat(locale, {
     minimumFractionDigits: 1,
     maximumFractionDigits: 1,
   }).format(hashrateEHs);
 
   const heightText = event.block_height !== null && event.block_height !== undefined
-    ? new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(event.block_height)
+    ? cachedNumberFormat(locale, { maximumFractionDigits: 0 }).format(event.block_height)
     : null;
 
   // #229: pool blocks Ocean found in the prior epoch. Hidden when
@@ -2814,7 +2815,7 @@ export function RetargetTooltip({
   const poolBlocksText = event.pool_blocks_prior_epoch !== null
       && event.pool_blocks_prior_epoch !== undefined
       && event.pool_blocks_prior_epoch > 0
-    ? new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(event.pool_blocks_prior_epoch)
+    ? cachedNumberFormat(locale, { maximumFractionDigits: 0 }).format(event.pool_blocks_prior_epoch)
     : null;
 
   return (
@@ -2922,7 +2923,7 @@ function BtcRow({
   locale: string | undefined;
   muted?: boolean;
 }) {
-  const text = new Intl.NumberFormat(locale, {
+  const text = cachedNumberFormat(locale, {
     minimumFractionDigits: 8,
     maximumFractionDigits: 8,
   }).format(btc);

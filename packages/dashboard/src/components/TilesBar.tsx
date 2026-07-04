@@ -33,7 +33,7 @@
 import { Trans } from '@lingui/react/macro';
 import { t } from '@lingui/core/macro';
 import { useLingui } from '@lingui/react';
-import { useMemo, useRef, useState, useEffect, useLayoutEffect } from 'react';
+import { memo, useMemo, useRef, useState, useEffect, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import {
   DndContext,
@@ -542,7 +542,11 @@ function UnitCaption({ unit }: { unit: string }) {
   return <>{localized}</>;
 }
 
-export function TilesBar({
+// memo: Status re-renders at crosshair/poll frequency; the tiles only
+// need to re-render when query data or the tile list actually changes.
+export const TilesBar = memo(TilesBarImpl);
+
+function TilesBarImpl({
   tileIds,
   statsData,
   statusData,
