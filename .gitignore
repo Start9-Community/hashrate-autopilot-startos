@@ -28,6 +28,7 @@ data/
 .cache/
 .tsbuildinfo
 *.tsbuildinfo
+.worktrees/
 
 # Vite / Vitest
 .vitest-cache/
