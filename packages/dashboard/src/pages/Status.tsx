@@ -1543,9 +1543,30 @@ function FitText({
       else setLocalScale(Math.max(minScale, ratio));
     };
     fit();
+    // Observe BOTH boxes. The outer catches column-width changes; the
+    // inner catches the content itself resizing after first paint -
+    // which is the whole bug on iOS Safari. There, the first
+    // measurement can run before the text has laid out at full width
+    // (natural <= avail => scale 1), and since the outer never changes
+    // it would never re-measure, leaving the value overflowing and
+    // clipping its last glyph (and the inline delta). Observing the
+    // inner re-fits the moment the real width materialises. Desktop
+    // Chrome/WebKit measure correctly on the first pass, which is why
+    // this only ever showed on device. A deferred pass + fonts.ready
+    // cover font-metric shifts that don't trip the observer.
     const ro = new ResizeObserver(fit);
     ro.observe(outer);
-    return () => ro.disconnect();
+    ro.observe(inner);
+    const raf = requestAnimationFrame(fit);
+    let cancelled = false;
+    if (typeof document !== 'undefined' && document.fonts?.ready) {
+      document.fonts.ready.then(() => { if (!cancelled) fit(); }).catch(() => undefined);
+    }
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(raf);
+      ro.disconnect();
+    };
   }, [children, minScale, group, id]);
 
   const scale = group && id ? group.scale : localScale;

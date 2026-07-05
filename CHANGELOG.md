@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-07-05
+
+### `[Fix]` Hero price/delivered no longer clip the last digit on iPad Safari (#325)
+
+The auto-fitting hero values could measure their width before the text finished laying out on iOS Safari, compute that no shrinking was needed, and then overflow once the real width materialised - clipping the last digit and pushing the +/- spread badge out of view. The auto-fit now re-measures when the content itself resizes (not only when the column does), so the right scale is applied as soon as the true width is known, and iOS text auto-inflation is disabled. Desktop was unaffected. Reproduced and fixed against the WebKit (Safari) engine.
+
 ## 2026-07-04
 
 ### `[Feature]` Pinch-to-zoom on charts for touch devices (#324)
