@@ -2,6 +2,14 @@
 
 ## 2026-07-04
 
+### `[UI]` All six default stat tiles fit one row on iPad
+
+On an iPad Pro in portrait the sixth tile (avg cost vs hashprice) wrapped onto a lonely second row. The tiles now shrink slightly so all six fit across one row at that width; wider screens are unchanged and narrower ones still reflow.
+
+### `[Fix]` Pool-block tooltip is fully interactive on touch, with a Timeline jump
+
+Tapping a pool-block marker on an iPad opened the tooltip in its hover state - no close button, no "View in timeline" jump, and the block-explorer link wasn't tappable - because iOS treats the first tap on a hover-revealing marker as a hover, not a click. A tap now pins the tooltip directly, so the full interactive panel (dismiss, block explorer, and the Timeline jump) is available on the first tap. Desktop click behavior is unchanged.
+
 ### `[Perf]` Small chart pans reuse cached data instead of refetching
 
 Releasing a chart pan snapped the fetch window to a fixed 5-second grid, so even a tiny nudge produced a brand-new data request across five queries. The snap now scales with the visible span (about 1% of it), so small back-and-forth pans land on the same cached window and render instantly. The chart itself still draws at exact pixel positions - the snap only affects what gets fetched.

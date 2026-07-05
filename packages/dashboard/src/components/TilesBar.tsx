@@ -634,7 +634,12 @@ function TilesBarImpl({
           items={effective as DashboardTileId[]}
           strategy={horizontalListSortingStrategy}
         >
-          <section className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(160px,1fr))] auto-rows-fr">
+          {/* minmax min at 150px so all six default tiles fit one row
+              on an iPad Pro portrait (~976px content = 6×152px), where
+              160px wrapped the sixth tile onto a lonely second row.
+              Wider screens still cap at the tile count; narrower ones
+              reflow. */}
+          <section className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(150px,1fr))] auto-rows-fr">
             {effective.map((id, idx) => (
               <TileSlot
                 key={id}

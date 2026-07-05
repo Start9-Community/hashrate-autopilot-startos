@@ -585,6 +585,22 @@ export const HashrateChart = memo(function HashrateChart({
     },
     [],
   );
+  // Touch tap = pin directly. iOS Safari suppresses the click on the
+  // first tap of a hover-revealing element (it treats it as the hover),
+  // so onClick never fired on touch and the tooltip stayed unpinned -
+  // no dismiss button, no "View in timeline" jump (both pinned-only),
+  // and pointer-events-none made the explorer link untappable too. Pin
+  // on pointerup for non-mouse pointers so a single tap gives the full
+  // interactive tooltip. Propagation is left intact so the chart's own
+  // viewport/crosshair pointerup still cleans up (a tap never crosses
+  // the drag threshold, so no pan and no crosshair pin result).
+  const onBlockTap = useCallback(
+    (block: OurBlockMarker) => (e: React.PointerEvent) => {
+      if (e.pointerType === 'mouse') return;
+      setBlockTip({ block, x: e.clientX, y: e.clientY, pinned: true });
+    },
+    [],
+  );
   const closeBlockTip = useCallback(() => setBlockTip(null), []);
 
   const onRetargetEnter = useCallback(
@@ -2147,6 +2163,7 @@ export const HashrateChart = memo(function HashrateChart({
                   onMouseEnter={onBlockEnter(b)}
                   onMouseLeave={onBlockLeave}
                   onClick={onBlockClick(b)}
+                  onPointerUp={onBlockTap(b)}
                   style={{ cursor: 'pointer' }}
                 >
                   <line

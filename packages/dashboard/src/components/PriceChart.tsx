@@ -1477,6 +1477,17 @@ export const PriceChart = memo(function PriceChart({
     },
     [],
   );
+  // Touch tap = pin directly (see the matching handler in HashrateChart):
+  // iOS suppresses the first-tap click on hover-revealing markers, so
+  // without this the block tooltip opened unpinned - no dismiss button
+  // and no "View in timeline" jump.
+  const onPoolBlockTap = useCallback(
+    (block: OurBlockMarker, balance?: PoolBlockTooltipState['balance']) => (e: React.PointerEvent) => {
+      if (e.pointerType === 'mouse') return;
+      setPoolBlockTip({ block, balance, x: e.clientX, y: e.clientY, pinned: true });
+    },
+    [],
+  );
   const closePoolBlockTip = useCallback(() => setPoolBlockTip(null), []);
 
   const onRetargetEnter = useCallback(
@@ -2979,6 +2990,7 @@ export const PriceChart = memo(function PriceChart({
               onMouseEnter={onPoolBlockEnter(b, balance ?? undefined)}
               onMouseLeave={onPoolBlockLeave}
               onClick={onPoolBlockClick(b, balance ?? undefined)}
+              onPointerUp={onPoolBlockTap(b, balance ?? undefined)}
               style={{ cursor: 'pointer' }}
             >
               {Math.abs(cx - blockCx) > 2 && (
@@ -3020,6 +3032,7 @@ export const PriceChart = memo(function PriceChart({
                 onMouseEnter={onPoolBlockEnter(b)}
                 onMouseLeave={onPoolBlockLeave}
                 onClick={onPoolBlockClick(b)}
+                onPointerUp={onPoolBlockTap(b)}
                 style={{ cursor: 'pointer' }}
               >
                 <line
