@@ -259,7 +259,7 @@ const EN: AlertCopy = {
   payout_initiated_title: ({ payout_btc }) =>
     `Payout initiated - ${payout_btc} BTC`,
   payout_initiated_body: ({ payout_sat, payout_btc, pre_drop_unpaid, residual_unpaid }) =>
-    `Ocean has debited your unpaid balance: ${pre_drop_unpaid} → ${residual_unpaid}. A payout of ~${payout_sat} sat (${payout_btc} BTC) has been initiated. On-chain confirmation follows; you'll get a second message when the transaction lands.`,
+    `Ocean has debited your unpaid balance: ${pre_drop_unpaid} → ${residual_unpaid}. A payout of ~${payout_sat} sat (${payout_btc} BTC) has been initiated. This reflects Ocean's own report of the debit; it doesn't distinguish an on-chain from a Lightning payout.`,
   payout_confirmed_title: ({ payout_btc }) =>
     `Payout confirmed on-chain - ${payout_btc} BTC`,
   payout_confirmed_body: ({ payout_sat, payout_btc, height }) =>
@@ -387,7 +387,7 @@ const NL: AlertCopy = {
   payout_initiated_title: ({ payout_btc }) =>
     `Uitbetaling gestart - ${payout_btc} BTC`,
   payout_initiated_body: ({ payout_sat, payout_btc, pre_drop_unpaid, residual_unpaid }) =>
-    `Ocean heeft je unpaid-saldo gedebiteerd: ${pre_drop_unpaid} → ${residual_unpaid}. Een uitbetaling van ~${payout_sat} sat (${payout_btc} BTC) is gestart. On-chain bevestiging volgt; je krijgt een tweede bericht zodra de transactie landt.`,
+    `Ocean heeft je unpaid-saldo gedebiteerd: ${pre_drop_unpaid} → ${residual_unpaid}. Een uitbetaling van ~${payout_sat} sat (${payout_btc} BTC) is gestart. Dit is Ocean's eigen melding van de debitering; het maakt geen onderscheid tussen een on-chain- en een Lightning-uitbetaling.`,
   payout_confirmed_title: ({ payout_btc }) =>
     `Uitbetaling bevestigd on-chain - ${payout_btc} BTC`,
   payout_confirmed_body: ({ payout_sat, payout_btc, height }) =>
@@ -516,7 +516,7 @@ const ES: AlertCopy = {
   payout_initiated_title: ({ payout_btc }) =>
     `Pago iniciado - ${payout_btc} BTC`,
   payout_initiated_body: ({ payout_sat, payout_btc, pre_drop_unpaid, residual_unpaid }) =>
-    `Ocean ha debitado tu saldo no pagado: ${pre_drop_unpaid} → ${residual_unpaid}. Un pago de ~${payout_sat} sat (${payout_btc} BTC) se ha iniciado. La confirmación en cadena seguirá; recibirás un segundo mensaje cuando la transacción aterrice.`,
+    `Ocean ha debitado tu saldo no pagado: ${pre_drop_unpaid} → ${residual_unpaid}. Un pago de ~${payout_sat} sat (${payout_btc} BTC) se ha iniciado. Esto refleja el propio informe de Ocean de la debitación; no distingue entre un pago on-chain y uno por Lightning.`,
   payout_confirmed_title: ({ payout_btc }) =>
     `Pago confirmado on-chain - ${payout_btc} BTC`,
   payout_confirmed_body: ({ payout_sat, payout_btc, height }) =>

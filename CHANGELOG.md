@@ -2,6 +2,10 @@
 
 ## 2026-07-04
 
+### `[Fix]` "Payout initiated" alert no longer promises an on-chain confirmation (#323)
+
+This alert fires when Ocean debits your unpaid balance, which is an off-chain signal that doesn't reveal whether the payout went out on-chain or via Lightning. It previously said "on-chain confirmation follows; you'll get a second message when the transaction lands" - a promise that never came true for Lightning payouts. It now simply states it reflects Ocean's own report of the debit, without claiming what happens next.
+
 ### `[UI]` BTC amounts drop trailing zeros; hero values never clip the last digit
 
 BTC-denominated rates were padded to a fixed eight decimals, so the hero price and the avg-cost-vs-hashprice tile showed noise like "0,48108000" and "0,00921000". They now strip the trailing zeros ("0,48108", "0,00921") while still expanding to full satoshi precision for tiny values. Also tightened the hero auto-fit so a scaled value keeps a small margin from the column edge - the delivered number could otherwise lose its last digit to a one-pixel rounding clip in some unit combinations.
