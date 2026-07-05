@@ -2,6 +2,10 @@
 
 ## 2026-07-04
 
+### `[UI]` BTC amounts drop trailing zeros; hero values never clip the last digit
+
+BTC-denominated rates were padded to a fixed eight decimals, so the hero price and the avg-cost-vs-hashprice tile showed noise like "0,48108000" and "0,00921000". They now strip the trailing zeros ("0,48108", "0,00921") while still expanding to full satoshi precision for tiny values. Also tightened the hero auto-fit so a scaled value keeps a small margin from the column edge - the delivered number could otherwise lose its last digit to a one-pixel rounding clip in some unit combinations.
+
 ### `[UI]` Hero price/delivered card looks right in every unit combination
 
 The big PRICE and DELIVERED numbers at the top of the Status page kept a fixed font size, so long values in some unit combinations overflowed and collided - USD in EH mode ("$30.259,60"), BTC in PH mode ("0,00048252"), and the spread badge that sits next to the price. The two numbers now auto-fit their columns and share one size, so any combination of hashrate unit (TH/PH/EH) and denomination (sats/BTC/USD) stays on one clean line with the values matched. Also fixed the spread badge showing a stray "/TH/day" (or "/EH/day") tail in USD mode - it only stripped the "/PH/day" form before.

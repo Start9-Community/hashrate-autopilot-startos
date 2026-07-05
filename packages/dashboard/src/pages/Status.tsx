@@ -1535,7 +1535,10 @@ function FitText({
       const avail = outer.clientWidth;
       const natural = inner.scrollWidth; // unaffected by the transform
       if (avail <= 0 || natural <= 0) return;
-      const ratio = Math.min(1, avail / natural);
+      // 4px safety so a scaled value never lands exactly on the edge
+      // (transform-origin center + sub-pixel rounding otherwise clips
+      // the last glyph by a pixel). Only bites when actually shrinking.
+      const ratio = Math.min(1, (avail - 4) / natural);
       if (group && id) group.register(id, ratio);
       else setLocalScale(Math.max(minScale, ratio));
     };

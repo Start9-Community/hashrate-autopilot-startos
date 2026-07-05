@@ -259,6 +259,13 @@ export function DenominationProvider({ children }: { children: ReactNode }) {
     const nfUsd = new Intl.NumberFormat(defaultLocale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const nfBtc8 = new Intl.NumberFormat(defaultLocale, { minimumFractionDigits: 8, maximumFractionDigits: 8 });
     const nfBtc4 = new Intl.NumberFormat(defaultLocale, { minimumFractionDigits: 4, maximumFractionDigits: 4 });
+    // BTC-denominated *rates* (₿/PH/day etc.): show satoshi-level
+    // precision when the value needs it (0,00000049) but strip the
+    // trailing zeros that padded short values to 8 decimals
+    // (0,48108000 -> 0,48108), which read as noise and widened the
+    // hero / tiles. Keep at least 2 decimals so a round rate still
+    // looks like a fraction (0,50 not 0,5).
+    const nfBtcRate = new Intl.NumberFormat(defaultLocale, { minimumFractionDigits: 2, maximumFractionDigits: 8 });
     const rateDigits = hashrateUnit === 'TH' ? 3 : 0;
     const nfRate = new Intl.NumberFormat(defaultLocale, { minimumFractionDigits: rateDigits, maximumFractionDigits: rateDigits });
     const hrDigits = hashrateUnit === 'TH' ? 1 : hashrateUnit === 'EH' ? 5 : 2;
@@ -298,7 +305,7 @@ export function DenominationProvider({ children }: { children: ReactNode }) {
       }
       if (effectiveMode === 'btc') {
         const btcRate = scaled / SAT_PER_BTC;
-        return `${(pickNf(nfBtc8, locale) ?? new Intl.NumberFormat(locale, { minimumFractionDigits: 8, maximumFractionDigits: 8 })).format(btcRate)} ₿/${hashrateUnit}/day`;
+        return `${(pickNf(nfBtcRate, locale) ?? new Intl.NumberFormat(locale, { minimumFractionDigits: 2, maximumFractionDigits: 8 })).format(btcRate)} ₿/${hashrateUnit}/day`;
       }
       return `${(pickNf(nfRate, locale) ?? new Intl.NumberFormat(locale, { minimumFractionDigits: rateDigits, maximumFractionDigits: rateDigits })).format(scaled)} sat/${hashrateUnit}/day`;
     };
@@ -313,7 +320,7 @@ export function DenominationProvider({ children }: { children: ReactNode }) {
         return (pickNf(nfUsd, locale) ?? new Intl.NumberFormat(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })).format(satToUsd(scaled, btcPrice));
       }
       if (effectiveMode === 'btc') {
-        return (pickNf(nfBtc8, locale) ?? new Intl.NumberFormat(locale, { minimumFractionDigits: 8, maximumFractionDigits: 8 })).format(scaled / SAT_PER_BTC);
+        return (pickNf(nfBtcRate, locale) ?? new Intl.NumberFormat(locale, { minimumFractionDigits: 2, maximumFractionDigits: 8 })).format(scaled / SAT_PER_BTC);
       }
       return (pickNf(nfRate, locale) ?? new Intl.NumberFormat(locale, { minimumFractionDigits: rateDigits, maximumFractionDigits: rateDigits })).format(scaled);
     };
