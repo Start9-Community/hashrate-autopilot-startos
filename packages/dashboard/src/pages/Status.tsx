@@ -2,7 +2,7 @@ import { Trans } from '@lingui/react/macro';
 import { t } from '@lingui/core/macro';
 import { useLingui } from '@lingui/react';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 import {
@@ -1482,6 +1482,89 @@ const heroColors: Record<StatusResponse['run_mode'], string> = {
 };
 
 /**
+ * Auto-fit machinery for the hero PRICE / DELIVERED values. They swing
+ * wildly in length across the unit toggles - "48.206" in sats/PH but
+ * "$30.599,60" in USD/EH or "0,00048252" in BTC/PH - and a fixed font
+ * size overflowed the column and collided with the neighbouring value.
+ *
+ * Each FitText measures its unscaled natural width (CSS transforms
+ * don't affect scrollWidth) against its column. Inside a FitGroup the
+ * group takes the *smallest* fitting ratio and applies it to every
+ * member, so the two hero numbers always render at the same size -
+ * matched and centered - instead of one large and one shrunk.
+ */
+interface FitGroupCtx {
+  register: (id: string, ratio: number) => void;
+  scale: number;
+}
+const FitGroupContext = createContext<FitGroupCtx | null>(null);
+
+function FitGroup({ children, minScale = 0.5 }: { children: ReactNode; minScale?: number }) {
+  const [ratios, setRatios] = useState<Record<string, number>>({});
+  const register = useCallback((id: string, ratio: number) => {
+    setRatios((prev) => (prev[id] === ratio ? prev : { ...prev, [id]: ratio }));
+  }, []);
+  const values = Object.values(ratios);
+  const scale = values.length ? Math.max(minScale, Math.min(1, ...values)) : 1;
+  const ctx = useMemo(() => ({ register, scale }), [register, scale]);
+  return <FitGroupContext.Provider value={ctx}>{children}</FitGroupContext.Provider>;
+}
+
+function FitText({
+  id,
+  children,
+  className,
+  minScale = 0.5,
+}: {
+  /** Stable id within a FitGroup so members share one scale. */
+  id?: string;
+  children: ReactNode;
+  className?: string;
+  minScale?: number;
+}) {
+  const group = useContext(FitGroupContext);
+  const outerRef = useRef<HTMLDivElement>(null);
+  const innerRef = useRef<HTMLDivElement>(null);
+  const [localScale, setLocalScale] = useState(1);
+
+  useLayoutEffect(() => {
+    const outer = outerRef.current;
+    const inner = innerRef.current;
+    if (!outer || !inner) return;
+    const fit = () => {
+      const avail = outer.clientWidth;
+      const natural = inner.scrollWidth; // unaffected by the transform
+      if (avail <= 0 || natural <= 0) return;
+      const ratio = Math.min(1, avail / natural);
+      if (group && id) group.register(id, ratio);
+      else setLocalScale(Math.max(minScale, ratio));
+    };
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(outer);
+    return () => ro.disconnect();
+  }, [children, minScale, group, id]);
+
+  const scale = group && id ? group.scale : localScale;
+
+  return (
+    <div ref={outerRef} className={className} style={{ overflow: 'hidden', textAlign: 'center' }}>
+      <div
+        ref={innerRef}
+        style={{
+          display: 'inline-block',
+          whiteSpace: 'nowrap',
+          transform: `scale(${scale})`,
+          transformOrigin: 'center',
+        }}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+/**
  * Pick the price (sat/PH/day) to display in the hero card from a
  * StatusResponse. We want the *current bid*, not the realised
  * effective rate (#69) - the latter is a per-tick measurement
@@ -1556,46 +1639,47 @@ function OperationsCard({
         // price (e.g. "0,00046582" - much longer than the sat
         // equivalent "46.582") has the full card width and doesn't
         // collide with the DELIVERED column on iPhone.
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 w-full">
+        <FitGroup>
+        {/* Asymmetric split: PRICE is the variable-length value (up to
+            ~10 digits + delta in BTC/USD) while DELIVERED is always
+            short (~"3,32"), so PRICE gets the wider column and the two
+            auto-fit to a shared, larger scale. */}
+        <div className="grid grid-cols-1 sm:grid-cols-[3fr_2fr] gap-4 sm:gap-5 w-full min-w-0">
           <Tooltip text={t`Current owned-bid price (sat/PH/day). Under pay-your-bid this is exactly what Braiins charges per delivered EH-day - the live price you're paying. The plus/minus next to it is the spread vs Ocean's spot hashprice (positive = paying above break-even, negative = below). For the spend-weighted average paid across the selected chart range (handy when the bid moved during the window), see the AVG COST / PH DELIVERED stats card.`}>
-            <div className="flex flex-col items-center cursor-help">
+            <div className="flex flex-col items-center cursor-help min-w-0">
               <div className="text-[11px] uppercase tracking-wider text-slate-100 mb-1"><Trans>price</Trans></div>
-              {/* #268: number + delta badge.
-                  - On sm+ (>=640px): the wrapper is `relative` and the
-                    badge is position:absolute outside the flow so the
-                    big number stays centered regardless of badge width.
-                  - On mobile (<sm): the wrapper is a flex-col so the
-                    badge falls BELOW the number. The absolute path
-                    overflowed the card on iPhone in BTC mode, where
-                    the longer number (10 chars vs ~6 in sat mode)
-                    pushed the badge past the right edge. */}
-              <div className="leading-none flex flex-col items-center sm:block sm:relative">
-                <span className="text-3xl sm:text-4xl font-mono font-semibold text-slate-100 tabular-nums">
-                  {(() => {
-                    // Route through the same formatter the muted subtitle
-                    // uses, then drop the unit. The full formatter returns
-                    // "{value} sat/EH/day" / "{value} BTC/PH/day" / "$X/TH/day"
-                    // depending on the toggles; the suffix is rendered just
-                    // below as <SatSymbol/> / "$" / "BTC" + the per-unit-day
-                    // tail, so the big number must show only the value.
-                    const full = denomination.formatSatPerPhDay(
-                      currentPricePH,
-                      intlLocale,
-                    );
-                    const sp = full.lastIndexOf(' ');
-                    if (sp > 0) return full.slice(0, sp);
-                    const m = full.match(/^(.+?)\/(?:TH|PH|EH)\/day$/);
-                    return m?.[1] ?? full;
-                  })()}
-                </span>
-                <span className="mt-1 sm:mt-0 sm:absolute sm:left-full sm:top-1/2 sm:-translate-y-1/2 sm:ml-1.5 whitespace-nowrap">
+              {/* The big value + its spread-vs-hashprice delta are one
+                  inline unit, auto-fitted to the column so any
+                  unit/locale combination (short sats vs long USD/BTC)
+                  stays on one centered line and never collides with the
+                  DELIVERED column. */}
+              <FitText id="price" className="w-full leading-none">
+                <span className="inline-flex items-baseline gap-1.5">
+                  <span className="text-4xl font-mono font-semibold text-slate-100 tabular-nums">
+                    {(() => {
+                      // Route through the same formatter the muted subtitle
+                      // uses, then drop the unit. The full formatter returns
+                      // "{value} sat/EH/day" / "{value} BTC/PH/day" / "$X/TH/day"
+                      // depending on the toggles; the suffix is rendered just
+                      // below as <SatSymbol/> / "$" / "BTC" + the per-unit-day
+                      // tail, so the big number must show only the value.
+                      const full = denomination.formatSatPerPhDay(
+                        currentPricePH,
+                        intlLocale,
+                      );
+                      const sp = full.lastIndexOf(' ');
+                      if (sp > 0) return full.slice(0, sp);
+                      const m = full.match(/^(.+?)\/(?:TH|PH|EH)\/day$/);
+                      return m?.[1] ?? full;
+                    })()}
+                  </span>
                   <PriceDeltaVsHashprice
                     currentPH={currentPricePH}
                     hashpricePH={hashpricePH}
                     intlLocale={intlLocale}
                   />
                 </span>
-              </div>
+              </FitText>
               <div className="text-xs text-slate-400 mt-1">
                 {(() => {
                   // Strip the leading currency token (we render <SatSymbol/> /
@@ -1626,19 +1710,22 @@ function OperationsCard({
           <Tooltip
             text={t`Braiins's own \`state_estimate.avg_speed_ph\` reading - their internal estimate of current matched hashrate. Reacts to a CREATE_BID / EDIT_SPEED within ~3 min. The orange "delivered (Braiins)" line on the Hashrate chart below plots a different signal: real billed PH/s derived from the consumed-sat counter (Δconsumed / (bid × Δt)). That counter signal is the truthful long-run billing record but takes longer to catch up to a capacity bump because matched shares have to accumulate. During a Datum outage the counter goes to zero correctly while this estimate holds elevated for minutes - that's why the chart uses the counter signal.`}
           >
-            <div className="flex flex-col items-center">
+            <div className="flex flex-col items-center min-w-0">
               <div className="text-[11px] uppercase tracking-wider text-slate-100 mb-1"><Trans>delivered</Trans></div>
-              <div className={`text-3xl sm:text-4xl font-mono font-semibold tabular-nums leading-none ${deliveredColor}`}>
-                {(() => {
-                  const hr = denomination.formatHashrate(s.actual_hashrate_ph, intlLocale);
-                  const split = splitUnit(hr);
-                  return split ? split.num : hr;
-                })()}
-              </div>
+              <FitText id="delivered" className="w-full leading-none">
+                <span className={`text-4xl font-mono font-semibold tabular-nums ${deliveredColor}`}>
+                  {(() => {
+                    const hr = denomination.formatHashrate(s.actual_hashrate_ph, intlLocale);
+                    const split = splitUnit(hr);
+                    return split ? split.num : hr;
+                  })()}
+                </span>
+              </FitText>
               <div className="text-xs text-slate-400 mt-1">{denomination.hashrateSuffix}</div>
             </div>
           </Tooltip>
         </div>
+        </FitGroup>
       ) : (
         <div className="flex flex-col items-center">
           <div className="text-3xl font-mono text-slate-500">-</div>
@@ -1902,7 +1989,7 @@ function PriceDeltaVsHashprice({
     <Tooltip text={tooltip}>
       <span className={`text-xs font-mono ${color} cursor-help`}>
         {sign}{denomination.mode === 'usd' && denomination.btcPrice
-          ? denomination.formatSatPerPhDay(Math.abs(delta)).replace(/\/PH\/day$/, '')
+          ? denomination.formatSatPerPhDay(Math.abs(delta)).replace(/\/(?:TH|PH|EH)\/day$/, '')
           : formatNumber(Math.abs(delta), {}, intlLocale)}
       </span>
     </Tooltip>

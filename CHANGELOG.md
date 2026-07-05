@@ -2,6 +2,10 @@
 
 ## 2026-07-04
 
+### `[UI]` Hero price/delivered card looks right in every unit combination
+
+The big PRICE and DELIVERED numbers at the top of the Status page kept a fixed font size, so long values in some unit combinations overflowed and collided - USD in EH mode ("$30.259,60"), BTC in PH mode ("0,00048252"), and the spread badge that sits next to the price. The two numbers now auto-fit their columns and share one size, so any combination of hashrate unit (TH/PH/EH) and denomination (sats/BTC/USD) stays on one clean line with the values matched. Also fixed the spread badge showing a stray "/TH/day" (or "/EH/day") tail in USD mode - it only stripped the "/PH/day" form before.
+
 ### `[UI]` All six default stat tiles fit one row on iPad
 
 On an iPad Pro in portrait the sixth tile (avg cost vs hashprice) wrapped onto a lonely second row. The tiles now shrink slightly so all six fit across one row at that width; wider screens are unchanged and narrower ones still reflow.
