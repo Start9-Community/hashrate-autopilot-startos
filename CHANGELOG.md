@@ -2,6 +2,10 @@
 
 ## 2026-07-05
 
+### `[Fix]` Hero auto-fit uses real grid items so iPad Safari constrains the width (#325)
+
+Follow-up on the iPad hero clipping. The two hero columns were laid out with a Tooltip wrapper as the direct grid item, and its `display: contents` mis-sizes the grid track on iOS Safari - so the auto-fit measured a column wider than what actually rendered and never shrank, clipping the value on device while every headless engine measured it correctly. The columns are now real constrained `<div>` grid items. A temporary `?fitdebug=1` readout was added to surface the measured widths on-device.
+
 ### `[Fix]` Hero price/delivered no longer clip the last digit on iPad Safari (#325)
 
 The auto-fitting hero values could measure their width before the text finished laying out on iOS Safari, compute that no shrinking was needed, and then overflow once the real width materialised - clipping the last digit and pushing the +/- spread badge out of view. The auto-fit now re-measures when the content itself resizes (not only when the column does), so the right scale is applied as soon as the true width is known, and iOS text auto-inflation is disabled. Desktop was unaffected. Reproduced and fixed against the WebKit (Safari) engine.

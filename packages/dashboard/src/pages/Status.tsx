@@ -1499,6 +1499,13 @@ interface FitGroupCtx {
 }
 const FitGroupContext = createContext<FitGroupCtx | null>(null);
 
+// Temporary on-device diagnostic: load the dashboard with `?fitdebug=1`
+// to render each auto-fit value's measured available/natural width and
+// scale beneath it. Lets the operator screenshot the real iPad numbers
+// instead of us guessing why a value clips there but not in any
+// headless engine. Safe to leave in (no-op without the query param).
+const FIT_DEBUG = typeof window !== 'undefined' && /[?&]fitdebug/.test(window.location.search);
+
 function FitGroup({ children, minScale = 0.5 }: { children: ReactNode; minScale?: number }) {
   const [ratios, setRatios] = useState<Record<string, number>>({});
   const register = useCallback((id: string, ratio: number) => {
@@ -1526,6 +1533,7 @@ function FitText({
   const outerRef = useRef<HTMLDivElement>(null);
   const innerRef = useRef<HTMLDivElement>(null);
   const [localScale, setLocalScale] = useState(1);
+  const [dbg, setDbg] = useState<string | null>(null);
 
   useLayoutEffect(() => {
     const outer = outerRef.current;
@@ -1539,6 +1547,7 @@ function FitText({
       // (transform-origin center + sub-pixel rounding otherwise clips
       // the last glyph by a pixel). Only bites when actually shrinking.
       const ratio = Math.min(1, (avail - 4) / natural);
+      if (FIT_DEBUG) setDbg(`${id ?? '-'} a${Math.round(avail)}/n${Math.round(natural)}/r${ratio.toFixed(2)}`);
       if (group && id) group.register(id, ratio);
       else setLocalScale(Math.max(minScale, ratio));
     };
@@ -1572,19 +1581,24 @@ function FitText({
   const scale = group && id ? group.scale : localScale;
 
   return (
-    <div ref={outerRef} className={className} style={{ overflow: 'hidden', textAlign: 'center' }}>
-      <div
-        ref={innerRef}
-        style={{
-          display: 'inline-block',
-          whiteSpace: 'nowrap',
-          transform: `scale(${scale})`,
-          transformOrigin: 'center',
-        }}
-      >
-        {children}
+    <>
+      <div ref={outerRef} className={className} style={{ overflow: 'hidden', textAlign: 'center' }}>
+        <div
+          ref={innerRef}
+          style={{
+            display: 'inline-block',
+            whiteSpace: 'nowrap',
+            transform: `scale(${scale})`,
+            transformOrigin: 'center',
+          }}
+        >
+          {children}
+        </div>
       </div>
-    </div>
+      {FIT_DEBUG && dbg && (
+        <div className="text-[9px] leading-tight text-amber-400 font-mono">{dbg} s{scale.toFixed(2)}</div>
+      )}
+    </>
   );
 }
 
@@ -1669,6 +1683,13 @@ function OperationsCard({
             short (~"3,32"), so PRICE gets the wider column and the two
             auto-fit to a shared, larger scale. */}
         <div className="grid grid-cols-1 sm:grid-cols-[3fr_2fr] gap-4 sm:gap-5 w-full min-w-0">
+          {/* Real <div> grid items (min-w-0) so the 3fr/2fr tracks
+              actually constrain the FitText width on iOS Safari. A
+              display:contents Tooltip as the direct grid item mis-sizes
+              the track there, so the auto-fit measured a too-wide
+              column and never shrank - clipping the value on device
+              while every headless engine measured correctly. */}
+          <div className="min-w-0">
           <Tooltip text={t`Current owned-bid price (sat/PH/day). Under pay-your-bid this is exactly what Braiins charges per delivered EH-day - the live price you're paying. The plus/minus next to it is the spread vs Ocean's spot hashprice (positive = paying above break-even, negative = below). For the spend-weighted average paid across the selected chart range (handy when the bid moved during the window), see the AVG COST / PH DELIVERED stats card.`}>
             <div className="flex flex-col items-center cursor-help min-w-0">
               <div className="text-[11px] uppercase tracking-wider text-slate-100 mb-1"><Trans>price</Trans></div>
@@ -1731,6 +1752,8 @@ function OperationsCard({
               </div>
             </div>
           </Tooltip>
+          </div>
+          <div className="min-w-0">
           <Tooltip
             text={t`Braiins's own \`state_estimate.avg_speed_ph\` reading - their internal estimate of current matched hashrate. Reacts to a CREATE_BID / EDIT_SPEED within ~3 min. The orange "delivered (Braiins)" line on the Hashrate chart below plots a different signal: real billed PH/s derived from the consumed-sat counter (Δconsumed / (bid × Δt)). That counter signal is the truthful long-run billing record but takes longer to catch up to a capacity bump because matched shares have to accumulate. During a Datum outage the counter goes to zero correctly while this estimate holds elevated for minutes - that's why the chart uses the counter signal.`}
           >
@@ -1748,6 +1771,7 @@ function OperationsCard({
               <div className="text-xs text-slate-400 mt-1">{denomination.hashrateSuffix}</div>
             </div>
           </Tooltip>
+          </div>
         </div>
         </FitGroup>
       ) : (
