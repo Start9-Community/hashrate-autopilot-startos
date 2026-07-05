@@ -2,6 +2,10 @@
 
 ## 2026-07-04
 
+### `[Feature]` Pinch-to-zoom on charts for touch devices (#324)
+
+On iPad and iPhone you can now pinch the Hashrate and Price charts to zoom the time axis: spread two fingers to zoom in, bring them together to zoom out, anchored under the pinch midpoint. Zoom was previously mouse-wheel only, so touch devices could pan but not zoom.
+
 ### `[Fix]` "Payout initiated" alert no longer promises an on-chain confirmation (#323)
 
 This alert fires when Ocean debits your unpaid balance, which is an off-chain signal that doesn't reveal whether the payout went out on-chain or via Lightning. It previously said "on-chain confirmation follows; you'll get a second message when the transaction lands" - a promise that never came true for Lightning payouts. It now simply states it reflects Ocean's own report of the debit, without claiming what happens next.
