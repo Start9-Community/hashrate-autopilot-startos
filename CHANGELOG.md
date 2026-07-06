@@ -2,6 +2,10 @@
 
 ## 2026-07-06
 
+### `[UI]` Pool blocks 30d tile is colored by pool luck
+
+The POOL BLOCKS 30D stat tile was always neutral, but a raw block count only means something relative to what's expected. It now colors by the 30-day pool luck (actual ÷ expected): green at or above par (>=1.0), amber in the 0.9-1.0 approach, red below 0.9.
+
 ### `[UI]` Wallet runway tile turns amber later - a two-week runway is green now
 
 The WALLET RUNWAY stat tile now colors green at 3+ days (matching the default runway alert threshold), amber between 1 and 3 days, and red under a day. The previous 7/14-day thresholds painted a comfortable multi-week runway amber, which looked like a warning when nothing was wrong.

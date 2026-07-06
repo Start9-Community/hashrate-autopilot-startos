@@ -2984,8 +2984,12 @@ msgid "Ocean"
 msgstr "Ocean"
 
 #: src/components/TilesBar.tsx
-msgid "Ocean blocks found in the past 30 days. Used by the pool-luck calculation as the numerator."
-msgstr "Bloques de Ocean encontrados en los últimos 30 días. Se usa como numerador en el cálculo de la suerte del pool."
+#~ msgid "Ocean blocks found in the past 30 days. Used by the pool-luck calculation as the numerator."
+#~ msgstr "Bloques de Ocean encontrados en los últimos 30 días. Se usa como numerador en el cálculo de la suerte del pool."
+
+#: src/components/TilesBar.tsx
+msgid "Ocean blocks found in the past 30 days. Used by the pool-luck calculation as the numerator. Colour reflects the 30-day pool luck (actual ÷ expected): green >=1.0, amber 0.9-1.0, red below 0.9."
+msgstr "Bloques de Ocean encontrados en los últimos 30 días. Usado como numerador en el cálculo de la suerte del grupo. El color refleja la suerte del grupo a 30 días (real ÷ esperado): verde >=1,0, ámbar 0,9-1,0, rojo por debajo de 0,9."
 
 #: src/components/PriceChart.tsx
 msgid "Ocean debited the unpaid balance. On-chain transaction follows shortly."

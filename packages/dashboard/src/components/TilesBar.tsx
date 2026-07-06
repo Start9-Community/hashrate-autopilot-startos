@@ -247,10 +247,25 @@ const TILE_RENDERERS: Record<DashboardTileId, (ctx: TileCtx) => TileResult> = {
         : EM_DASH,
     tooltip: t`Current Ocean hashprice (sat per PH per day at the pool's most recent rolling window). The break-even reference the controller bids against.`,
   }),
-  pool_blocks_30d: ({ ocean, intlLocale }) => ({
-    value: ocean?.blocks_30d != null ? formatNumber(ocean.blocks_30d, {}, intlLocale) : EM_DASH,
-    tooltip: t`Ocean blocks found in the past 30 days. Used by the pool-luck calculation as the numerator.`,
-  }),
+  pool_blocks_30d: ({ ocean, intlLocale }) => {
+    // A raw block count is only meaningful relative to what's expected,
+    // so the tile colours by the 30-day pool luck (actual ÷ expected):
+    // green at or above par (>=1.0), amber in the 0.9-1.0 approach, red
+    // below 0.9. Neutral when luck isn't computable yet.
+    const luck = ocean?.pool_luck_30d ?? null;
+    return {
+      value: ocean?.blocks_30d != null ? formatNumber(ocean.blocks_30d, {}, intlLocale) : EM_DASH,
+      tooltip: t`Ocean blocks found in the past 30 days. Used by the pool-luck calculation as the numerator. Colour reflects the 30-day pool luck (actual ÷ expected): green >=1.0, amber 0.9-1.0, red below 0.9.`,
+      color:
+        luck === null
+          ? 'text-slate-100'
+          : luck >= 1.0
+            ? 'text-emerald-300'
+            : luck >= 0.9
+              ? 'text-amber-300'
+              : 'text-red-300',
+    };
+  },
   pool_luck_24h: ({ ocean, intlLocale }) => {
     const v = ocean?.pool_luck_24h ?? null;
     // #266 follow-up: window-aware colour bands. Short windows are
