@@ -334,8 +334,12 @@ const TILE_RENDERERS: Record<DashboardTileId, (ctx: TileCtx) => TileResult> = {
       // suffix. There's room for it and "17d" reads as a typo.
       value: `${text} ${t`days`}`,
       tooltip: t`Days of Braiins wallet runway at the current 3 h average spend rate. = total balance ÷ daily spend. Doesn't account for upcoming deposits.`,
+      // Green once there's more than the default alert threshold (3 days)
+      // of runway, amber in the 1-3 day approach, red under a day where a
+      // top-up is genuinely urgent. Earlier 7/14-day thresholds painted
+      // a comfortable two-week runway amber, which read as a false alarm.
       color:
-        days >= 14 ? 'text-emerald-300' : days >= 7 ? 'text-amber-300' : 'text-red-300',
+        days >= 3 ? 'text-emerald-300' : days >= 1 ? 'text-amber-300' : 'text-red-300',
     };
   },
   bitaxe_fleet_hashrate: ({ soloMiners, intlLocale }) => {
