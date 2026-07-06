@@ -109,6 +109,10 @@ export interface HttpServerDeps {
   readonly soloMinersRepo: SoloMinersRepo;
   /** #179: reward_events repo for the debug dump endpoint. */
   readonly rewardEventsRepo: RewardEventsRepo;
+  /** #323: Ocean earnpay payout store - source of truth for lifetime collected. */
+  readonly oceanPayoutsRepo: import('../state/repos/ocean_payouts.js').OceanPayoutsRepo;
+  /** #323: earnpay sync service - provides the collected status for the P&L panel. */
+  readonly oceanPayoutsService: import('../services/ocean-payouts-service.js').OceanPayoutsService;
   /** #149: AxeOS poller - exposes the in-memory live snapshot used by the Solo miners card. */
   readonly axeOSPoller: AxeOSPoller;
   /** #260 follow-up: Braiins deposit history for the debug-dump endpoint. */
@@ -263,7 +267,8 @@ export async function createHttpServer(deps: HttpServerDeps): Promise<HttpServer
     accountSpend: deps.accountSpend,
     hashpriceCache: deps.hashpriceCache,
     tickMetricsRepo: deps.tickMetricsRepo,
-    rewardEventsRepo: deps.rewardEventsRepo,
+    oceanPayoutsRepo: deps.oceanPayoutsRepo,
+    oceanPayoutsService: deps.oceanPayoutsService,
   });
   await registerBtcPriceRoute(app, {
     btcPriceService: deps.btcPriceService,

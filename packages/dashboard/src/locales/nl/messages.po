@@ -1266,12 +1266,12 @@ msgid "Collapse to default height"
 msgstr "Inklappen naar standaardhoogte"
 
 #: src/pages/Status.tsx
-msgid "collected (on-chain)"
-msgstr "ontvangen (on-chain)"
+msgid "collected"
+msgstr "geïnd"
 
 #: src/pages/Status.tsx
-msgid "Collected on-chain + pre-installation (manual) + Ocean's unpaid earnings − spent on bids. Missing collected is treated as 0 (the on-chain row still shows - so the operator sees the gap). Negative = still recouping the initial deposit."
-msgstr "On-chain ontvangen + pre-installatie (handmatig) + Ocean's onbetaalde inkomsten − uitgegeven aan bids. Ontbrekend ontvangen wordt als 0 behandeld (de on-chain-regel blijft zichtbaar zodat je het gat ziet). Negatief = nog steeds bezig met het terugverdienen van de initiële inleg."
+msgid "Collected (Ocean's full payout ledger, on-chain + Lightning) + pre-installation (manual) + Ocean's unpaid earnings − spent on bids. Missing collected is treated as 0. Negative = still recouping the initial deposit."
+msgstr "Geïnd (Ocean's volledige uitbetalingsgrootboek, on-chain + Lightning) + vooraf-installatie (handmatig) + Ocean's onbetaalde verdiensten − besteed aan biedingen. Ontbrekend geïnd telt als 0. Negatief = je verdient nog de eerste storting terug."
 
 #: src/pages/Config.tsx
 msgid "Compact numeric time series - one row per tick (~1,440/day) with hashrate, prices, share-log %, spend. This is what backs the Hashrate / Price / Overpay charts, so set it to the longest range you want to be able to chart. Cheap on disk: a year is ~525k small rows. Default 0 = keep forever."
@@ -1954,6 +1954,10 @@ msgstr "wijzigingen geladen; scroll voor meer"
 msgid "Every restart resets to DRY_RUN. You explicitly flip to LIVE from the dashboard."
 msgstr "Elke herstart reset naar DRY_RUN. Je schakelt expliciet over naar LIVE vanuit het dashboard."
 
+#: src/pages/Status.tsx
+msgid "Everything Ocean has actually paid you, from Ocean's own payout ledger - both on-chain payouts and Lightning payouts. Counts what you were paid, even if you've since spent it."
+msgstr "Alles wat Ocean je daadwerkelijk heeft uitbetaald, uit Ocean's eigen uitbetalingsgrootboek - zowel on-chain- als Lightning-uitbetalingen. Telt wat je is uitbetaald, ook als je het inmiddels hebt uitgegeven."
+
 #: src/components/TilesBar.tsx
 msgid "exa"
 msgstr "exa"
@@ -2040,10 +2044,6 @@ msgstr "vulbaar"
 #: src/pages/History.tsx
 msgid "Fillable"
 msgstr "Invulbaar"
-
-#: src/pages/History.tsx
-#~ msgid "Fillable (sat/PH/day)"
-#~ msgstr "Invulbaar (sat/PH/day)"
 
 #: src/pages/Alerts.tsx
 msgid "fired"
@@ -2251,6 +2251,10 @@ msgstr "hashrate-eenheid"
 #: src/pages/Config.tsx
 msgid "headers"
 msgstr "headers"
+
+#: src/pages/Status.tsx
+msgid "Heads up: collected now comes from Ocean's full payout ledger, Lightning included. If you set this manual offset to make up for Lightning payouts, it may now double-count - review it under Config → Pool & Payout."
+msgstr "Let op: geïnd komt nu uit Ocean's volledige uitbetalingsgrootboek, inclusief Lightning. Als je deze handmatige correctie hebt ingesteld om Lightning-uitbetalingen te compenseren, telt die nu mogelijk dubbel - controleer hem onder Config → Pool en payout."
 
 #: src/components/Bip110ScanCard.tsx
 #: src/pages/History.tsx
@@ -2501,6 +2505,10 @@ msgid "Lifetime sum of (amount_sat − amount_remaining_sat) across every bid th
 msgstr "Levenslange som van (amount_sat − amount_remaining_sat) over elk bod dat de autopilot heeft getagd. Exclusief biedingen die geplaatst werden voordat de autopilot werd aangezet. Schakel via Config → Money-paneel naar \"hele account\"."
 
 #: src/pages/Status.tsx
+msgid "Lightning"
+msgstr "Lightning"
+
+#: src/pages/Status.tsx
 msgid "live"
 msgstr "live"
 
@@ -2527,6 +2535,10 @@ msgstr "oudere laden"
 #: src/pages/Status.tsx
 msgid "Loading or daemon restart required."
 msgstr "Laden of daemon-herstart vereist."
+
+#: src/pages/Status.tsx
+msgid "Loading your payout history from Ocean. Waiting for the first read of Ocean's payout ledger to complete - usually a few seconds."
+msgstr "Je uitbetalingsgeschiedenis wordt vanuit Ocean geladen. Wachten tot de eerste uitlezing van Ocean's uitbetalingsgrootboek klaar is - meestal een paar seconden."
 
 #: src/components/BidEventDrawer.tsx
 #: src/pages/Alerts.tsx
@@ -2878,8 +2890,12 @@ msgid "No hashrate available on the market right now."
 msgstr "Op dit moment geen hashrate beschikbaar op de markt."
 
 #: src/pages/Config.tsx
-msgid "No on-chain balance tracking. The Profit & Loss panel won't show collected BTC."
-msgstr "Geen on-chain saldo-tracking. Het Profit & Loss-paneel toont geen ontvangen BTC."
+msgid "No on-chain balance scanning. The Profit & Loss panel still shows your collected BTC from Ocean's payout ledger (on-chain + Lightning); this scanner only adds the chart's on-chain confirmation markers."
+msgstr "Geen on-chain saldoscan. Het Winst & Verlies-paneel toont je geïnde BTC nog steeds uit Ocean's uitbetalingsgrootboek (on-chain + Lightning); deze scanner voegt alleen de on-chain-bevestigingsmarkeringen op de grafiek toe."
+
+#: src/pages/Status.tsx
+msgid "No payout address configured. Set your Ocean payout address under Config → Pool & Payout so the Profit & Loss panel can read your collected earnings. The net line treats missing collected as 0 so the arithmetic still reads."
+msgstr "Geen uitbetalingsadres ingesteld. Stel je Ocean-uitbetalingsadres in onder Config → Pool en payout zodat het Winst & Verlies-paneel je geïnde verdiensten kan uitlezen. De nettoregel behandelt ontbrekend geïnd als 0 zodat de berekening blijft kloppen."
 
 #: src/components/BidEventDrawer.tsx
 msgid "no tick recorded near this event"
@@ -2917,10 +2933,6 @@ msgstr "niet geconfigureerd"
 #: src/pages/Status.tsx
 msgid "Not configured"
 msgstr "Niet geconfigureerd"
-
-#: src/pages/Status.tsx
-msgid "Not configured. Go to Config → On-chain payouts and select Electrum server or Bitcoin Knots RPC to track your on-chain balance. The net line treats missing collected as 0 so the arithmetic still reads - a blank row here is the hint that a piece of the income side isn't wired up."
-msgstr "Niet geconfigureerd. Ga naar Config → On-chain-uitbetalingen en kies Electrum-server of Bitcoin Knots RPC om je on-chain-saldo te volgen. De netto-regel behandelt ontbrekend geïnd als 0 zodat de rekensom leesbaar blijft - een lege rij hier is de hint dat een deel van de inkomstenkant niet is aangesloten."
 
 #: src/components/HashrateChart.tsx
 #: src/components/PriceChart.tsx
@@ -3086,6 +3098,10 @@ msgstr "Aan"
 msgid "On target - bid at fillable + overpay."
 msgstr "Op doel - bod gelijk aan vulbaar + toeslag."
 
+#: src/pages/Status.tsx
+msgid "on-chain"
+msgstr "on-chain"
+
 #: src/components/PriceChart.tsx
 #: src/pages/Config.tsx
 msgid "on-chain payout"
@@ -3173,8 +3189,8 @@ msgid "Operations & next action"
 msgstr "Bediening & volgende actie"
 
 #: src/pages/Status.tsx
-msgid "Operator-entered offset for earnings the on-chain payout observer can't see - Lightning payouts, pre-autopilot Ocean history that's already been swept, etc. Set under Config → Pool & Payout → On-chain payouts."
-msgstr "Door de operator ingevoerde correctie voor inkomsten die de on-chain payout-observer niet kan zien - Lightning-uitbetalingen, Ocean-historie van vóór de autopilot die al weggezet is, enzovoort. In te stellen onder Config → Pool & Payout → On-chain uitbetalingen."
+msgid "Operator-entered offset for earnings outside Ocean's payout ledger - e.g. pre-autopilot history from a different pool. Set under Config → Pool & Payout → On-chain payouts."
+msgstr "Door de operator ingevoerde correctie voor verdiensten buiten Ocean's uitbetalingsgrootboek - bijv. geschiedenis van vóór de autopilot bij een andere pool. Stel in onder Config → Pool en payout → On-chain uitbetalingen."
 
 #: src/pages/Config.tsx
 msgid "Opt-in diagnostics endpoint. When enabled, GET /api/debug/dump returns a bundled JSON snapshot of tick_metrics, pool_blocks, alerts, bid_events, reward_events, config (safe fields only), and daemon info. Useful for remote triage - one curl gives you everything. When disabled (default), the endpoint returns 404."
@@ -3340,10 +3356,6 @@ msgstr "uitbetaling gestart"
 #: src/components/PriceChart.tsx
 msgid "PAYOUT INITIATED"
 msgstr "UITBETALING GESTART"
-
-#: src/pages/Status.tsx
-msgid "Payout observer is starting up. Waiting for the first balance scan to complete - usually a few seconds with an Electrum server, up to a minute with bitcoind scantxoutset."
-msgstr "De uitbetalingswaarnemer start op. Wachten tot de eerste saldoscan klaar is - meestal een paar seconden met een Electrum-server, tot een minuut met bitcoind scantxoutset."
 
 #: src/pages/Config.tsx
 msgid "Payout source"
@@ -4134,10 +4146,6 @@ msgstr "snelheid"
 msgid "Speed"
 msgstr "Snelheid"
 
-#: src/pages/History.tsx
-#~ msgid "Speed (PH/s)"
-#~ msgstr "Snelheid (PH/s)"
-
 #: src/pages/Config.tsx
 msgid "Spend scope"
 msgstr "Uitgaven-scope"
@@ -4324,6 +4332,14 @@ msgstr "De daemon staat misschien niet in setup-modus. Herlaad de pagina of cont
 #: src/pages/Config.tsx
 msgid "The hostname being maintained. For No-IP DDNS Key groups (the modern auth flow that doesn't expose your account password), use the special hostname all.ddnskey.com - that updates every hostname assigned to the DDNS Key's group in one call. Test connection pushes a real update with the values currently in the form (without saving). `nochg` and `good` are both success."
 msgstr "De hostnaam die onderhouden wordt. Voor No-IP DDNS Key-groepen (de moderne auth-flow die je accountwachtwoord niet blootstelt), gebruik de speciale hostnaam all.ddnskey.com - die werkt elke hostnaam in de DDNS Key-groep in één call bij. Test connection stuurt een echte update met de waarden uit het formulier (zonder op te slaan). `nochg` en `good` zijn beide succes."
+
+#: src/pages/Status.tsx
+msgid "The part of collected that settled on-chain (has a transaction on the blockchain)."
+msgstr "Het deel van geïnd dat on-chain is afgewikkeld (heeft een transactie op de blockchain)."
+
+#: src/pages/Status.tsx
+msgid "The part of collected that settled over Lightning (off-chain, no blockchain transaction)."
+msgstr "Het deel van geïnd dat via Lightning is afgewikkeld (off-chain, geen blockchain-transactie)."
 
 #. placeholder {0}: cs.cheap_target_hashrate_ph
 #: src/components/TilesBar.tsx
@@ -4543,10 +4559,6 @@ msgstr "gebruikt de huidige share_log - een benadering voor oudere blokken, aang
 msgid "Uses scantxoutset -- CPU-heavy, 30+ seconds per scan. Polled hourly. Use only if you don't have an Electrum server."
 msgstr "Gebruikt scantxoutset -- CPU-intensief, 30+ seconden per scan. Elk uur bevraagd. Gebruik dit alleen als je geen Electrum-server hebt."
 
-#: src/pages/Status.tsx
-msgid "UTXOs at the configured payout address. Read via your Electrum server (preferred, instant) or bitcoind RPC (slower)."
-msgstr "UTXO's op het geconfigureerde uitbetalingsadres. Gelezen via je Electrum-server (voorkeur, direct) of bitcoind RPC (langzamer)."
-
 #: src/pages/Setup.tsx
 msgid "v{__APP_VERSION__} · build {__BUILD_NUMBER__} · {__BUILD_HASH__}"
 msgstr "v{__APP_VERSION__} · build {__BUILD_NUMBER__} · {__BUILD_HASH__}"
@@ -4760,7 +4772,3 @@ msgstr "Δ prijs"
 #: src/pages/History.tsx
 msgid "Δ price ≥"
 msgstr "Δ prijs ≥"
-
-#: src/pages/History.tsx
-#~ msgid "Δ price ≥ (sat/{unitLabel}/day)"
-#~ msgstr "Δ prijs ≥ (sat/{unitLabel}/dag)"

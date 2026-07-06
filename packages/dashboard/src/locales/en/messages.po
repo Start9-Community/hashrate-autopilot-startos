@@ -1266,12 +1266,12 @@ msgid "Collapse to default height"
 msgstr "Collapse to default height"
 
 #: src/pages/Status.tsx
-msgid "collected (on-chain)"
-msgstr "collected (on-chain)"
+msgid "collected"
+msgstr "collected"
 
 #: src/pages/Status.tsx
-msgid "Collected on-chain + pre-installation (manual) + Ocean's unpaid earnings − spent on bids. Missing collected is treated as 0 (the on-chain row still shows - so the operator sees the gap). Negative = still recouping the initial deposit."
-msgstr "Collected on-chain + pre-installation (manual) + Ocean's unpaid earnings − spent on bids. Missing collected is treated as 0 (the on-chain row still shows - so the operator sees the gap). Negative = still recouping the initial deposit."
+msgid "Collected (Ocean's full payout ledger, on-chain + Lightning) + pre-installation (manual) + Ocean's unpaid earnings − spent on bids. Missing collected is treated as 0. Negative = still recouping the initial deposit."
+msgstr "Collected (Ocean's full payout ledger, on-chain + Lightning) + pre-installation (manual) + Ocean's unpaid earnings − spent on bids. Missing collected is treated as 0. Negative = still recouping the initial deposit."
 
 #: src/pages/Config.tsx
 msgid "Compact numeric time series - one row per tick (~1,440/day) with hashrate, prices, share-log %, spend. This is what backs the Hashrate / Price / Overpay charts, so set it to the longest range you want to be able to chart. Cheap on disk: a year is ~525k small rows. Default 0 = keep forever."
@@ -1954,6 +1954,10 @@ msgstr "events loaded; scroll for more"
 msgid "Every restart resets to DRY_RUN. You explicitly flip to LIVE from the dashboard."
 msgstr "Every restart resets to DRY_RUN. You explicitly flip to LIVE from the dashboard."
 
+#: src/pages/Status.tsx
+msgid "Everything Ocean has actually paid you, from Ocean's own payout ledger - both on-chain payouts and Lightning payouts. Counts what you were paid, even if you've since spent it."
+msgstr "Everything Ocean has actually paid you, from Ocean's own payout ledger - both on-chain payouts and Lightning payouts. Counts what you were paid, even if you've since spent it."
+
 #: src/components/TilesBar.tsx
 msgid "exa"
 msgstr "exa"
@@ -2040,10 +2044,6 @@ msgstr "fillable"
 #: src/pages/History.tsx
 msgid "Fillable"
 msgstr "Fillable"
-
-#: src/pages/History.tsx
-#~ msgid "Fillable (sat/PH/day)"
-#~ msgstr "Fillable (sat/PH/day)"
 
 #: src/pages/Alerts.tsx
 msgid "fired"
@@ -2251,6 +2251,10 @@ msgstr "hashrate unit"
 #: src/pages/Config.tsx
 msgid "headers"
 msgstr "headers"
+
+#: src/pages/Status.tsx
+msgid "Heads up: collected now comes from Ocean's full payout ledger, Lightning included. If you set this manual offset to make up for Lightning payouts, it may now double-count - review it under Config → Pool & Payout."
+msgstr "Heads up: collected now comes from Ocean's full payout ledger, Lightning included. If you set this manual offset to make up for Lightning payouts, it may now double-count - review it under Config → Pool & Payout."
 
 #: src/components/Bip110ScanCard.tsx
 #: src/pages/History.tsx
@@ -2501,6 +2505,10 @@ msgid "Lifetime sum of (amount_sat − amount_remaining_sat) across every bid th
 msgstr "Lifetime sum of (amount_sat − amount_remaining_sat) across every bid the autopilot has tagged. Excludes any bids placed before the autopilot was switched on. Switch to \"whole account\" via Config → Money panel."
 
 #: src/pages/Status.tsx
+msgid "Lightning"
+msgstr "Lightning"
+
+#: src/pages/Status.tsx
 msgid "live"
 msgstr "live"
 
@@ -2527,6 +2535,10 @@ msgstr "load older"
 #: src/pages/Status.tsx
 msgid "Loading or daemon restart required."
 msgstr "Loading or daemon restart required."
+
+#: src/pages/Status.tsx
+msgid "Loading your payout history from Ocean. Waiting for the first read of Ocean's payout ledger to complete - usually a few seconds."
+msgstr "Loading your payout history from Ocean. Waiting for the first read of Ocean's payout ledger to complete - usually a few seconds."
 
 #: src/components/BidEventDrawer.tsx
 #: src/pages/Alerts.tsx
@@ -2878,8 +2890,12 @@ msgid "No hashrate available on the market right now."
 msgstr "No hashrate available on the market right now."
 
 #: src/pages/Config.tsx
-msgid "No on-chain balance tracking. The Profit & Loss panel won't show collected BTC."
-msgstr "No on-chain balance tracking. The Profit & Loss panel won't show collected BTC."
+msgid "No on-chain balance scanning. The Profit & Loss panel still shows your collected BTC from Ocean's payout ledger (on-chain + Lightning); this scanner only adds the chart's on-chain confirmation markers."
+msgstr "No on-chain balance scanning. The Profit & Loss panel still shows your collected BTC from Ocean's payout ledger (on-chain + Lightning); this scanner only adds the chart's on-chain confirmation markers."
+
+#: src/pages/Status.tsx
+msgid "No payout address configured. Set your Ocean payout address under Config → Pool & Payout so the Profit & Loss panel can read your collected earnings. The net line treats missing collected as 0 so the arithmetic still reads."
+msgstr "No payout address configured. Set your Ocean payout address under Config → Pool & Payout so the Profit & Loss panel can read your collected earnings. The net line treats missing collected as 0 so the arithmetic still reads."
 
 #: src/components/BidEventDrawer.tsx
 msgid "no tick recorded near this event"
@@ -2917,10 +2933,6 @@ msgstr "not configured"
 #: src/pages/Status.tsx
 msgid "Not configured"
 msgstr "Not configured"
-
-#: src/pages/Status.tsx
-msgid "Not configured. Go to Config → On-chain payouts and select Electrum server or Bitcoin Knots RPC to track your on-chain balance. The net line treats missing collected as 0 so the arithmetic still reads - a blank row here is the hint that a piece of the income side isn't wired up."
-msgstr "Not configured. Go to Config → On-chain payouts and select Electrum server or Bitcoin Knots RPC to track your on-chain balance. The net line treats missing collected as 0 so the arithmetic still reads - a blank row here is the hint that a piece of the income side isn't wired up."
 
 #: src/components/HashrateChart.tsx
 #: src/components/PriceChart.tsx
@@ -3086,6 +3098,10 @@ msgstr "On"
 msgid "On target - bid at fillable + overpay."
 msgstr "On target - bid at fillable + overpay."
 
+#: src/pages/Status.tsx
+msgid "on-chain"
+msgstr "on-chain"
+
 #: src/components/PriceChart.tsx
 #: src/pages/Config.tsx
 msgid "on-chain payout"
@@ -3173,8 +3189,8 @@ msgid "Operations & next action"
 msgstr "Operations & next action"
 
 #: src/pages/Status.tsx
-msgid "Operator-entered offset for earnings the on-chain payout observer can't see - Lightning payouts, pre-autopilot Ocean history that's already been swept, etc. Set under Config → Pool & Payout → On-chain payouts."
-msgstr "Operator-entered offset for earnings the on-chain payout observer can't see - Lightning payouts, pre-autopilot Ocean history that's already been swept, etc. Set under Config → Pool & Payout → On-chain payouts."
+msgid "Operator-entered offset for earnings outside Ocean's payout ledger - e.g. pre-autopilot history from a different pool. Set under Config → Pool & Payout → On-chain payouts."
+msgstr "Operator-entered offset for earnings outside Ocean's payout ledger - e.g. pre-autopilot history from a different pool. Set under Config → Pool & Payout → On-chain payouts."
 
 #: src/pages/Config.tsx
 msgid "Opt-in diagnostics endpoint. When enabled, GET /api/debug/dump returns a bundled JSON snapshot of tick_metrics, pool_blocks, alerts, bid_events, reward_events, config (safe fields only), and daemon info. Useful for remote triage - one curl gives you everything. When disabled (default), the endpoint returns 404."
@@ -3340,10 +3356,6 @@ msgstr "payout initiated"
 #: src/components/PriceChart.tsx
 msgid "PAYOUT INITIATED"
 msgstr "PAYOUT INITIATED"
-
-#: src/pages/Status.tsx
-msgid "Payout observer is starting up. Waiting for the first balance scan to complete - usually a few seconds with an Electrum server, up to a minute with bitcoind scantxoutset."
-msgstr "Payout observer is starting up. Waiting for the first balance scan to complete - usually a few seconds with an Electrum server, up to a minute with bitcoind scantxoutset."
 
 #: src/pages/Config.tsx
 msgid "Payout source"
@@ -4134,10 +4146,6 @@ msgstr "speed"
 msgid "Speed"
 msgstr "Speed"
 
-#: src/pages/History.tsx
-#~ msgid "Speed (PH/s)"
-#~ msgstr "Speed (PH/s)"
-
 #: src/pages/Config.tsx
 msgid "Spend scope"
 msgstr "Spend scope"
@@ -4324,6 +4332,14 @@ msgstr "The daemon may not be in setup mode. Reload the page or check the daemon
 #: src/pages/Config.tsx
 msgid "The hostname being maintained. For No-IP DDNS Key groups (the modern auth flow that doesn't expose your account password), use the special hostname all.ddnskey.com - that updates every hostname assigned to the DDNS Key's group in one call. Test connection pushes a real update with the values currently in the form (without saving). `nochg` and `good` are both success."
 msgstr "The hostname being maintained. For No-IP DDNS Key groups (the modern auth flow that doesn't expose your account password), use the special hostname all.ddnskey.com - that updates every hostname assigned to the DDNS Key's group in one call. Test connection pushes a real update with the values currently in the form (without saving). `nochg` and `good` are both success."
+
+#: src/pages/Status.tsx
+msgid "The part of collected that settled on-chain (has a transaction on the blockchain)."
+msgstr "The part of collected that settled on-chain (has a transaction on the blockchain)."
+
+#: src/pages/Status.tsx
+msgid "The part of collected that settled over Lightning (off-chain, no blockchain transaction)."
+msgstr "The part of collected that settled over Lightning (off-chain, no blockchain transaction)."
 
 #. placeholder {0}: cs.cheap_target_hashrate_ph
 #: src/components/TilesBar.tsx
@@ -4543,10 +4559,6 @@ msgstr "uses current share_log - an approximation for older blocks, since share_
 msgid "Uses scantxoutset -- CPU-heavy, 30+ seconds per scan. Polled hourly. Use only if you don't have an Electrum server."
 msgstr "Uses scantxoutset -- CPU-heavy, 30+ seconds per scan. Polled hourly. Use only if you don't have an Electrum server."
 
-#: src/pages/Status.tsx
-msgid "UTXOs at the configured payout address. Read via your Electrum server (preferred, instant) or bitcoind RPC (slower)."
-msgstr "UTXOs at the configured payout address. Read via your Electrum server (preferred, instant) or bitcoind RPC (slower)."
-
 #: src/pages/Setup.tsx
 msgid "v{__APP_VERSION__} · build {__BUILD_NUMBER__} · {__BUILD_HASH__}"
 msgstr "v{__APP_VERSION__} · build {__BUILD_NUMBER__} · {__BUILD_HASH__}"
@@ -4760,7 +4772,3 @@ msgstr "Δ price"
 #: src/pages/History.tsx
 msgid "Δ price ≥"
 msgstr "Δ price ≥"
-
-#: src/pages/History.tsx
-#~ msgid "Δ price ≥ (sat/{unitLabel}/day)"
-#~ msgstr "Δ price ≥ (sat/{unitLabel}/day)"

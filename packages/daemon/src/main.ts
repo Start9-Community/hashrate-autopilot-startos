@@ -1080,6 +1080,8 @@ async function bootOperational(
     alertsRepo,
     poolBlocksRepo,
     rewardEventsRepo,
+    oceanPayoutsRepo,
+    oceanPayoutsService,
     payoutObserver,
     oceanClient,
     accountSpend,

@@ -3515,27 +3515,56 @@ function FinancePanel({
         />
         <FinanceRow
           sign="plus"
-          label={t`collected (on-chain)`}
+          label={t`collected`}
           value={data.collected_sat}
           status={data.collected_status}
           tooltip={
             data.collected_status === 'computing'
-              ? t`Payout observer is starting up. Waiting for the first balance scan to complete - usually a few seconds with an Electrum server, up to a minute with bitcoind scantxoutset.`
+              ? t`Loading your payout history from Ocean. Waiting for the first read of Ocean's payout ledger to complete - usually a few seconds.`
               : data.collected_sat !== null
-                ? t`UTXOs at the configured payout address. Read via your Electrum server (preferred, instant) or bitcoind RPC (slower).`
-                : t`Not configured. Go to Config → On-chain payouts and select Electrum server or Bitcoin Knots RPC to track your on-chain balance. The net line treats missing collected as 0 so the arithmetic still reads - a blank row here is the hint that a piece of the income side isn't wired up.`
+                ? t`Everything Ocean has actually paid you, from Ocean's own payout ledger - both on-chain payouts and Lightning payouts. Counts what you were paid, even if you've since spent it.`
+                : t`No payout address configured. Set your Ocean payout address under Config → Pool & Payout so the Profit & Loss panel can read your collected earnings. The net line treats missing collected as 0 so the arithmetic still reads.`
           }
         />
+        {/* #323: on-chain vs Lightning split. Only shown when a
+            Lightning payout actually exists - for the common all-on-chain
+            operator the split equals the collected line, so surfacing it
+            would just be noise. */}
+        {data.collected_lightning_sat !== null &&
+          data.collected_lightning_sat > 0 &&
+          data.collected_onchain_sat !== null && (
+            <div className="ml-5 space-y-0.5 text-xs text-slate-500">
+              <FinanceFootnote
+                label={t`on-chain`}
+                value={denomination.formatSat(data.collected_onchain_sat, intlLocale)}
+                tooltip={t`The part of collected that settled on-chain (has a transaction on the blockchain).`}
+              />
+              <FinanceFootnote
+                label={t`Lightning`}
+                value={denomination.formatSat(data.collected_lightning_sat, intlLocale)}
+                tooltip={t`The part of collected that settled over Lightning (off-chain, no blockchain transaction).`}
+              />
+            </div>
+          )}
         {/* #170 follow-up: operator-entered pre-installation /
             off-chain earnings. Hidden when the field is 0 (default)
             so the panel stays uncluttered for the common case. */}
         {data.historical_offset_sat > 0 && (
-          <FinanceRow
-            sign="plus"
-            label={t`pre-installation (manual)`}
-            value={data.historical_offset_sat}
-            tooltip={t`Operator-entered offset for earnings the on-chain payout observer can't see - Lightning payouts, pre-autopilot Ocean history that's already been swept, etc. Set under Config → Pool & Payout → On-chain payouts.`}
-          />
+          <>
+            <FinanceRow
+              sign="plus"
+              label={t`pre-installation (manual)`}
+              value={data.historical_offset_sat}
+              tooltip={t`Operator-entered offset for earnings outside Ocean's payout ledger - e.g. pre-autopilot history from a different pool. Set under Config → Pool & Payout → On-chain payouts.`}
+            />
+            {/* #323: earnpay now drives collected and already includes
+                Lightning, so an offset that was originally added to
+                compensate for missed Lightning payouts would now
+                double-count. Flag it so the operator can review. */}
+            <div className="ml-5 text-xs text-amber-400/80">
+              {t`Heads up: collected now comes from Ocean's full payout ledger, Lightning included. If you set this manual offset to make up for Lightning payouts, it may now double-count - review it under Config → Pool & Payout.`}
+            </div>
+          </>
         )}
 
         <div className="mt-3 pt-3 border-t border-slate-800">
@@ -3548,7 +3577,7 @@ function FinancePanel({
             // digging out of the initial deposit. Keeps the rest of
             // the panel calm so the eye lands on the conclusion.
             valueClass={netColor}
-            tooltip={t`Collected on-chain + pre-installation (manual) + Ocean's unpaid earnings − spent on bids. Missing collected is treated as 0 (the on-chain row still shows - so the operator sees the gap). Negative = still recouping the initial deposit.`}
+            tooltip={t`Collected (Ocean's full payout ledger, on-chain + Lightning) + pre-installation (manual) + Ocean's unpaid earnings − spent on bids. Missing collected is treated as 0. Negative = still recouping the initial deposit.`}
           />
           {/* #249: rate of return on its own row so the sat column
               stays right-aligned across all four lines above. Same

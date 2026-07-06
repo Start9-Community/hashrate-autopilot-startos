@@ -4037,7 +4037,7 @@ function PayoutSourceSection({
     {
       value: 'none',
       label: t`Do not scan`,
-      help: t`No on-chain balance tracking. The Profit & Loss panel won't show collected BTC.`,
+      help: t`No on-chain balance scanning. The Profit & Loss panel still shows your collected BTC from Ocean's payout ledger (on-chain + Lightning); this scanner only adds the chart's on-chain confirmation markers.`,
     },
     {
       value: 'electrs',

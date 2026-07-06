@@ -44,10 +44,11 @@ import {
 import type { AccountSpendService } from '../../services/account-spend.js';
 import type { HashpriceCache } from '../../services/hashprice-cache.js';
 import type { OceanClient } from '../../services/ocean.js';
+import type { OceanPayoutsService } from '../../services/ocean-payouts-service.js';
 import type { PayoutObserver } from '../../services/payout-observer.js';
 import type { OwnedBidsRepo } from '../../state/repos/owned_bids.js';
 import type { ConfigRepo } from '../../state/repos/config.js';
-import type { RewardEventsRepo } from '../../state/repos/reward_events.js';
+import type { OceanPayoutsRepo } from '../../state/repos/ocean_payouts.js';
 import type { TickMetricsRepo } from '../../state/repos/tick_metrics.js';
 
 const EH_PER_PH = 1000;
@@ -77,16 +78,25 @@ export interface FinanceResponse {
   readonly spent_active_sat: number | null;
   readonly collected_sat: number | null;
   /**
-   * #97 - disambiguates the three states `collected_sat: null` collapses
-   * into for the dashboard:
-   * - 'computing' - payout observer is enabled but the first scan has
-   *   not yet produced a snapshot. Dashboard renders a spinner so the
+   * #323: collected split by settlement rail, so the P&L panel can show
+   * "0.081 on-chain, 0.012 Lightning". `collected_onchain_sat +
+   * collected_lightning_sat === collected_sat`. Null in the same states
+   * `collected_sat` is null (no payout address configured).
+   */
+  readonly collected_onchain_sat: number | null;
+  readonly collected_lightning_sat: number | null;
+  /**
+   * #97 / #323 - disambiguates the three states `collected_sat: null`
+   * collapses into for the dashboard:
+   * - 'computing' - a payout address is configured but the daemon
+   *   hasn't completed its first earnpay read for it yet (fresh boot /
+   *   just-switched address). Dashboard renders a spinner so the
    *   operator does not see a blank em-dash mid-startup.
-   * - 'ready'     - observer has produced a snapshot; `collected_sat`
-   *   reflects it.
-   * - 'idle'      - observer is disabled (`payout_source = 'none'` or
-   *   missing creds). Dashboard renders the existing "not configured"
-   *   tooltip on the em-dash.
+   * - 'ready'     - earnpay has been read at least once; `collected_sat`
+   *   reflects it (0 is a legitimate "no payouts yet" value).
+   * - 'idle'      - no payout address configured, so there's nothing to
+   *   fetch. Dashboard renders the existing "not configured" tooltip on
+   *   the em-dash.
    */
   readonly collected_status: 'computing' | 'ready' | 'idle';
   readonly expected_sat: number | null;
@@ -116,13 +126,16 @@ export interface FinanceResponse {
 export interface FinanceDeps {
   readonly ownedBidsRepo: OwnedBidsRepo;
   readonly configRepo: ConfigRepo;
+  /** Still used for `checked_at_ms` staleness (on-chain snapshot time), not for collected. */
   readonly payoutObserver: PayoutObserver | null;
   readonly oceanClient: OceanClient | null;
   readonly accountSpend: AccountSpendService | null;
   readonly hashpriceCache: HashpriceCache | null;
   readonly tickMetricsRepo: TickMetricsRepo;
-  /** #240 follow-up: source of truth for lifetime collected. */
-  readonly rewardEventsRepo: RewardEventsRepo;
+  /** #323: source of truth for lifetime collected (on-chain + Lightning) via Ocean earnpay. */
+  readonly oceanPayoutsRepo: OceanPayoutsRepo;
+  /** #323: provides the collected computing/ready/idle status for the panel. */
+  readonly oceanPayoutsService: OceanPayoutsService;
 }
 
 /**
@@ -300,23 +313,37 @@ export async function registerFinanceRoute(
       spent_sat = await deps.ownedBidsRepo.sumLifetimeConsumedSat();
     }
 
-    // #240 follow-up: collected = LIFETIME RECEIVED, not current UTXO
-    // balance. Operator on Taliesin received a payout to the new
-    // configured address, then spent it; the previous
-    // `total_unspent_sat` source showed 0 because the UTXOs were gone,
-    // even though the address received N sat in its lifetime. We
-    // count "what they put in," not the current balance.
-    // sum is over reward_events.value_sat for non-reorged events. The
-    // observer populates that table both from current-UTXO scans
-    // (steady state) and from historical electrs scans of the
-    // address's tx history (boot + every 30 min), so spent payouts
-    // are captured too.
-    const collected_sat = deps.payoutObserver
-      ? await deps.rewardEventsRepo.sumPaidUpTo(Date.now())
-      : null;
-    const collected_status: 'computing' | 'ready' | 'idle' = !deps.payoutObserver
-      ? 'idle'
-      : deps.payoutObserver.getCollectedStatus();
+    // #323: collected = LIFETIME RECEIVED via Ocean's authoritative
+    // earnpay payout list, which sees BOTH on-chain and Lightning
+    // settlements. This replaces the on-chain-only reward_events
+    // derivation (which understated net P&L for any Lightning payout,
+    // since unpaid_sat dropped but collected never rose). It's also no
+    // longer gated on the on-chain scanner: earnpay needs only the
+    // Ocean address, so operators without electrs/bitcoind now get a
+    // collected figure too. We count "what they put in" - a payout
+    // that's since been spent still counts.
+    const payoutAddr = config?.btc_payout_address || null;
+    let collected_sat: number | null = null;
+    let collected_onchain_sat: number | null = null;
+    let collected_lightning_sat: number | null = null;
+    let collected_status: 'computing' | 'ready' | 'idle';
+    if (!payoutAddr) {
+      collected_status = 'idle';
+    } else {
+      const nowMs = Date.now();
+      collected_sat = await deps.oceanPayoutsRepo.sumNetUpTo(payoutAddr, nowMs);
+      const split = await deps.oceanPayoutsRepo.sumNetByRail(payoutAddr, nowMs);
+      collected_onchain_sat = split.onchain;
+      collected_lightning_sat = split.lightning;
+      // Already have persisted payouts -> trust them immediately even
+      // while a background refresh runs; otherwise defer to the
+      // service's synced-once state so a fresh boot shows a spinner,
+      // not a premature 0.
+      collected_status =
+        collected_sat > 0
+          ? 'ready'
+          : deps.oceanPayoutsService.getCollectedStatus(payoutAddr);
+    }
 
     let oceanStats: Awaited<ReturnType<OceanClient['fetchStats']>> | null = null;
     if (deps.oceanClient && config?.btc_payout_address) {
@@ -356,6 +383,8 @@ export async function registerFinanceRoute(
       spent_closed_sat,
       spent_active_sat,
       collected_sat,
+      collected_onchain_sat,
+      collected_lightning_sat,
       collected_status,
       expected_sat,
       historical_offset_sat,

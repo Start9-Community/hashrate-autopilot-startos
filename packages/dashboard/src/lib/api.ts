@@ -1366,7 +1366,10 @@ export interface FinanceResponse {
   spent_closed_sat: number | null;
   spent_active_sat: number | null;
   collected_sat: number | null;
-  /** #97 - distinguishes "first scan still running" (computing) from "0 sat collected" (ready) from "observer disabled" (idle). */
+  /** #323 - collected split by settlement rail. `onchain + lightning === collected_sat`. Null when no payout address is configured. */
+  collected_onchain_sat: number | null;
+  collected_lightning_sat: number | null;
+  /** #97 / #323 - distinguishes "first earnpay read still running" (computing) from "0 sat collected" (ready) from "no payout address" (idle). */
   collected_status: 'computing' | 'ready' | 'idle';
   expected_sat: number | null;
   /** #170 follow-up: operator-entered pre-installation / off-chain earnings. Always >= 0. Already folded into net_sat. */

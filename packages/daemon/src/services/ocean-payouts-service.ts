@@ -64,6 +64,11 @@ export class OceanPayoutsService {
   private timer: NodeJS.Timeout | null = null;
   private initialTimer: NodeJS.Timeout | null = null;
   private running: Promise<void> | null = null;
+  // Which address the store has been synced against at least once this
+  // run, so the P&L panel can show a spinner ('computing') for an
+  // address whose payouts we haven't fetched yet vs an em-dash for no
+  // address at all. Null until the first successful sync completes.
+  private syncedAddress: string | null = null;
 
   constructor(private readonly options: OceanPayoutsServiceOptions) {}
 
@@ -114,10 +119,16 @@ export class OceanPayoutsService {
     );
     if (payouts === null) {
       // Non-destructive: Ocean unreachable / parse error. Keep
-      // whatever we have; retry next cycle.
+      // whatever we have; retry next cycle. Don't mark this address
+      // as synced - we still owe it an authoritative read.
       this.log('[ocean-payouts] fetch returned null; keeping last-known store');
       return;
     }
+
+    // Authoritative read succeeded (even if it returned zero payouts):
+    // the P&L panel can now treat a 0 collected as "genuinely no
+    // payouts yet" instead of "still loading".
+    this.syncedAddress = address;
 
     const rows: OceanPayoutInsert[] = payouts.map((p) => ({
       address,
@@ -145,6 +156,25 @@ export class OceanPayoutsService {
         this.log(`[ocean-payouts] onPayoutsChanged failed: ${(err as Error).message}`),
       );
     }
+  }
+
+  /**
+   * P&L "collected" status for the given address:
+   * - 'idle'      - no payout address configured; nothing to fetch.
+   * - 'computing' - address set but we haven't completed an
+   *   authoritative earnpay read for it yet this run (fresh boot /
+   *   just-switched address). The panel shows a spinner rather than a
+   *   possibly-stale 0.
+   * - 'ready'     - we've read earnpay for this address at least once;
+   *   the stored total (which may legitimately be 0) is trustworthy.
+   *
+   * The route additionally short-circuits to 'ready' when the stored
+   * total is already > 0, so a returning install with persisted
+   * payouts never flashes a spinner while the first refresh runs.
+   */
+  getCollectedStatus(address: string): 'computing' | 'ready' | 'idle' {
+    if (!address) return 'idle';
+    return this.syncedAddress === address ? 'ready' : 'computing';
   }
 
   start(): void {

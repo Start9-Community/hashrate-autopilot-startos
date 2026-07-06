@@ -2,6 +2,10 @@
 
 ## 2026-07-05
 
+### `[Feature]` Profit & Loss now counts Lightning payouts, with an on-chain vs Lightning split (#323)
+
+"Collected" in the Profit & Loss panel now comes from Ocean's own payout ledger (the earnpay endpoint) instead of the on-chain address scanner, so Lightning payouts finally count. Previously a Lightning payout dropped your unpaid-earnings but never showed up as collected, so net P&L silently understated by the full payout. When you have both rails, the panel shows the split ("on-chain X, Lightning Y"). Collected also no longer needs an Electrum/Bitcoin node configured - it works from your Ocean payout address alone. If you had set the manual pre-installation offset to compensate for missed Lightning payouts, the panel now flags that it may double-count so you can review it.
+
 ### `[Infra]` Ocean earnpay payout store (groundwork for Lightning-aware P&L) (#323)
 
 Adds a daemon-internal sync of Ocean's authoritative payout list (the `/v1/earnpay` endpoint) into a new `ocean_payouts` table, covering both on-chain and Lightning settlements. It backfills the full history on first run for a payout address and refreshes a trailing window on a slow cadence. No user-visible change yet; this is the source of truth that the P&L "collected" figure and the chart payout gems switch onto in following commits, so Lightning payouts stop being invisible to accounting.
