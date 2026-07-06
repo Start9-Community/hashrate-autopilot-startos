@@ -2512,6 +2512,10 @@ msgstr "Levenslange som van (amount_sat − amount_remaining_sat) over elk bod d
 msgid "Lightning"
 msgstr "Lightning"
 
+#: src/components/PriceChart.tsx
+msgid "LIGHTNING PAYOUT"
+msgstr "LIGHTNING-UITBETALING"
+
 #: src/pages/Status.tsx
 msgid "live"
 msgstr "live"
@@ -3110,7 +3114,6 @@ msgstr "Op doel - bod gelijk aan vulbaar + toeslag."
 msgid "on-chain"
 msgstr "on-chain"
 
-#: src/components/PriceChart.tsx
 #: src/pages/Config.tsx
 msgid "on-chain payout"
 msgstr "on-chain uitbetaling"
@@ -3349,6 +3352,7 @@ msgstr "GEPAUZEERD"
 msgid "Paused - no bids will be placed or edited until run mode changes."
 msgstr "Gepauzeerd - er worden geen biedingen geplaatst of bewerkt totdat de runmodus verandert."
 
+#: src/components/PriceChart.tsx
 #: src/pages/History.tsx
 msgid "payout"
 msgstr "uitbetaling"

@@ -2,6 +2,10 @@
 
 ## 2026-07-05
 
+### `[UI]` Price-chart payout gems now include Lightning payouts (#323)
+
+The payout markers on the Price chart come from Ocean's own payout ledger (earnpay) instead of the on-chain address scanner, so Lightning payouts finally appear on the timeline. On-chain gems keep their block-explorer link; Lightning gems show a "LIGHTNING PAYOUT" tooltip with no link (there's no on-chain transaction to open). Because the source no longer depends on an Electrum/Bitcoin node, operators without one now see their payout gems too. The legend label is now just "payout" since it covers both rails.
+
 ### `[Fix]` "Payout confirmed" Telegram alert now fires for Lightning payouts too (#323)
 
 The second-stage "Ocean payout confirmed" notification used to come from the on-chain scanner, so a Lightning payout - which never touches the blockchain - never produced a confirmation message (only the rail-blind "payout initiated" heads-up). It now fires from Ocean's own payout ledger and states whether each payout settled on-chain or over Lightning. The alert's config label lost its "on-chain" qualifier accordingly. Existing payout history is baselined silently on first run so upgrading doesn't replay old payouts to your phone.

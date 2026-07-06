@@ -2243,7 +2243,7 @@ export const PriceChart = memo(function PriceChart({
                 !r.reorged &&
                 r.detected_at >= chartData.minX &&
                 r.detected_at <= chartData.maxX,
-            ) && <Legend color={COLOR_PAYOUT} label={t`on-chain payout`} dashed hidden={isHidden('payout')} onToggle={() => toggle('payout')} />}
+            ) && <Legend color={COLOR_PAYOUT} label={t`payout`} dashed hidden={isHidden('payout')} onToggle={() => toggle('payout')} />}
           {/* #287 follow-up: the three always-visible kinds join the
               legend only when at least one such marker is actually in
               view - they're rare, so the legend stays uncluttered in
@@ -3488,12 +3488,17 @@ function RewardEventTooltip({
     setPos({ left, top, ready: true });
   }, [tip.x, tip.y, reward.id]);
 
-  const url = explorerTemplate
-    ? applyExplorerTemplate(explorerTemplate, {
-        txid: reward.txid,
-        height: reward.block_height,
-      })
-    : '';
+  // #323: Lightning payouts have no txid and never touch the chain, so
+  // there's nothing to open in a block explorer - only on-chain payouts
+  // with a txid get a link.
+  const isLightning = reward.rail === 'lightning';
+  const url =
+    explorerTemplate && !isLightning && reward.txid
+      ? applyExplorerTemplate(explorerTemplate, {
+          txid: reward.txid,
+          height: reward.block_height,
+        })
+      : '';
   const btc = reward.value_sat / 1e8;
   const valueText =
     denomination.mode === 'usd' && denomination.btcPrice !== null
@@ -3520,7 +3525,14 @@ function RewardEventTooltip({
     >
       <div className="flex items-start justify-between gap-3">
         <span className="font-semibold uppercase tracking-wider text-emerald-400">
-          <Trans>ON-CHAIN PAYOUT</Trans> · #{reward.block_height.toLocaleString(locale)}
+          {isLightning ? (
+            <Trans>LIGHTNING PAYOUT</Trans>
+          ) : (
+            <>
+              <Trans>ON-CHAIN PAYOUT</Trans>
+              {reward.block_height > 0 && ` · #${reward.block_height.toLocaleString(locale)}`}
+            </>
+          )}
         </span>
         {pinned && (
           <button

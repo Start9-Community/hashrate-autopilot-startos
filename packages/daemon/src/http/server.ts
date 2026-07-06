@@ -59,6 +59,7 @@ import { registerNotificationsTestRoute } from './routes/notifications-test.js';
 import { registerNotificationsTestEventRoute } from './routes/notifications-test-event.js';
 import { registerOceanRoute } from './routes/ocean.js';
 import { registerPayoutsRoute } from './routes/payouts.js';
+import { registerPayoutLedgerRoute } from './routes/payout-ledger.js';
 import { registerRewardEventsRoute } from './routes/reward-events.js';
 import { registerRunModeRoute } from './routes/run-mode.js';
 import { registerStatsRoute } from './routes/stats.js';
@@ -250,6 +251,11 @@ export async function createHttpServer(deps: HttpServerDeps): Promise<HttpServer
   await registerStatsRoute(app, { db: deps.db, bidEventsDb: deps.db });
   await registerStorageEstimateRoute(app, { db: deps.db });
   await registerRewardEventsRoute(app, { db: deps.db });
+  // #323: earnpay-sourced payout gems for the Price chart (on-chain + Lightning).
+  await registerPayoutLedgerRoute(app, {
+    oceanPayoutsRepo: deps.oceanPayoutsRepo,
+    configRepo: deps.configRepo,
+  });
   await registerDepositsRoute(app, { db: deps.db });
   await registerBlockFoundSoundRoute(app, { db: deps.db });
   await registerOceanRoute(app, {

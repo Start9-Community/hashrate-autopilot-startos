@@ -38,6 +38,7 @@ import {
   type NextActionView,
   type OceanResponse,
   type ProposalView,
+  type RewardEventView,
   type StatsResponse,
   type TickNowResponse,
   type StatusResponse,
@@ -548,9 +549,14 @@ export function Status() {
   // chart's "paid earnings (lifetime)" + "lifetime earnings" lines.
   // Cap at the API's 500-row max so deeply-paid wallets don't lose
   // historical dots in pagination.
+  // #323: payout gems now come from Ocean's own payout ledger (earnpay)
+  // instead of the on-chain-only reward_events scanner, so Lightning
+  // payouts appear on the timeline too. Mapped into the chart's
+  // RewardEventView shape (txid empty + rail 'lightning' => no explorer
+  // link). block_height is unknown from earnpay; the tooltip omits it.
   const rewardEventsQuery = useQuery({
-    queryKey: ['reward-events'],
-    queryFn: () => api.rewardEvents(500),
+    queryKey: ['payout-ledger'],
+    queryFn: () => api.payoutLedger(),
     refetchInterval: 60_000,
   });
 
@@ -686,7 +692,22 @@ export function Status() {
   //   3. Reward events
   //   4. Everything remaining
   const allOurBlocks = oceanQuery.data?.our_recent_blocks ?? EMPTY_OUR_BLOCKS;
-  const allRewardEvents = rewardEventsQuery.data?.events ?? EMPTY_REWARD_EVENTS;
+  const allRewardEvents = useMemo<readonly RewardEventView[]>(
+    () =>
+      (rewardEventsQuery.data?.payouts ?? []).map((p) => ({
+        id: p.id,
+        txid: p.on_chain_txid ?? '',
+        vout: 0,
+        // earnpay doesn't carry a block height; the tooltip hides the
+        // "#height" chip when it's 0, and the explorer link keys off txid.
+        block_height: 0,
+        value_sat: p.net_sat,
+        detected_at: p.ts_ms,
+        reorged: false,
+        rail: p.rail,
+      })),
+    [rewardEventsQuery.data?.payouts],
+  );
   const { visibleBidEvents, visibleOurBlocks, visibleRewardEvents, markersHiddenKind, markersHiddenCount } = useMemo(() => {
     const events = bidEventsQuery.data?.events ?? EMPTY_BID_EVENTS;
     const cap = configQuery.data?.config?.chart_max_markers ?? 0;

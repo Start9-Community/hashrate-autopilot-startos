@@ -2512,6 +2512,10 @@ msgstr "Lifetime sum of (amount_sat − amount_remaining_sat) across every bid t
 msgid "Lightning"
 msgstr "Lightning"
 
+#: src/components/PriceChart.tsx
+msgid "LIGHTNING PAYOUT"
+msgstr "LIGHTNING PAYOUT"
+
 #: src/pages/Status.tsx
 msgid "live"
 msgstr "live"
@@ -3110,7 +3114,6 @@ msgstr "On target - bid at fillable + overpay."
 msgid "on-chain"
 msgstr "on-chain"
 
-#: src/components/PriceChart.tsx
 #: src/pages/Config.tsx
 msgid "on-chain payout"
 msgstr "on-chain payout"
@@ -3349,6 +3352,7 @@ msgstr "PAUSED"
 msgid "Paused - no bids will be placed or edited until run mode changes."
 msgstr "Paused - no bids will be placed or edited until run mode changes."
 
+#: src/components/PriceChart.tsx
 #: src/pages/History.tsx
 msgid "payout"
 msgstr "payout"

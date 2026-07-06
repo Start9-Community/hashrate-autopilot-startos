@@ -884,6 +884,8 @@ export const api = {
     request<RewardEventsResponse>(
       `/api/reward-events${limit ? `?limit=${limit}` : ''}`,
     ),
+  // #323: Ocean payout ledger (earnpay) - drives the Price chart's payout gems.
+  payoutLedger: () => request<PayoutLedgerResponse>('/api/payout-ledger'),
   deposits: (limit?: number) =>
     request<DepositsResponse>(
       `/api/deposits${limit ? `?limit=${limit}` : ''}`,
@@ -1103,10 +1105,26 @@ export interface RewardEventView {
   value_sat: number;
   detected_at: number;
   reorged: boolean;
+  /** #323: settlement rail. Absent on legacy on-chain-scanner rows (treated as on-chain). */
+  rail?: 'onchain' | 'lightning';
 }
 
 export interface RewardEventsResponse {
   events: RewardEventView[];
+}
+
+/** #323: a payout from Ocean's own payout ledger (earnpay). Drives the Price chart's gems. */
+export interface PayoutLedgerView {
+  id: number;
+  ts_ms: number;
+  on_chain_txid: string | null;
+  net_sat: number;
+  rail: 'onchain' | 'lightning';
+  is_generation: boolean;
+}
+
+export interface PayoutLedgerResponse {
+  payouts: PayoutLedgerView[];
 }
 
 export interface DepositView {
