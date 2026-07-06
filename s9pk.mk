@@ -4,6 +4,9 @@ PACKAGE_ID := $(shell awk -F"'" '/id:/ {print $$2}' startos/manifest/index.ts)
 INGREDIENTS := $(shell start-cli s9pk list-ingredients 2>/dev/null)
 ARCHES ?= x86 arm
 TARGETS ?= arches
+GIT_DIR := $(shell git rev-parse --path-format=absolute --git-dir 2>/dev/null)
+GIT_HEAD := $(GIT_DIR)/HEAD
+GIT_INDEX := $(GIT_DIR)/index
 
 ifdef VARIANT
 BASE_NAME := $(PACKAGE_ID)_$(VARIANT)
@@ -45,12 +48,12 @@ arch/%: $(BASE_NAME)_%.s9pk
 x86 x86_64: arch/x86_64
 arm arm64 aarch64: arch/aarch64
 
-$(BASE_NAME).s9pk: $(INGREDIENTS) .git/HEAD .git/index
+$(BASE_NAME).s9pk: $(INGREDIENTS) $(GIT_HEAD) $(GIT_INDEX)
 	@$(MAKE) --no-print-directory ingredients
 	@echo "Packing '$@'..."
 	start-cli s9pk pack -o $@
 
-$(BASE_NAME)_%.s9pk: $(INGREDIENTS) .git/HEAD .git/index
+$(BASE_NAME)_%.s9pk: $(INGREDIENTS) $(GIT_HEAD) $(GIT_INDEX)
 	@$(MAKE) --no-print-directory ingredients
 	@echo "Packing '$@'..."
 	start-cli s9pk pack --arch=$* -o $@

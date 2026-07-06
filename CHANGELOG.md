@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-07-06
+
+### `[Infra]` StartOS package builds work in Git worktrees
+
+The StartOS package make targets now resolve Git's HEAD and index paths through Git instead of assuming `.git` is a directory. Linked worktrees can dry-run and build packages again while still rebuilding packages when HEAD or the index changes.
+
 ## 2026-07-04
 
 ### `[Infra]` StartOS package tracks upstream v1.16.0
