@@ -923,7 +923,6 @@ msgid "Block hash"
 msgstr "Hash del bloque"
 
 #: src/components/HashrateChart.tsx
-#: src/pages/History.tsx
 msgid "block height"
 msgstr "altura del bloque"
 
@@ -2508,9 +2507,14 @@ msgstr "ganancias totales en este paso"
 msgid "Lifetime sum of (amount_sat − amount_remaining_sat) across every bid the autopilot has tagged. Excludes any bids placed before the autopilot was switched on. Switch to \"whole account\" via Config → Money panel."
 msgstr "Suma de toda la vida de (amount_sat - amount_remaining_sat) en cada oferta etiquetada por el autopilot. Excluye cualquier oferta colocada antes de activar el autopilot. Cambia a \"cuenta completa\" en Config → panel Money."
 
+#: src/pages/History.tsx
 #: src/pages/Status.tsx
 msgid "Lightning"
 msgstr "Lightning"
+
+#: src/pages/History.tsx
+msgid "Lightning (off-chain)"
+msgstr "Lightning (fuera de la cadena)"
 
 #: src/components/PriceChart.tsx
 msgid "LIGHTNING PAYOUT"
@@ -3110,6 +3114,7 @@ msgstr "Activo"
 msgid "On target - bid at fillable + overpay."
 msgstr "En el objetivo - oferta igual a rellenable + sobrepago."
 
+#: src/pages/History.tsx
 #: src/pages/Status.tsx
 msgid "on-chain"
 msgstr "on-chain"
@@ -3686,6 +3691,10 @@ msgstr "cambio de IP pública"
 #: src/pages/Config.tsx
 msgid "Push outage alerts (Datum unreachable, hashrate floor breach, wallet runway, etc.) to Telegram so the operator finds out within minutes, not hours. See the setup walkthrough for the @BotFather + @userinfobot steps."
 msgstr "Envía alertas de caídas (Datum inaccesible, hashrate por debajo del piso, runway del wallet, etc.) a Telegram para que el operador se entere en minutos, no en horas. Consulta la guía de configuración para los pasos con @BotFather + @userinfobot."
+
+#: src/pages/History.tsx
+msgid "rail"
+msgstr "rail"
 
 #: src/components/HashrateChart.tsx
 msgid "range"

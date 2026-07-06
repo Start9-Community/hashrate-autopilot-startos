@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-07-06
+
+### `[Fix]` Timeline shows earnpay payouts and the payout gem "View in timeline" jump highlights again (#323)
+
+The Timeline's payout rows now come from the same Ocean payout ledger (earnpay) as the Price chart's gems, so Lightning payouts appear in the Timeline too and a gem's "View in timeline" link highlights the matching row again. After the chart gems were repointed to the ledger, their row keys no longer matched the Timeline's on-chain-scanner rows, so the jump landed on nothing. Payout rows and the detail drawer are now rail-aware (on-chain vs Lightning; the transaction link and block-height row are shown only for on-chain payouts).
+
 ## 2026-07-05
 
 ### `[UI]` Price-chart payout gems now include Lightning payouts (#323)

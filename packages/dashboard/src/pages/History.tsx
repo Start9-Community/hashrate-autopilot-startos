@@ -587,14 +587,34 @@ export function History() {
   // was polled twice concurrently under two cache entries whenever
   // this page was open. Same key = one shared cache + request dedup;
   // each observer keeps its own refetchInterval.
+  // #323: payouts come from Ocean's payout ledger (earnpay), the same
+  // source as the Price chart's gems - so a gem's "View in timeline"
+  // key (`payout:<ocean_payouts.id>`) matches the row here, and
+  // Lightning payouts appear in the Timeline too. Shared cache key with
+  // Status.
   const payoutsQuery = useQuery({
-    queryKey: ['reward-events'],
-    // Same fetch shape as Status (limit 500). Reward events are
-    // sparse on-chain receipts; 500 covers years.
-    queryFn: () => api.rewardEvents(500),
+    queryKey: ['payout-ledger'],
+    queryFn: () => api.payoutLedger(),
     placeholderData: keepPreviousData,
     refetchInterval: extraRefetchMs,
   });
+  // Map ledger rows into the RewardEventView shape the rest of the page
+  // consumes. Lightning payouts have no txid (empty => no explorer link)
+  // and no block height (earnpay doesn't carry one).
+  const payoutEvents = useMemo<RewardEventView[]>(
+    () =>
+      (payoutsQuery.data?.payouts ?? []).map((p) => ({
+        id: p.id,
+        txid: p.on_chain_txid ?? '',
+        vout: 0,
+        block_height: 0,
+        value_sat: p.net_sat,
+        detected_at: p.ts_ms,
+        reorged: false,
+        rail: p.rail,
+      })),
+    [payoutsQuery.data?.payouts],
+  );
   const depositsQuery = useQuery({
     queryKey: ['deposits'],
     queryFn: () => api.deposits(),
@@ -664,13 +684,12 @@ export function History() {
   // (or force-show a deep-linked row) exactly like the alert rows.
   const visibleExtras: LogExtraItem[] = useMemo(() => {
     const all: LogExtraItem[] = [];
-    for (const e of payoutsQuery.data?.events ?? []) {
-      if (e.reorged) continue;
+    for (const e of payoutEvents) {
       all.push({
         kind: 'payout',
         key: `payout:${e.id}`,
         ts: e.detected_at,
-        summary: `${formatNumber(e.value_sat, {})} sat · block ${e.block_height}`,
+        summary: `${formatNumber(e.value_sat, {})} sat · ${e.rail === 'lightning' ? t`Lightning` : t`on-chain`}`,
         payout: e,
       });
     }
@@ -775,7 +794,7 @@ export function History() {
           (oldestBidTs === null || it.ts >= oldestBidTs)),
     );
   }, [
-    payoutsQuery.data,
+    payoutEvents,
     depositsQuery.data,
     oceanQuery.data,
     ipChangesQuery.data,
@@ -908,9 +927,9 @@ export function History() {
       };
 
       if (shownExtraKinds.has('payout'))
-        for (const p of payoutsQuery.data?.events ?? []) {
-          if (p.reorged || !inRange(p.detected_at)) continue;
-          extraRow(p.detected_at, logExtraLabel('payout'), `${formatNumber(p.value_sat, {})} sat · block ${p.block_height}`);
+        for (const p of payoutEvents) {
+          if (!inRange(p.detected_at)) continue;
+          extraRow(p.detected_at, logExtraLabel('payout'), `${formatNumber(p.value_sat, {})} sat · ${p.rail === 'lightning' ? t`Lightning` : t`on-chain`}`);
         }
       if (shownExtraKinds.has('deposit'))
         for (const d of depositsQuery.data?.deposits ?? []) {
@@ -1024,7 +1043,7 @@ export function History() {
     actionLabels,
     shownExtraKinds,
     shownAlertClasses,
-    payoutsQuery.data,
+    payoutEvents,
     depositsQuery.data,
     oceanQuery.data,
     ipChangesQuery.data,
@@ -2002,7 +2021,8 @@ function logExtraExplorerUrl(extra: LogExtraItem, txTpl: string, blockTpl: strin
       height: extra.block.height,
     });
   }
-  if (extra.kind === 'payout' && extra.payout && txTpl) {
+  // #323: Lightning payouts have no txid / on-chain tx, so no explorer link.
+  if (extra.kind === 'payout' && extra.payout && extra.payout.txid && txTpl) {
     return applyExplorerTemplate(txTpl, { txid: extra.payout.txid });
   }
   if (extra.kind === 'deposit' && extra.deposit && txTpl) {
@@ -2212,18 +2232,26 @@ function LogExtraDetail({ extra }: { extra: LogExtraItem }) {
   }
   if (extra.kind === 'payout' && extra.payout) {
     const e = extra.payout;
+    const isLightning = e.rail === 'lightning';
     return (
       <>
         <section className="space-y-1">
           <DetailRow label={<Trans>amount</Trans>} value={sat(e.value_sat)} />
-          <DetailRow label={<Trans>block height</Trans>} value={e.block_height} />
+          <DetailRow
+            label={<Trans>rail</Trans>}
+            value={isLightning ? <Trans>Lightning (off-chain)</Trans> : <Trans>on-chain</Trans>}
+          />
         </section>
-        <section>
-          <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-1">
-            <Trans>Transaction</Trans>
-          </div>
-          <CopyableValue value={`${e.txid}:${e.vout}`} />
-        </section>
+        {/* #323: only on-chain payouts have a transaction to show; earnpay
+            doesn't carry a block height, so that row is dropped. */}
+        {!isLightning && e.txid && (
+          <section>
+            <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-1">
+              <Trans>Transaction</Trans>
+            </div>
+            <CopyableValue value={e.txid} />
+          </section>
+        )}
       </>
     );
   }
