@@ -2,6 +2,10 @@
 
 ## 2026-07-05
 
+### `[Fix]` "Payout confirmed" Telegram alert now fires for Lightning payouts too (#323)
+
+The second-stage "Ocean payout confirmed" notification used to come from the on-chain scanner, so a Lightning payout - which never touches the blockchain - never produced a confirmation message (only the rail-blind "payout initiated" heads-up). It now fires from Ocean's own payout ledger and states whether each payout settled on-chain or over Lightning. The alert's config label lost its "on-chain" qualifier accordingly. Existing payout history is baselined silently on first run so upgrading doesn't replay old payouts to your phone.
+
 ### `[Feature]` Profit & Loss now counts Lightning payouts, with an on-chain vs Lightning split (#323)
 
 "Collected" in the Profit & Loss panel now comes from Ocean's own payout ledger (the earnpay endpoint) instead of the on-chain address scanner, so Lightning payouts finally count. Previously a Lightning payout dropped your unpaid-earnings but never showed up as collected, so net P&L silently understated by the full payout. When you have both rails, the panel shows the split ("on-chain X, Lightning Y"). Collected also no longer needs an Electrum/Bitcoin node configured - it works from your Ocean payout address alone. If you had set the manual pre-installation offset to compensate for missed Lightning payouts, the panel now flags that it may double-count so you can review it.

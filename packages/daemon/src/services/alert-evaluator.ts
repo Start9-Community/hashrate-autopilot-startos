@@ -40,7 +40,7 @@ import { overheatingCeilingForAsic } from './axeos.js';
 import type { AlertsRepo } from '../state/repos/alerts.js';
 import type { PoolBlocksRepo } from '../state/repos/pool_blocks.js';
 import type { PoolBlocksTable } from '../state/types.js';
-import type { RewardEventsRepo } from '../state/repos/reward_events.js';
+import type { OceanPayoutsRepo } from '../state/repos/ocean_payouts.js';
 import type { TickMetricsRepo } from '../state/repos/tick_metrics.js';
 import type { State } from '../controller/types.js';
 import { getAlertCopy } from '../i18n/alert-copy.js';
@@ -153,14 +153,16 @@ export interface AlertEvaluatorOptions {
    */
   readonly poolBlocksRepo?: PoolBlocksRepo;
   /**
-   * #226: optional reward-events read repo. When provided the
-   * evaluator hydrates a `lastNotifiedRewardEventId` watermark from
-   * `maxId()` at boot (silent baseline so a fresh-install backfill
-   * doesn't fire a flood of "payout confirmed" messages) and fires
-   * once per new row above the watermark. Without it
+   * #323: optional Ocean earnpay payout store. When provided,
+   * `payout_confirmed` fires the stage-2 (enriched) alert once per new
+   * settlement Ocean reports - rail-aware, so Lightning payouts get a
+   * message too (the old reward_events source was on-chain-only, so
+   * Lightning payouts never confirmed). The evaluator baselines all
+   * currently-stored payouts as already-enriched on its first tick so
+   * the historical backfill doesn't flood Telegram. Without it,
    * `payout_confirmed` short-circuits safely.
    */
-  readonly rewardEventsRepo?: RewardEventsRepo;
+  readonly oceanPayoutsRepo?: OceanPayoutsRepo;
   /** Override clock for tests. */
   readonly now?: () => number;
   /**
@@ -269,22 +271,20 @@ export class AlertEvaluator {
    */
   private lastPoolBlockUnpaidSat: number | null = null;
   /**
-   * #226: highest `reward_events.id` we've already considered for the
-   * `payout_confirmed` Telegram. Hydrated at boot from
-   * `rewardEventsRepo.maxId()` so the boot-time backfill of historical
-   * payouts doesn't fire a flood of "payout confirmed" messages. Same
-   * silent-baseline contract as `lastNotifiedBlockHeight` for #117.
-   * Sentinel `-1` means "table genuinely empty, fire on the very first
-   * row we ever see"; `null` means "uninitialised, baseline on next
-   * evaluator tick before firing anything."
+   * #323: whether we've baselined the earnpay payout store for the
+   * `payout_confirmed` stage-2 alert. On the first tick the toggle is
+   * on, every currently-stored payout is marked enriched (silent) so
+   * the historical backfill doesn't flood Telegram; thereafter only
+   * genuinely-new settlements (enriched_alert = 0) fire. False until
+   * that baseline runs.
    */
-  private lastNotifiedRewardEventId: number | null = null;
+  private payoutSettledBaselined = false;
 
   private readonly alertManager: AlertManager;
   private readonly axeOSPoller: AxeOSPoller | null;
   private readonly tickMetricsRepo: TickMetricsRepo | null;
   private readonly poolBlocksRepo: PoolBlocksRepo | null;
-  private readonly rewardEventsRepo: RewardEventsRepo | null;
+  private readonly oceanPayoutsRepo: OceanPayoutsRepo | null;
   private readonly now: () => number;
   private readonly log: (msg: string) => void;
 
@@ -293,7 +293,7 @@ export class AlertEvaluator {
     this.axeOSPoller = opts.axeOSPoller ?? null;
     this.tickMetricsRepo = opts.tickMetricsRepo ?? null;
     this.poolBlocksRepo = opts.poolBlocksRepo ?? null;
-    this.rewardEventsRepo = opts.rewardEventsRepo ?? null;
+    this.oceanPayoutsRepo = opts.oceanPayoutsRepo ?? null;
     this.now = opts.now ?? (() => Date.now());
     this.log = opts.log ?? (() => {});
   }
@@ -340,14 +340,10 @@ export class AlertEvaluator {
         .maxHeight()
         .catch(() => null);
     }
-    // #226: same silent-baseline contract for the reward_events
-    // watermark. Without this, a daemon restart would re-fire
-    // payout_confirmed for every historical row in the ledger.
-    if (this.rewardEventsRepo) {
-      this.lastNotifiedRewardEventId = await this.rewardEventsRepo
-        .maxId()
-        .catch(() => null);
-    }
+    // #323: the earnpay payout store baselines lazily on the first
+    // evaluate() tick (it needs the current payout address from
+    // `state.config`, which hydrate doesn't have), so there's nothing
+    // to do here for `payout_confirmed`.
   }
 
   /**
@@ -1011,17 +1007,27 @@ export class AlertEvaluator {
   }
 
   /**
-   * #226: `payout_confirmed` - INFO Telegram alert when the on-chain
-   * scanner observes an output crediting the configured payout
-   * address (any tx - Ocean pays via batched sweeps from its pool
-   * wallet, not coinbase-direct, #240). Detection: walk reward_events rows with `id` >
-   * `lastNotifiedRewardEventId` (and `reorged = 0`); fire one INFO
-   * per row; advance the watermark.
+   * #323: `payout_confirmed` - the stage-2 (enriched) INFO Telegram
+   * alert. Fires once per new settlement Ocean reports in its own
+   * payout ledger (the earnpay `payouts[]` -> `ocean_payouts`),
+   * rail-aware: on-chain and Lightning both get a message. This
+   * replaces the old reward_events source, which was on-chain-only and
+   * so never confirmed a Lightning payout (the #323 bug).
    *
-   * Same silent-baseline contract as pool_block_credited: on first
-   * tick after a fresh boot where hydrate() didn't run, baseline
-   * from `maxId()` before processing so the boot-time backfill of
-   * historical rows doesn't flood Telegram.
+   * Two-stage rhythm: `payout_initiated` fires instantly on the
+   * statsnap unpaid-balance drop (approximate, rail-blind);
+   * `payout_confirmed` follows once earnpay populates the authoritative
+   * amount + rail.
+   *
+   * Silent baseline: on the first tick the toggle is on, mark every
+   * stored payout for the current address as enriched (no message) so
+   * the historical backfill doesn't flood Telegram. Thereafter the
+   * incremental refresh inserts new settlements with enriched_alert = 0
+   * and this fires one INFO each, then marks them.
+   *
+   * Txid is intentionally omitted from the body for operator privacy
+   * (the chart deep-links each on-chain gem to a block explorer; the
+   * event itself is all the message needs to convey).
    */
   private async evaluatePayoutConfirmed(
     state: State,
@@ -1029,45 +1035,42 @@ export class AlertEvaluator {
   ): Promise<void> {
     if (!state.config.notify_on_payout_confirmed) return;
     if (disabledClasses.has('payout_confirmed')) return;
-    const repo = this.rewardEventsRepo;
+    const repo = this.oceanPayoutsRepo;
     if (!repo) return;
-    if (this.lastNotifiedRewardEventId === null) {
-      this.lastNotifiedRewardEventId = await repo.maxId().catch(() => null);
-      if (this.lastNotifiedRewardEventId === null) {
-        // Table genuinely empty - mark with -1 so the first ever
-        // row we see fires.
-        this.lastNotifiedRewardEventId = -1;
-      }
+    const address = state.config.btc_payout_address;
+    if (!address) return;
+
+    if (!this.payoutSettledBaselined) {
+      // First eligible tick: everything already stored is historical
+      // (the boot backfill). Baseline it as enriched so we only ever
+      // message genuinely-new settlements.
+      await repo.markAllEnriched(address).catch(() => {});
+      this.payoutSettledBaselined = true;
       return;
     }
-    const newRows = await repo
-      .sinceId(this.lastNotifiedRewardEventId)
-      .catch(() => [] as Awaited<ReturnType<typeof repo.sinceId>>);
+
+    const rows = await repo
+      .listUnenriched(address)
+      .catch(() => [] as Awaited<ReturnType<typeof repo.listUnenriched>>);
+    if (rows.length === 0) return;
     const locale = numberLocale(state);
-    for (const row of newRows) {
-      const valueSatStr = formatInteger(row.value_sat, locale);
-      const valueBtcStr = formatBtc(row.value_sat, locale);
-      const heightStr = formatInteger(row.block_height, locale);
-      // #226 follow-up: txid intentionally omitted from the body for
-      // operator privacy. The chart already deep-links each payout
-      // marker to a block explorer; surfacing the txid in Telegram
-      // would broadcast it through whatever chat history the
-      // operator has retained, which is more exposure than the
-      // event itself warrants.
+    const fired: number[] = [];
+    for (const row of rows) {
+      const valueSatStr = formatInteger(row.net_sat, locale);
+      const valueBtcStr = formatBtc(row.net_sat, locale);
       await this.alertManager.recordAlert({
         severity: 'INFO',
         title: copyFor(state).payout_confirmed_title({ payout_btc: valueBtcStr }),
         body: copyFor(state).payout_confirmed_body({
           payout_sat: valueSatStr,
           payout_btc: valueBtcStr,
-          height: heightStr,
+          is_lightning: row.rail === 'lightning',
         }),
         event_class: 'payout_confirmed',
       });
-      if (row.id > this.lastNotifiedRewardEventId) {
-        this.lastNotifiedRewardEventId = row.id;
-      }
+      fired.push(row.id);
     }
+    await repo.markEnriched(fired).catch(() => {});
   }
 
   // ---------------------------------------------------------------

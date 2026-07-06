@@ -140,7 +140,10 @@ export class OceanPayoutsService {
 
     let inserted = 0;
     try {
-      inserted = await this.options.repo.upsertMany(rows, nowMs);
+      // Full backfill = historical payouts -> baseline as already
+      // enriched (silent). Incremental refresh -> enriched_alert 0 so a
+      // new settlement fires the stage-2 "payout confirmed" alert.
+      inserted = await this.options.repo.upsertMany(rows, nowMs, fullBackfill ? 1 : 0);
     } catch (err) {
       this.log(`[ocean-payouts] upsert failed: ${(err as Error).message}`);
       return;

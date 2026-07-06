@@ -61,7 +61,11 @@ export class OceanPayoutsRepo {
    * genuinely new rows inserted so the caller can decide whether to
    * fire the enrichment alert / recompute chart series.
    */
-  async upsertMany(payouts: readonly OceanPayoutInsert[], nowMs: number): Promise<number> {
+  async upsertMany(
+    payouts: readonly OceanPayoutInsert[],
+    nowMs: number,
+    enrichedAlert: 0 | 1 = 0,
+  ): Promise<number> {
     if (payouts.length === 0) return 0;
     const rows = payouts.map((p) => ({
       address: p.address,
@@ -71,6 +75,10 @@ export class OceanPayoutsRepo {
       is_generation: (p.is_generation ? 1 : 0) as 0 | 1,
       rail: (p.on_chain_txid ? 'onchain' : 'lightning') as 'onchain' | 'lightning',
       dedup_key: payoutDedupKey(p),
+      // Full-history backfill passes 1 (historical -> baseline, no
+      // stage-2 alert); the incremental refresh passes 0 so a genuinely
+      // new settlement fires the enriched "payout confirmed" alert.
+      enriched_alert: enrichedAlert,
       first_seen_at: nowMs,
     }));
     const result = await this.db
@@ -79,6 +87,46 @@ export class OceanPayoutsRepo {
       .onConflict((oc) => oc.column('dedup_key').doNothing())
       .executeTakeFirst();
     return Number(result.numInsertedOrUpdatedRows ?? 0);
+  }
+
+  /**
+   * #323 stage-2 alerts: payouts for an address not yet enriched
+   * (enriched_alert = 0), oldest first. The alert evaluator fires one
+   * "payout confirmed" message per row (rail-aware) then marks them.
+   */
+  async listUnenriched(address: string): Promise<OceanPayoutRow[]> {
+    return this.db
+      .selectFrom('ocean_payouts')
+      .selectAll()
+      .where('address', '=', address)
+      .where('enriched_alert', '=', 0)
+      .orderBy('ts', 'asc')
+      .execute() as Promise<OceanPayoutRow[]>;
+  }
+
+  /** Mark the given payout rows as enriched (stage-2 alert sent). */
+  async markEnriched(ids: readonly number[]): Promise<void> {
+    if (ids.length === 0) return;
+    await this.db
+      .updateTable('ocean_payouts')
+      .set({ enriched_alert: 1 })
+      .where('id', 'in', ids as number[])
+      .execute();
+  }
+
+  /**
+   * Baseline: mark every stored payout for an address as enriched
+   * without firing. Used once at evaluator startup so historical
+   * payouts (including those a prior daemon version stored before the
+   * stage-2 alert existed) don't flood Telegram on the first tick.
+   */
+  async markAllEnriched(address: string): Promise<void> {
+    await this.db
+      .updateTable('ocean_payouts')
+      .set({ enriched_alert: 1 })
+      .where('address', '=', address)
+      .where('enriched_alert', '=', 0)
+      .execute();
   }
 
   /**

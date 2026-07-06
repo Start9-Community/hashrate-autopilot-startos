@@ -2376,8 +2376,12 @@ msgid "Informational. Off by default. Fires the moment Ocean debits your unpaid 
 msgstr "Informatief. Standaard uit. Wordt geactiveerd zodra Ocean je onbetaalde saldo afboekt - Ocean heeft je uitbetaling in de wachtrij gezet en handelt die af via een gebundelde betaaltransactie, maar ze is nog niet on-chain bevestigd. Detectie: de ocean_unpaid_sat per tick van de daemon daalt met meer dan 30% EN het restant ligt onder de uitbetalingsdrempel van 1.048.576 sat (filtert tick-ruis / Ocean-boekhoudcorrecties eruit)."
 
 #: src/pages/Config.tsx
-msgid "Informational. Off by default. Fires when the on-chain payout scanner observes a new transaction crediting your payout address - i.e. the payout Ocean queued has now confirmed (any tx, not just a coinbase - Ocean pays out via batched sweeps). Includes block height, payout amount, and a truncated tx id. Source: reward_events ledger (populated by your Electrum server or bitcoind scantxoutset, whichever the operator has wired)."
-msgstr "Informatief. Standaard uit. Wordt geactiveerd wanneer de on-chain uitbetalingsscanner een nieuwe transactie ziet die je uitbetalingsadres crediteert - d.w.z. de door Ocean in de wachtrij gezette uitbetaling is nu bevestigd (elke transactie, niet alleen een coinbase - Ocean betaalt uit via gebundelde sweeps). Bevat blokhoogte, uitbetalingsbedrag en een ingekorte tx-id. Bron: reward_events-grootboek (gevuld door je Electrum-server of bitcoind scantxoutset, afhankelijk van wat de operator heeft ingesteld)."
+#~ msgid "Informational. Off by default. Fires when the on-chain payout scanner observes a new transaction crediting your payout address - i.e. the payout Ocean queued has now confirmed (any tx, not just a coinbase - Ocean pays out via batched sweeps). Includes block height, payout amount, and a truncated tx id. Source: reward_events ledger (populated by your Electrum server or bitcoind scantxoutset, whichever the operator has wired)."
+#~ msgstr "Informatief. Standaard uit. Wordt geactiveerd wanneer de on-chain uitbetalingsscanner een nieuwe transactie ziet die je uitbetalingsadres crediteert - d.w.z. de door Ocean in de wachtrij gezette uitbetaling is nu bevestigd (elke transactie, niet alleen een coinbase - Ocean betaalt uit via gebundelde sweeps). Bevat blokhoogte, uitbetalingsbedrag en een ingekorte tx-id. Bron: reward_events-grootboek (gevuld door je Electrum-server of bitcoind scantxoutset, afhankelijk van wat de operator heeft ingesteld)."
+
+#: src/pages/Config.tsx
+msgid "Informational. Off by default. The follow-up to \"payout initiated\": fires once Ocean's own payout ledger reports the settlement with its confirmed amount and rail. Works for both on-chain and Lightning payouts (a Lightning payout never touches the blockchain, so the old on-chain scanner could not confirm it). Message states the amount and whether it settled on-chain or over Lightning."
+msgstr "Informatief. Standaard uit. Het vervolg op \"uitbetaling gestart\": vuurt zodra Ocean's eigen uitbetalingsgrootboek de afwikkeling meldt met het bevestigde bedrag en de rail. Werkt voor zowel on-chain- als Lightning-uitbetalingen (een Lightning-uitbetaling raakt de blockchain nooit, dus de oude on-chain-scanner kon die niet bevestigen). Het bericht vermeldt het bedrag en of het on-chain of via Lightning is afgewikkeld."
 
 #: src/pages/Config.tsx
 msgid "Informational. Off by default. When on, every block Ocean credits to your payout address sends a small INFO message: block height, your share %, your credit, and progress toward the next 1,048,576-sat on-chain payout."
@@ -3001,8 +3005,12 @@ msgid "Ocean mining found a block (voice)"
 msgstr "Ocean mining heeft een blok gevonden (stem)"
 
 #: src/pages/Config.tsx
-msgid "Ocean payout confirmed on-chain"
-msgstr "Ocean-uitbetaling bevestigd on-chain"
+msgid "Ocean payout confirmed"
+msgstr "Ocean-uitbetaling bevestigd"
+
+#: src/pages/Config.tsx
+#~ msgid "Ocean payout confirmed on-chain"
+#~ msgstr "Ocean-uitbetaling bevestigd on-chain"
 
 #: src/pages/Config.tsx
 msgid "Ocean payout initiated"

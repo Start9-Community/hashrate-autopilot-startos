@@ -868,8 +868,9 @@ async function bootOperational(
     axeOSPoller,
     tickMetricsRepo,
     poolBlocksRepo,
-    // #226: enables payout_confirmed firing once per new reward_events row.
-    rewardEventsRepo,
+    // #323: stage-2 payout_confirmed fires (rail-aware) once per new
+    // settlement Ocean reports in earnpay - Lightning included.
+    oceanPayoutsRepo,
     log: (m) => log(m),
   });
   // Rebuild in-memory event state from the alerts table so a daemon

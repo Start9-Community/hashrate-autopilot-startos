@@ -102,6 +102,44 @@ describe('OceanPayoutsRepo (#323)', () => {
     expect(rows.map((r) => r.on_chain_txid)).toEqual(['x', null]);
   });
 
+  it('tracks enrichment: backfill baselines silent, incremental stays pending, mark clears it', async () => {
+    // Full backfill inserts historical payouts already enriched (silent).
+    await repo.upsertMany(
+      [{ address: ADDR, ts_ms: 1_000, on_chain_txid: 'hist', net_sat: 100, is_generation: false }],
+      Date.now(),
+      1,
+    );
+    expect(await repo.listUnenriched(ADDR)).toHaveLength(0);
+
+    // Incremental refresh inserts a new settlement pending an alert.
+    await repo.upsertMany(
+      [{ address: ADDR, ts_ms: 2_000, on_chain_txid: 'fresh', net_sat: 200, is_generation: false }],
+      Date.now(),
+      0,
+    );
+    const pending = await repo.listUnenriched(ADDR);
+    expect(pending.map((r) => r.on_chain_txid)).toEqual(['fresh']);
+
+    await repo.markEnriched([pending[0]!.id]);
+    expect(await repo.listUnenriched(ADDR)).toHaveLength(0);
+  });
+
+  it('markAllEnriched baselines every pending row for the address', async () => {
+    await repo.upsertMany(
+      [
+        { address: ADDR, ts_ms: 1_000, on_chain_txid: 'a', net_sat: 100, is_generation: false },
+        { address: ADDR, ts_ms: 2_000, on_chain_txid: null, net_sat: 200, is_generation: false },
+        { address: OTHER, ts_ms: 3_000, on_chain_txid: 'c', net_sat: 300, is_generation: false },
+      ],
+      Date.now(),
+      0,
+    );
+    await repo.markAllEnriched(ADDR);
+    expect(await repo.listUnenriched(ADDR)).toHaveLength(0);
+    // The other address is untouched.
+    expect(await repo.listUnenriched(OTHER)).toHaveLength(1);
+  });
+
   it('builds distinct dedup keys per rail', () => {
     expect(
       payoutDedupKey({ address: ADDR, ts_ms: 1, on_chain_txid: 'tx', net_sat: 5, is_generation: false }),

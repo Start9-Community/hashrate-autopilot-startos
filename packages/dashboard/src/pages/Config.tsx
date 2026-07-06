@@ -3743,8 +3743,8 @@ function EventClassSubscriptions({
     },
     {
       id: 'payout_confirmed',
-      label: t`Ocean payout confirmed on-chain`,
-      help: t`Informational. Off by default. Fires when the on-chain payout scanner observes a new transaction crediting your payout address - i.e. the payout Ocean queued has now confirmed (any tx, not just a coinbase - Ocean pays out via batched sweeps). Includes block height, payout amount, and a truncated tx id. Source: reward_events ledger (populated by your Electrum server or bitcoind scantxoutset, whichever the operator has wired).`,
+      label: t`Ocean payout confirmed`,
+      help: t`Informational. Off by default. The follow-up to "payout initiated": fires once Ocean's own payout ledger reports the settlement with its confirmed amount and rail. Works for both on-chain and Lightning payouts (a Lightning payout never touches the blockchain, so the old on-chain scanner could not confirm it). Message states the amount and whether it settled on-chain or over Lightning.`,
       enabled: draft.notify_on_payout_confirmed,
       setEnabled: (n) => onChange('notify_on_payout_confirmed', n as never),
       severity: 'INFO',

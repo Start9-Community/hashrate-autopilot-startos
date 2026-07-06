@@ -2376,8 +2376,12 @@ msgid "Informational. Off by default. Fires the moment Ocean debits your unpaid 
 msgstr "Informativo. Desactivado por defecto. Se activa en cuanto Ocean descuenta tu saldo no pagado - Ocean ha puesto tu pago en cola y lo liquidara mediante una transaccion de pago por lotes, pero aun no se ha confirmado on-chain. Deteccion: el ocean_unpaid_sat por tick del daemon cae mas de un 30% Y el resto queda por debajo del umbral de pago de 1.048.576 sat (filtra el ruido de tick / ajustes contables de Ocean)."
 
 #: src/pages/Config.tsx
-msgid "Informational. Off by default. Fires when the on-chain payout scanner observes a new transaction crediting your payout address - i.e. the payout Ocean queued has now confirmed (any tx, not just a coinbase - Ocean pays out via batched sweeps). Includes block height, payout amount, and a truncated tx id. Source: reward_events ledger (populated by your Electrum server or bitcoind scantxoutset, whichever the operator has wired)."
-msgstr "Informativo. Desactivado por defecto. Se activa cuando el escaner de pagos on-chain detecta una nueva transaccion que acredita tu direccion de pago - es decir, el pago que Ocean puso en cola ya se ha confirmado (cualquier transaccion, no solo una coinbase - Ocean paga mediante barridos por lotes). Incluye altura de bloque, importe del pago y un id de tx truncado. Fuente: el libro reward_events (rellenado por tu servidor Electrum o bitcoind scantxoutset, segun lo que haya configurado el operador)."
+#~ msgid "Informational. Off by default. Fires when the on-chain payout scanner observes a new transaction crediting your payout address - i.e. the payout Ocean queued has now confirmed (any tx, not just a coinbase - Ocean pays out via batched sweeps). Includes block height, payout amount, and a truncated tx id. Source: reward_events ledger (populated by your Electrum server or bitcoind scantxoutset, whichever the operator has wired)."
+#~ msgstr "Informativo. Desactivado por defecto. Se activa cuando el escaner de pagos on-chain detecta una nueva transaccion que acredita tu direccion de pago - es decir, el pago que Ocean puso en cola ya se ha confirmado (cualquier transaccion, no solo una coinbase - Ocean paga mediante barridos por lotes). Incluye altura de bloque, importe del pago y un id de tx truncado. Fuente: el libro reward_events (rellenado por tu servidor Electrum o bitcoind scantxoutset, segun lo que haya configurado el operador)."
+
+#: src/pages/Config.tsx
+msgid "Informational. Off by default. The follow-up to \"payout initiated\": fires once Ocean's own payout ledger reports the settlement with its confirmed amount and rail. Works for both on-chain and Lightning payouts (a Lightning payout never touches the blockchain, so the old on-chain scanner could not confirm it). Message states the amount and whether it settled on-chain or over Lightning."
+msgstr "Informativo. Desactivado por defecto. El seguimiento de \"pago iniciado\": se dispara cuando el propio libro de pagos de Ocean informa de la liquidación con su importe y su rail confirmados. Funciona tanto para pagos on-chain como por Lightning (un pago por Lightning nunca toca la blockchain, así que el antiguo escáner on-chain no podía confirmarlo). El mensaje indica el importe y si se liquidó on-chain o por Lightning."
 
 #: src/pages/Config.tsx
 msgid "Informational. Off by default. When on, every block Ocean credits to your payout address sends a small INFO message: block height, your share %, your credit, and progress toward the next 1,048,576-sat on-chain payout."
@@ -3001,8 +3005,12 @@ msgid "Ocean mining found a block (voice)"
 msgstr "Ocean mining ha encontrado un bloque (voz)"
 
 #: src/pages/Config.tsx
-msgid "Ocean payout confirmed on-chain"
-msgstr "Pago de Ocean confirmado on-chain"
+msgid "Ocean payout confirmed"
+msgstr "Pago de Ocean confirmado"
+
+#: src/pages/Config.tsx
+#~ msgid "Ocean payout confirmed on-chain"
+#~ msgstr "Pago de Ocean confirmado on-chain"
 
 #: src/pages/Config.tsx
 msgid "Ocean payout initiated"

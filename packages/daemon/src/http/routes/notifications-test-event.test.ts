@@ -58,7 +58,8 @@ describe('SAMPLE_BUILDERS locale routing', () => {
     const nl = SAMPLE_BUILDERS.payout_confirmed!('en', NL);
     expect(nl.title).toContain('0,01062144');
     expect(nl.body).toContain('1.062.144');
-    expect(nl.body).toContain('951.602');
+    // #323: the preview is an on-chain settlement (is_lightning:false).
+    expect(nl.body).toContain('on-chain');
   });
 
   it('wallet_runway preview uses NL number format under nl-NL', () => {
