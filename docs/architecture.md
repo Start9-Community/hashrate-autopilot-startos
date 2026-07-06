@@ -176,11 +176,12 @@ hashrate-autopilot/
 │   │   ├── src/state/
 │   │   │   ├── db.ts               (better-sqlite3 + migrations)
 │   │   │   ├── migrations/
-│   │   │   ├── repos/              (config, secrets, decisions, owned_bids, runtime_state, tick_metrics + braiinsRejectionPctSince, bid_events, ip_change_events, reward_events, braiins_deposits, solo_miners, pool_blocks, closed_bids_cache, alerts, system_events)
+│   │   │   ├── repos/              (config, secrets, decisions, owned_bids, runtime_state, tick_metrics + braiinsRejectionPctSince, bid_events, ip_change_events, reward_events, ocean_payouts, braiins_deposits, solo_miners, pool_blocks, closed_bids_cache, alerts, system_events)
 │   │   │   └── stale-bid-prune.ts  (#295 - marks active ledger bids absent from a confirmed-successful Braiins list as cancelled)
 │   │   ├── src/services/
 │   │   │   ├── braiins-service.ts
-│   │   │   ├── payout-observer.ts  (Electrs-preferred; bitcoind fallback)
+│   │   │   ├── payout-observer.ts  (Electrs-preferred; bitcoind fallback; on-chain corroboration only since #323)
+│   │   │   ├── ocean-payouts-service.ts (#323 - syncs Ocean earnpay payouts into ocean_payouts; source of truth for P&L collected)
 │   │   │   ├── pool-health.ts      (TCP probe of Datum Gateway :23334)
 │   │   │   ├── ocean.ts            (Ocean pool REST client: stats, blocks, earnings)
 │   │   │   ├── datum.ts            (optional /umbrel-api poller - gateway-measured hashrate + workers)
@@ -223,7 +224,7 @@ hashrate-autopilot/
 │   │                                bid-events [+ /api/bid-history, /api/bid-history/:order_id/events,
 │   │                                /api/bid-history-events - the #256 v2 flat Timeline feed], ocean,
 │   │                                payouts, btc-price, bip110-scan, bitcoind-test, electrs-test,
-│   │                                block-found-sound, build, reward-events, deposits, ip-changes,
+│   │                                block-found-sound, build, reward-events, payout-ledger, deposits, ip-changes,
 │   │                                alerts [+ /api/alert-spans], notifications-test,
 │   │                                notifications-test-event, ddns, ddns-test, datum-test, pool-url-test,
 │   │                                stale-urls, solo-miners, debug-dump, diagnostics [#272 support bundle])
@@ -593,6 +594,30 @@ CREATE TABLE reward_events (
   reorged INTEGER NOT NULL DEFAULT 0,
   UNIQUE (txid, vout)
 );
+
+-- Ocean payout ledger from the /v1/earnpay endpoint (#323, migration
+-- 0116). Source of truth for P&L "collected" - covers BOTH on-chain
+-- (on_chain_txid set) and Lightning (on_chain_txid null) settlements,
+-- which reward_events (on-chain scanner) structurally cannot. Written
+-- by OceanPayoutsService (full backfill on first run per address, then
+-- a slow trailing-window refresh). dedup_key is the idempotency key:
+-- `<address>|oc:<txid>` for on-chain, `<address>|ln:<ts>:<net_sat>` for
+-- Lightning (a UNIQUE on on_chain_txid can't dedup null-txid Lightning
+-- rows). enriched_alert gates the stage-2 payout_confirmed Telegram.
+CREATE TABLE ocean_payouts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  address TEXT NOT NULL,
+  ts INTEGER NOT NULL,                 -- settlement time, ms epoch
+  on_chain_txid TEXT,                  -- null = Lightning
+  net_sat INTEGER NOT NULL,            -- total_satoshis_net_paid
+  is_generation INTEGER NOT NULL DEFAULT 0,
+  rail TEXT NOT NULL,                  -- 'onchain' | 'lightning'
+  dedup_key TEXT NOT NULL,
+  enriched_alert INTEGER NOT NULL DEFAULT 0,
+  first_seen_at INTEGER NOT NULL
+);
+CREATE UNIQUE INDEX idx_ocean_payouts_dedup ON ocean_payouts (dedup_key);
+CREATE INDEX idx_ocean_payouts_addr_ts ON ocean_payouts (address, ts);
 
 -- Alerts. v1.6 (#100) added external delivery via Telegram; the
 -- columns below cover both the v1.0 audit trail and the channel-

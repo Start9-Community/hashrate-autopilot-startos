@@ -1,6 +1,9 @@
 # earnpay-based payout tracking (Lightning-inclusive P&L)
 
-Status: spec / not yet implemented. Target branch: `develop`.
+Status: **implemented** on `develop` (build 761, 2026-07-05). Shipped in
+commits: ocean_payouts store + earnpay client + service; finance/P&L
+rewire + rail split; rail-aware stage-2 payout_confirmed alert; chart
+gems from `/api/payout-ledger`. Migration 0116.
 Related: issue #323 ("Lightning Payouts Show as On-Chain Payouts"), #240 (collected = lifetime received), #170 (historical offset).
 
 ## Problem
