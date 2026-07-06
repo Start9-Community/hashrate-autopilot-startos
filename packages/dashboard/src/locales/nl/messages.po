@@ -99,9 +99,37 @@ msgstr "{daysCount} dagen · ~{dateLabel}"
 msgid "{hours}h ago"
 msgstr "{hours}u geleden"
 
+#: src/pages/History.tsx
+msgid "{label} changed"
+msgstr "{label} gewijzigd"
+
+#: src/pages/History.tsx
+msgid "{label} changed ({n} recolored)"
+msgstr "{label} gewijzigd ({n} verkleurd)"
+
+#: src/pages/History.tsx
+msgid "{label} changed ({na} added, {nr} removed)"
+msgstr "{label} gewijzigd ({na} toegevoegd, {nr} verwijderd)"
+
+#: src/pages/History.tsx
+msgid "{label} changed ({na} added)"
+msgstr "{label} gewijzigd ({na} toegevoegd)"
+
+#: src/pages/History.tsx
+msgid "{label} changed ({na} replaced)"
+msgstr "{label} gewijzigd ({na} vervangen)"
+
+#: src/pages/History.tsx
+msgid "{label} changed ({nr} removed)"
+msgstr "{label} gewijzigd ({nr} verwijderd)"
+
 #: src/pages/Status.tsx
 msgid "{label} DOWN"
 msgstr "{label} OFFLINE"
+
+#: src/pages/History.tsx
+msgid "{label} reordered"
+msgstr "{label} opnieuw geordend"
 
 #. placeholder {0}: markersHiddenKind === 'edit_price' ? 'edit-price' : markersHiddenKind === 'pool_block' ? 'pool-block' : markersHiddenKind === 'reward_event' ? 'reward-event' : ''
 #: src/components/PriceChart.tsx
@@ -1587,6 +1615,10 @@ msgstr "Beslissingenlogboek - gebeurtenisloos"
 msgid "decrease"
 msgstr "verlagen"
 
+#: src/pages/History.tsx
+msgid "default"
+msgstr "standaard"
+
 #: src/pages/Config.tsx
 msgid "Delete this device permanently. To pause without deleting, uncheck the box at the left of the row."
 msgstr "Apparaat permanent verwijderen. Om te pauzeren zonder te verwijderen, vink het vakje links in de rij uit."
@@ -2889,6 +2921,14 @@ msgstr "geen wijziging nodig"
 msgid "no change observed yet"
 msgstr "nog geen wijziging waargenomen"
 
+#: src/pages/History.tsx
+msgid "No change."
+msgstr "Geen wijziging."
+
+#: src/pages/History.tsx
+msgid "No color changes."
+msgstr "Geen kleurwijzigingen."
+
 #: src/pages/Config.tsx
 msgid "No devices yet. Add one below."
 msgstr "Nog geen apparaten. Voeg er hieronder een toe."
@@ -3804,6 +3844,11 @@ msgstr "Apparaat verwijderen"
 #: src/components/TilesBar.tsx
 msgid "Remove this tile"
 msgstr "Verwijder deze tegel"
+
+#. placeholder {0}: d.count
+#: src/pages/History.tsx
+msgid "Reordered · {0} items, none added or removed"
+msgstr "Opnieuw geordend · {0} items, niets toegevoegd of verwijderd"
 
 #: src/pages/Config.tsx
 msgid "Replace file…"

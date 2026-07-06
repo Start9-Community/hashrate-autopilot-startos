@@ -99,9 +99,37 @@ msgstr "{daysCount} días · ~{dateLabel}"
 msgid "{hours}h ago"
 msgstr "hace {hours}h"
 
+#: src/pages/History.tsx
+msgid "{label} changed"
+msgstr "{label} cambiado"
+
+#: src/pages/History.tsx
+msgid "{label} changed ({n} recolored)"
+msgstr "{label} cambiado ({n} recoloreado)"
+
+#: src/pages/History.tsx
+msgid "{label} changed ({na} added, {nr} removed)"
+msgstr "{label} cambiado ({na} añadido, {nr} eliminado)"
+
+#: src/pages/History.tsx
+msgid "{label} changed ({na} added)"
+msgstr "{label} cambiado ({na} añadido)"
+
+#: src/pages/History.tsx
+msgid "{label} changed ({na} replaced)"
+msgstr "{label} cambiado ({na} reemplazado)"
+
+#: src/pages/History.tsx
+msgid "{label} changed ({nr} removed)"
+msgstr "{label} cambiado ({nr} eliminado)"
+
 #: src/pages/Status.tsx
 msgid "{label} DOWN"
 msgstr "{label} CAÍDO"
+
+#: src/pages/History.tsx
+msgid "{label} reordered"
+msgstr "{label} reordenado"
 
 #. placeholder {0}: markersHiddenKind === 'edit_price' ? 'edit-price' : markersHiddenKind === 'pool_block' ? 'pool-block' : markersHiddenKind === 'reward_event' ? 'reward-event' : ''
 #: src/components/PriceChart.tsx
@@ -1587,6 +1615,10 @@ msgstr "Registro de decisiones - sin eventos"
 msgid "decrease"
 msgstr "disminuir"
 
+#: src/pages/History.tsx
+msgid "default"
+msgstr "predeterminado"
+
 #: src/pages/Config.tsx
 msgid "Delete this device permanently. To pause without deleting, uncheck the box at the left of the row."
 msgstr "Eliminar este dispositivo permanentemente. Para pausar sin eliminar, desmarca la casilla a la izquierda de la fila."
@@ -2889,6 +2921,14 @@ msgstr "sin cambios"
 msgid "no change observed yet"
 msgstr "aún no se ha observado ningún cambio"
 
+#: src/pages/History.tsx
+msgid "No change."
+msgstr "Sin cambios."
+
+#: src/pages/History.tsx
+msgid "No color changes."
+msgstr "Sin cambios de color."
+
 #: src/pages/Config.tsx
 msgid "No devices yet. Add one below."
 msgstr "Aun no hay dispositivos. Anade uno abajo."
@@ -3804,6 +3844,11 @@ msgstr "Eliminar dispositivo"
 #: src/components/TilesBar.tsx
 msgid "Remove this tile"
 msgstr "Quitar este mosaico"
+
+#. placeholder {0}: d.count
+#: src/pages/History.tsx
+msgid "Reordered · {0} items, none added or removed"
+msgstr "Reordenado · {0} elementos, ninguno añadido ni eliminado"
 
 #: src/pages/Config.tsx
 msgid "Replace file…"

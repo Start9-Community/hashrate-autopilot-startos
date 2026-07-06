@@ -31,6 +31,7 @@ import {
   CONDITION_OPEN_CLASSES,
   CONDITION_RECOVERY_CLASSES,
   conditionSpanClass,
+  TILE_CATALOGUE,
 } from '@hashrate-autopilot/shared';
 import {
   api,
@@ -42,6 +43,7 @@ import {
   type DepositView,
   type OurBlockMarker,
   type IpChangeEvent,
+  type SystemEventView,
 } from '../lib/api';
 import {
   useDenomination,
@@ -53,7 +55,14 @@ import {
 import { useFormatters } from '../lib/locale';
 import { formatNumber, formatDuration } from '../lib/format';
 import { CHART_COLOR_DEFAULTS, type ChartColorKey } from '../lib/chartColors';
-import { formatConfigChange, type HashrateUnit } from '../lib/configFieldFormat';
+import { formatConfigChange, configFieldLabel, type HashrateUnit } from '../lib/configFieldFormat';
+import {
+  isListField,
+  isColorMapField,
+  parseIdList,
+  diffIdList,
+  diffColorMap,
+} from '../lib/configChangeDiff';
 import { applyExplorerTemplate } from '../lib/blockExplorer';
 import {
   logExtraJumpUrl,
@@ -765,14 +774,39 @@ export function History() {
     for (const s of systemEventsQuery.data?.events ?? []) {
       if (s.kind === 'config_change') {
         const unit = denomination.hashrateUnit as HashrateUnit;
-        const human = s.field
-          ? formatConfigChange(s.field, s.old_value, s.new_value, unit, (n) => formatNumber(n, {}))
-          : { label: t`config change`, change: `${s.old_value ?? '—'} → ${s.new_value ?? '—'}` };
+        let summary: string;
+        // JSON/list fields (dashboard tiles, card order, muted alerts,
+        // chart colors) dump an unreadable raw array; the row gets a
+        // compact "what changed" line, the +/- detail lives in the panel.
+        if (s.field && isColorMapField(s.field)) {
+          const label = configFieldLabel(s.field);
+          const n = diffColorMap(s.old_value, s.new_value).length;
+          summary = n > 0 ? t`${label} changed (${n} recolored)` : t`${label} changed`;
+        } else if (s.field && isListField(s.field)) {
+          const label = configFieldLabel(s.field);
+          const d = diffIdList(
+            parseIdList(s.field, s.old_value),
+            parseIdList(s.field, s.new_value),
+          );
+          const na = d.added.length;
+          const nr = d.removed.length;
+          if (d.unchanged) summary = t`${label} changed`;
+          else if (d.reorderedOnly) summary = t`${label} reordered`;
+          else if (na > 0 && nr > 0 && na === nr) summary = t`${label} changed (${na} replaced)`;
+          else if (na > 0 && nr > 0) summary = t`${label} changed (${na} added, ${nr} removed)`;
+          else if (na > 0) summary = t`${label} changed (${na} added)`;
+          else summary = t`${label} changed (${nr} removed)`;
+        } else {
+          const human = s.field
+            ? formatConfigChange(s.field, s.old_value, s.new_value, unit, (n) => formatNumber(n, {}))
+            : { label: t`config change`, change: `${s.old_value ?? '—'} → ${s.new_value ?? '—'}` };
+          summary = `${human.label}: ${human.change}`;
+        }
         all.push({
           kind: 'config',
           key: `config:${s.id}`,
           ts: s.occurred_at,
-          summary: `${human.label}: ${human.change}`,
+          summary,
           system: s,
         });
       } else if (s.kind === 'daemon_started') {
@@ -2295,7 +2329,16 @@ function LogExtraDetail({ extra }: { extra: LogExtraItem }) {
       </section>
     );
   }
-  // alert / config / daemon start: no rich tooltip -> show the summary.
+  // #323 follow-up: layout/list/color config changes get a friendly
+  // semantic diff instead of the raw-JSON summary dump.
+  if (
+    extra.kind === 'config' &&
+    extra.system?.field &&
+    (isListField(extra.system.field) || isColorMapField(extra.system.field))
+  ) {
+    return <ConfigChangeDetail system={extra.system} />;
+  }
+  // alert / config (scalar) / daemon start: no rich tooltip -> show the summary.
   return (
     <section>
       <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-1">
@@ -2304,6 +2347,113 @@ function LogExtraDetail({ extra }: { extra: LogExtraItem }) {
       <p className="text-xs text-slate-200 whitespace-normal leading-snug break-words">
         {extra.summary}
       </p>
+    </section>
+  );
+}
+
+/** Prettify an unknown config id (`avg_cost_vs_hashprice` -> `Avg cost vs hashprice`). */
+function prettifyConfigId(id: string): string {
+  const s = id.replace(/[._]+/g, ' ').trim();
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : id;
+}
+
+/** Small color chip + hex, or a "default" chip when the override was cleared. */
+function ColorSwatch({ hex }: { hex: string | null }) {
+  if (!hex) {
+    return (
+      <span className="text-[10px] text-slate-500 uppercase tracking-wide">
+        <Trans>default</Trans>
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1">
+      <span
+        className="inline-block w-3 h-3 rounded-sm border border-slate-700"
+        style={{ backgroundColor: hex }}
+      />
+      <span className="font-mono text-[10px] text-slate-400">{hex}</span>
+    </span>
+  );
+}
+
+/**
+ * #323 follow-up: readable detail for a config change whose value is a
+ * list (dashboard tiles, card order, muted alerts) or a color map
+ * (chart colors). Shows added/removed items with friendly names, a
+ * "reordered" note when only the order changed, and per-series swatches
+ * for color changes - instead of dumping the raw JSON arrays.
+ */
+function ConfigChangeDetail({ system }: { system: SystemEventView }) {
+  const { i18n } = useLingui();
+  const field = system.field ?? '';
+  const label = configFieldLabel(field);
+
+  const itemLabel = (id: string): string => {
+    if (field === 'dashboard_tiles') {
+      const meta = TILE_CATALOGUE.find((m) => m.id === id);
+      return meta ? i18n._(meta.labelKey) : prettifyConfigId(id);
+    }
+    if (field === 'notification_disabled_event_classes') return conditionLabel(id);
+    return prettifyConfigId(id);
+  };
+
+  const header = (
+    <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-1">{label}</div>
+  );
+
+  if (isColorMapField(field)) {
+    const changes = diffColorMap(system.old_value, system.new_value);
+    return (
+      <section className="space-y-1.5">
+        {header}
+        {changes.length === 0 ? (
+          <p className="text-xs text-slate-400">
+            <Trans>No color changes.</Trans>
+          </p>
+        ) : (
+          changes.map((c) => (
+            <div key={c.key} className="flex items-center gap-2 text-xs text-slate-200">
+              <span className="flex-1 truncate">{prettifyConfigId(c.key)}</span>
+              <ColorSwatch hex={c.from} />
+              <span className="text-slate-500" aria-hidden="true">
+                →
+              </span>
+              <ColorSwatch hex={c.to} />
+            </div>
+          ))
+        )}
+      </section>
+    );
+  }
+
+  const d = diffIdList(
+    parseIdList(field, system.old_value),
+    parseIdList(field, system.new_value),
+  );
+  return (
+    <section className="space-y-1">
+      {header}
+      {d.unchanged && (
+        <p className="text-xs text-slate-400">
+          <Trans>No change.</Trans>
+        </p>
+      )}
+      {d.reorderedOnly && (
+        <p className="text-xs text-slate-300">
+          <Trans>Reordered · {d.count} items, none added or removed</Trans>
+        </p>
+      )}
+      {d.added.map((id) => (
+        <div key={`+${id}`} className="text-xs text-emerald-300 font-mono">
+          + {itemLabel(id)}
+        </div>
+      ))}
+      {d.removed.map((id) => (
+        <div key={`-${id}`} className="text-xs text-red-300 font-mono">
+          − {itemLabel(id)}
+        </div>
+      ))}
     </section>
   );
 }

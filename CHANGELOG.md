@@ -2,6 +2,10 @@
 
 ## 2026-07-06
 
+### `[UI]` Config-change timeline entries for layout/color changes are now readable
+
+Changes to dashboard tiles, card order, muted alerts, and chart colors used to dump the raw JSON arrays in the timeline row and detail panel (`["uptime","pool_luck_24h",...] → [...]`). They now show a friendly semantic diff: the detail panel lists `+ Added` / `− Removed` items with their real names (or "Reordered · N items" when only the order changed), and chart-color changes show a color swatch and hex per series. The timeline row shows a compact summary like "Dashboard tiles changed (1 replaced)". Numeric/toggle config changes were already readable and are unchanged.
+
 ### `[UI]` Pool blocks 30d tile is colored by pool luck
 
 The POOL BLOCKS 30D stat tile was always neutral, but a raw block count only means something relative to what's expected. It now colors by the 30-day pool luck (actual ÷ expected): green at or above par (>=1.0), amber in the 0.9-1.0 approach, red below 0.9.

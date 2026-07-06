@@ -99,9 +99,37 @@ msgstr "{daysCount} days · ~{dateLabel}"
 msgid "{hours}h ago"
 msgstr "{hours}h ago"
 
+#: src/pages/History.tsx
+msgid "{label} changed"
+msgstr "{label} changed"
+
+#: src/pages/History.tsx
+msgid "{label} changed ({n} recolored)"
+msgstr "{label} changed ({n} recolored)"
+
+#: src/pages/History.tsx
+msgid "{label} changed ({na} added, {nr} removed)"
+msgstr "{label} changed ({na} added, {nr} removed)"
+
+#: src/pages/History.tsx
+msgid "{label} changed ({na} added)"
+msgstr "{label} changed ({na} added)"
+
+#: src/pages/History.tsx
+msgid "{label} changed ({na} replaced)"
+msgstr "{label} changed ({na} replaced)"
+
+#: src/pages/History.tsx
+msgid "{label} changed ({nr} removed)"
+msgstr "{label} changed ({nr} removed)"
+
 #: src/pages/Status.tsx
 msgid "{label} DOWN"
 msgstr "{label} DOWN"
+
+#: src/pages/History.tsx
+msgid "{label} reordered"
+msgstr "{label} reordered"
 
 #. placeholder {0}: markersHiddenKind === 'edit_price' ? 'edit-price' : markersHiddenKind === 'pool_block' ? 'pool-block' : markersHiddenKind === 'reward_event' ? 'reward-event' : ''
 #: src/components/PriceChart.tsx
@@ -1587,6 +1615,10 @@ msgstr "Decisions log - uneventful"
 msgid "decrease"
 msgstr "decrease"
 
+#: src/pages/History.tsx
+msgid "default"
+msgstr "default"
+
 #: src/pages/Config.tsx
 msgid "Delete this device permanently. To pause without deleting, uncheck the box at the left of the row."
 msgstr "Delete this device permanently. To pause without deleting, uncheck the box at the left of the row."
@@ -2889,6 +2921,14 @@ msgstr "no change needed"
 msgid "no change observed yet"
 msgstr "no change observed yet"
 
+#: src/pages/History.tsx
+msgid "No change."
+msgstr "No change."
+
+#: src/pages/History.tsx
+msgid "No color changes."
+msgstr "No color changes."
+
 #: src/pages/Config.tsx
 msgid "No devices yet. Add one below."
 msgstr "No devices yet. Add one below."
@@ -3804,6 +3844,11 @@ msgstr "Remove device"
 #: src/components/TilesBar.tsx
 msgid "Remove this tile"
 msgstr "Remove this tile"
+
+#. placeholder {0}: d.count
+#: src/pages/History.tsx
+msgid "Reordered · {0} items, none added or removed"
+msgstr "Reordered · {0} items, none added or removed"
 
 #: src/pages/Config.tsx
 msgid "Replace file…"
