@@ -141,6 +141,7 @@ describe('openDatabase - migrations', () => {
       '0113_tick_metrics_backfill_max_overpay.sql',
       '0114_system_events.sql',
       '0115_drop_handover_window.sql',
+      '0116_ocean_payouts.sql',
     ]);
     expect(handle.migrations.skipped).toEqual([]);
   });

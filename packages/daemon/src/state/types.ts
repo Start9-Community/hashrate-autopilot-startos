@@ -561,6 +561,33 @@ export interface SecretsTable {
   updated_at: number;
 }
 
+/**
+ * #323: persisted Ocean payouts from the /v1/earnpay endpoint. Source
+ * of truth for lifetime "collected" in the P&L panel. Covers both
+ * on-chain (`on_chain_txid` present) and Lightning (`on_chain_txid`
+ * null) settlements. See migration 0116.
+ */
+export interface OceanPayoutsTable {
+  id: Generated<number>;
+  /** Payout address this settlement belongs to. P&L sums are scoped to the current config address. */
+  address: string;
+  /** Settlement time, ms epoch (parsed from Ocean's ISO `ts`). */
+  ts: number;
+  /** On-chain txid, or null for a Lightning (off-chain) payout. */
+  on_chain_txid: string | null;
+  /** Net satoshis that actually reached the operator (`total_satoshis_net_paid`). */
+  net_sat: number;
+  /** 1 = coinbase-direct (`is_generation_txn`), 0 = batched sweep. */
+  is_generation: Generated<0 | 1>;
+  /** Derived rail: 'onchain' when a txid is present, else 'lightning'. */
+  rail: 'onchain' | 'lightning';
+  /** Idempotency key: `<address>|oc:<txid>` or `<address>|ln:<ts>:<net_sat>`. */
+  dedup_key: string;
+  /** 1 once the stage-2 (enriched) alert has been fired for this payout. */
+  enriched_alert: Generated<0 | 1>;
+  first_seen_at: number;
+}
+
 /** #108: persisted Ocean pool blocks. See migration 0065. */
 export interface PoolBlocksTable {
   height: number;
@@ -661,6 +688,7 @@ export interface SoloBestDifficultyEventsTable {
 export interface Database {
   config: ConfigTable;
   pool_blocks: PoolBlocksTable;
+  ocean_payouts: OceanPayoutsTable;
   runtime_state: RuntimeStateTable;
   owned_bids: OwnedBidsTable;
   deferred_actions: DeferredActionsTable;

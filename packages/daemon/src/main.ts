@@ -34,6 +34,7 @@ import { DatumPoller } from './services/datum.js';
 import { HashpriceCache } from './services/hashprice-cache.js';
 import { HashpriceRefresher } from './services/hashprice-refresher.js';
 import { createOceanClient } from './services/ocean.js';
+import { OceanPayoutsService } from './services/ocean-payouts-service.js';
 import { PayoutObserver } from './services/payout-observer.js';
 import { PoolHealthTracker } from './services/pool-health.js';
 import { PublicIpService } from './services/public-ip.js';
@@ -50,6 +51,7 @@ import { ClosedBidsCacheRepo } from './state/repos/closed_bids_cache.js';
 import { ConfigRepo } from './state/repos/config.js';
 import { PoolBlocksRepo } from './state/repos/pool_blocks.js';
 import { RewardEventsRepo } from './state/repos/reward_events.js';
+import { OceanPayoutsRepo } from './state/repos/ocean_payouts.js';
 import { DecisionsRepo } from './state/repos/decisions.js';
 import { OwnedBidsRepo } from './state/repos/owned_bids.js';
 import { RuntimeStateRepo } from './state/repos/runtime_state.js';
@@ -97,6 +99,7 @@ interface BootDeps {
   readonly alertsRepo: AlertsRepo;
   readonly poolBlocksRepo: PoolBlocksRepo;
   readonly rewardEventsRepo: RewardEventsRepo;
+  readonly oceanPayoutsRepo: OceanPayoutsRepo;
   readonly closedBidsCacheRepo: ClosedBidsCacheRepo;
   readonly secretsRepo: SecretsRepo;
   readonly secretsPath: string;
@@ -188,6 +191,7 @@ async function main(): Promise<void> {
     alertsRepo: new AlertsRepo(handle.db),
     poolBlocksRepo: new PoolBlocksRepo(handle.db),
     rewardEventsRepo: new RewardEventsRepo(handle.db),
+    oceanPayoutsRepo: new OceanPayoutsRepo(handle.db),
     closedBidsCacheRepo: new ClosedBidsCacheRepo(handle.db),
     secretsRepo: new SecretsRepo(handle.db),
     secretsPath,
@@ -318,6 +322,7 @@ async function bootOperational(
     alertsRepo,
     poolBlocksRepo,
     rewardEventsRepo,
+    oceanPayoutsRepo,
     closedBidsCacheRepo,
     secretsPath,
     ageKeyPath,
@@ -558,6 +563,19 @@ async function bootOperational(
   // route. The internal 60 s cache means both callers share one
   // underlying HTTP round-trip per tick instead of firing two.
   const oceanClient = createOceanClient();
+
+  // #323: earnpay-based payout tracking. Keeps `ocean_payouts` in sync
+  // with Ocean's authoritative settlement list (on-chain + Lightning),
+  // the source of truth for lifetime "collected" in the P&L panel.
+  // Live-reads the address via cfgRefHolder so a dashboard address
+  // change re-backfills the new address on the next sync (its store is
+  // empty -> full backfill). Started below with the other services.
+  const oceanPayoutsService = new OceanPayoutsService({
+    oceanClient,
+    repo: oceanPayoutsRepo,
+    getAddress: () => cfgRefHolder.value.btc_payout_address,
+    log: (m) => log(m),
+  });
 
   // BTC/USD oracle is constructed early so observe() can capture
   // the latest reading per tick into tick_metrics (#89). The HTTP
@@ -1045,6 +1063,9 @@ async function bootOperational(
   });
   braiinsDepositWatcher.start();
 
+  // #323: start the earnpay payout sync (boot backfill + slow refresh).
+  oceanPayoutsService.start();
+
   // HTTP server (dashboard API + static).
   const httpServer = await createHttpServer({
     controller,
@@ -1196,6 +1217,7 @@ async function bootOperational(
     // would have produced anyway.
     forceExitAfter(8_000);
     payoutObserver?.stop();
+    void oceanPayoutsService.stop();
     retentionService.stop();
     hashpriceRefresher.stop();
     btcPriceRefresher.stop();

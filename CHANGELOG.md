@@ -2,6 +2,10 @@
 
 ## 2026-07-05
 
+### `[Infra]` Ocean earnpay payout store (groundwork for Lightning-aware P&L) (#323)
+
+Adds a daemon-internal sync of Ocean's authoritative payout list (the `/v1/earnpay` endpoint) into a new `ocean_payouts` table, covering both on-chain and Lightning settlements. It backfills the full history on first run for a payout address and refreshes a trailing window on a slow cadence. No user-visible change yet; this is the source of truth that the P&L "collected" figure and the chart payout gems switch onto in following commits, so Lightning payouts stop being invisible to accounting.
+
 ### `[Fix]` Hero auto-fit uses real grid items so iPad Safari constrains the width (#325)
 
 Follow-up on the iPad hero clipping. The two hero columns were laid out with a Tooltip wrapper as the direct grid item, and its `display: contents` mis-sizes the grid track on iOS Safari - so the auto-fit measured a column wider than what actually rendered and never shrank, clipping the value on device while every headless engine measured it correctly. The columns are now real constrained `<div>` grid items. A temporary `?fitdebug=1` readout was added to surface the measured widths on-device.
