@@ -53,6 +53,7 @@ import {
   formatTimestampUtc,
 } from '../lib/format';
 import { applyExplorerTemplate } from '../lib/blockExplorer';
+import { computeBidPauseIntervals } from '../lib/bidPauseSpans';
 import { useDenomination } from '../lib/denomination';
 import { copyToClipboard } from '../lib/clipboard';
 import { actionModeLabel, bidStatusClass, bidStatusLabel } from '../lib/labels';
@@ -833,34 +834,10 @@ export function Status() {
   // must not drop them. A RESUMED without a preceding PAUSED in the
   // fetched window opens at -Infinity; a PAUSED without a RESUMED
   // runs to +Infinity. The charts clamp to their data range.
-  const bidPauseIntervals = useMemo(() => {
-    const events = bidEventsQuery.data?.events ?? EMPTY_BID_EVENTS;
-    const transitions = events
-      .filter((e) => e.kind === 'BID_PAUSED' || e.kind === 'BID_RESUMED')
-      .sort((a, b) => a.occurred_at - b.occurred_at);
-    const intervals: Array<{ x0: number; x1: number }> = [];
-    let openAt: number | null = null;
-    for (const e of transitions) {
-      if (e.kind === 'BID_PAUSED') {
-        if (openAt === null) openAt = e.occurred_at;
-      } else if (openAt !== null) {
-        // BID_RESUMED with a matching open pause - shade [pause, resume].
-        intervals.push({ x0: openAt, x1: e.occurred_at });
-        openAt = null;
-      }
-      // An orphan BID_RESUMED (no open pause) is deliberately ignored.
-      // It means the daemon saw a paused->active transition but never
-      // recorded the pause start - the bid was paused during daemon
-      // downtime and a restart re-baselined as paused, or Braiins
-      // flapped the status for a tick. We have NO pause-start time, so
-      // the old `x0: -Infinity` painted the entire history as paused
-      // even while hashrate was plainly delivering (operator bug,
-      // 2026-06-13). Better to show nothing than a span we can't
-      // substantiate. The lone BID_RESUMED glyph marker still renders.
-    }
-    if (openAt !== null) intervals.push({ x0: openAt, x1: Number.POSITIVE_INFINITY });
-    return intervals;
-  }, [bidEventsQuery.data?.events]);
+  const bidPauseIntervals = useMemo(
+    () => computeBidPauseIntervals(bidEventsQuery.data?.events ?? EMPTY_BID_EVENTS),
+    [bidEventsQuery.data?.events],
+  );
 
   // #287 follow-up v3: run-mode idle bands (DRY_RUN / PAUSED),
   // computed here once for both charts. The per-tick run_mode column

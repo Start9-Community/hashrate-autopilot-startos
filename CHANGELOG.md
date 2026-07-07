@@ -2,6 +2,10 @@
 
 ## 2026-07-07
 
+### `[Fix]` Chart no longer shows a stale "bid paused" band after a paused bid is cancelled
+
+A paused-bid band on the Hashrate and Price charts only ended when the bid resumed. But when a bid is paused and then cancelled (for example the stop-spend protection cancelling after a Datum outage, then creating a fresh bid), it never resumes, so the band ran to "now" and made the new, active, delivering bid look paused. The band now also closes when the paused bid is cancelled or replaced by a new bid, so it reflects the real paused window only.
+
 ### `[Fix]` Security: credential values are no longer stored or shown in the config-change audit log (GHSA-x8x9)
 
 Saving config in v1.16.0 recorded the raw old/new value of every changed field into the Timeline's system-events log, including credentials (Telegram bot token, bitcoind RPC user/password, DDNS username/credential). Those values were then reachable through the dashboard API, the Timeline, and the Excel export. The daemon now redacts these credential fields at write time - it still records that the field changed, just never the value - and a migration scrubs any values v1.16.0 already stored, so upgrading removes them from existing databases. Non-credential fields (payout address, node URL, hostnames) stay visible, since seeing those change is useful audit signal. Thanks to the reporter for the detailed writeup.
