@@ -7,7 +7,7 @@ manifestVersion: 1
 id: rdouma-hashrate-autopilot
 category: bitcoin
 name: Hashrate Autopilot
-version: "1.17.0"
+version: "1.16.0"
 tagline: Autopilot for renting hashrate to mine on Ocean Mining
 icon: https://raw.githubusercontent.com/rdouma/hashrate-autopilot/main/assets/icon-512.png
 # Umbrel renders description literally - no YAML folding of soft
@@ -53,23 +53,6 @@ defaultPassword: ""
 submitter: Remco Douma
 submission: https://github.com/rdouma/hashrate-autopilot
 releaseNotes: |
-  v1.17.0 - Lightning-aware payouts and Profit & Loss, pinch-to-zoom on mobile, and a faster, more polished dashboard.
-
-  NEW
-  - Lightning-aware Profit & Loss: "collected" now comes from Ocean's own payout ledger, so both on-chain and Lightning payouts count. If you are paid over Lightning your P&L was silently understated before - a payout dropped your unpaid balance but never showed as collected - and it now reads correctly, with an on-chain vs Lightning split, and no Bitcoin node required for the figure.
-  - Your full payout history is reconstructed from Ocean on first run: every past payout appears on the Price chart as a gem (on-chain gems deep-link to a block explorer, Lightning gems are labelled off-chain) and in the Timeline.
-  - The "payout confirmed" Telegram alert now fires for Lightning payouts too, and states whether each payout settled on-chain or over Lightning.
-  - Pinch-to-zoom on charts for touch devices: spread or pinch two fingers on the Hashrate and Price charts to zoom the time axis on iPad and iPhone.
-
-  IMPROVED
-  - A faster, smoother dashboard: fewer wasteful re-renders, gzipped API responses, a shared refresh ticker, and lighter chart interactions, so panning, zooming, and the live crosshair all feel snappier.
-  - Cleaner stat tiles: the six tiles fit on one row on iPad, the wallet-runway tile stays green until you are genuinely low, and the pool-blocks tile is now coloured by pool luck.
-  - The hero PRICE / DELIVERED card scales cleanly across every unit combination, BTC amounts drop trailing zeros, and an iPad Safari clipping issue is fixed.
-  - Config changes to dashboard layout and colours now read as a friendly "what changed" summary in the Timeline instead of a raw data dump.
-
-  FIXES
-  - The "payout initiated" alert no longer promises an on-chain confirmation that never arrives for a Lightning payout.
-
   v1.16.0 - the Timeline release: one unified event log, alert recoveries, Excel export, and two controller-safety fixes.
 
   NEW
