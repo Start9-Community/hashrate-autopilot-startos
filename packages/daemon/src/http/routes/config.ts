@@ -1,6 +1,10 @@
 import type { FastifyInstance } from 'fastify';
 
-import { isValidBtcPayoutAddress } from '@hashrate-autopilot/shared';
+import {
+  isValidBtcPayoutAddress,
+  isSensitiveConfigField,
+  CONFIG_VALUE_REDACTED,
+} from '@hashrate-autopilot/shared';
 
 import { AppConfigInvariantsSchema, type AppConfig } from '../../config/schema.js';
 import type { HttpServerDeps } from '../server.js';
@@ -67,13 +71,20 @@ export async function registerConfigRoutes(
         const changes = (Object.keys(cleaned) as Array<keyof AppConfig>)
           .map((k) => ({ field: String(k), oldV: fmtVal(prev[k]), newV: fmtVal(cleaned[k]) }))
           .filter((c) => c.oldV !== c.newV)
-          .map((c) => ({
-            occurred_at: now,
-            kind: 'config_change' as const,
-            field: c.field,
-            old_value: c.oldV,
-            new_value: c.newV,
-          }));
+          .map((c) => {
+            // Security (GHSA-x8x9): never persist a credential's value into
+            // the audit log. We still record that the field changed, but
+            // replace both values with a redaction marker so the raw secret
+            // never reaches system_events / the API / the Timeline export.
+            const redact = isSensitiveConfigField(c.field);
+            return {
+              occurred_at: now,
+              kind: 'config_change' as const,
+              field: c.field,
+              old_value: redact ? CONFIG_VALUE_REDACTED : c.oldV,
+              new_value: redact ? CONFIG_VALUE_REDACTED : c.newV,
+            };
+          });
         if (changes.length > 0) {
           void deps.systemEventsRepo
             .insertMany(changes)
