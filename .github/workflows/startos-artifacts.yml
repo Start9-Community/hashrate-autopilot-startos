@@ -55,7 +55,12 @@ jobs:
       - name: Check
         run: pnpm run check
 
-      - name: Build artifacts
+      - name: Build release inputs
+        run: |
+          make clean
+          pnpm run build:release-inputs
+
+      - name: Build signed artifacts
         env:
           STARTOS_DEVELOPER_KEY_PEM: ${{ secrets.STARTOS_DEVELOPER_KEY_PEM }}
         run: |
@@ -69,10 +74,11 @@ jobs:
           trap 'rm -f "$key_path"' EXIT
           printf '%s\n' "$STARTOS_DEVELOPER_KEY_PEM" > "$key_path"
           chmod 600 "$key_path"
-          make clean
-          pnpm run build:release-inputs
+          unset STARTOS_DEVELOPER_KEY_PEM
           make x86
           make arm
+          rm -f "$key_path"
+          trap - EXIT
           sha256sum hashrate-autopilot-9_x86_64.s9pk hashrate-autopilot-9_aarch64.s9pk > SHA256SUMS
 
       - name: Verify artifacts

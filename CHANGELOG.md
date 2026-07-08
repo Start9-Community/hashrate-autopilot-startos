@@ -6,6 +6,10 @@
 
 The manual StartOS artifact workflow now checksum-verifies the pinned `start-cli` binary and only materializes the release signing key during the packaging step, removing it before artifact upload.
 
+### `[Infra]` StartOS artifact workflow limits signing-key scope
+
+The manual StartOS artifact workflow now builds release inputs before the signing key is available, then unsets and removes the key as soon as the signed package files are built.
+
 ### `[Infra]` CI can build StartOS package artifacts
 
 A manual GitHub Actions workflow can now build signed x86_64 and aarch64 StartOS `.s9pk` artifacts, generate checksums, verify them, and upload the bundle for release review.
