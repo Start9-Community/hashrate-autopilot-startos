@@ -14,6 +14,7 @@
 import type { Kysely } from 'kysely';
 
 import { SecretsSchema, type Secrets } from '../../config/schema.js';
+import { hashPassword, isPasswordHashed } from '../../config/password-hash.js';
 import type { Database } from '../types.js';
 
 export class SecretsRepo {
@@ -52,10 +53,16 @@ export class SecretsRepo {
    */
   async upsert(secrets: Secrets, now: number = Date.now()): Promise<void> {
     const validated = SecretsSchema.parse(secrets);
+    // #331: store a one-way scrypt hash of the dashboard password, never
+    // the plaintext. Guard against double-hashing when a caller re-upserts
+    // a secrets object that already came from get() (already hashed).
+    const storedPassword = isPasswordHashed(validated.dashboard_password)
+      ? validated.dashboard_password
+      : hashPassword(validated.dashboard_password);
     const row = {
       braiins_owner_token: validated.braiins_owner_token,
       braiins_read_only_token: validated.braiins_read_only_token ?? null,
-      dashboard_password: validated.dashboard_password,
+      dashboard_password: storedPassword,
       bitcoind_rpc_url: validated.bitcoind_rpc_url ?? null,
       bitcoind_rpc_user: validated.bitcoind_rpc_user ?? null,
       bitcoind_rpc_password: validated.bitcoind_rpc_password ?? null,
@@ -80,5 +87,26 @@ export class SecretsRepo {
       .where('id', '=', 1)
       .executeTakeFirst();
     return row !== undefined;
+  }
+
+  /**
+   * #331: one-time upgrade step. If an existing install stored the
+   * dashboard password in plaintext (pre-hashing), hash it in place.
+   * Returns true when it hashed something. No-op once hashed, and when
+   * there's no row. Runs at boot before auth is wired.
+   */
+  async ensurePasswordHashed(now: number = Date.now()): Promise<boolean> {
+    const row = await this.db
+      .selectFrom('secrets')
+      .select('dashboard_password')
+      .where('id', '=', 1)
+      .executeTakeFirst();
+    if (!row || isPasswordHashed(row.dashboard_password)) return false;
+    await this.db
+      .updateTable('secrets')
+      .set({ dashboard_password: hashPassword(row.dashboard_password), updated_at: now })
+      .where('id', '=', 1)
+      .execute();
+    return true;
   }
 }

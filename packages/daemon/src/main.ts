@@ -301,6 +301,20 @@ async function main(): Promise<void> {
   }
 
   log(`secrets:  loaded from ${secretsResult.source}`);
+
+  // #331: one-time upgrade - hash a plaintext dashboard password stored
+  // in the DB by a pre-hashing version. Only touches the db source; env /
+  // SOPS plaintext is never persisted and verifies fine as plaintext.
+  if (secretsResult.source === 'db') {
+    try {
+      if (await deps.secretsRepo.ensurePasswordHashed()) {
+        log('secrets:  hashed the stored dashboard password (one-time upgrade)');
+      }
+    } catch (err) {
+      log(`secrets:  password-hash upgrade failed (non-fatal): ${(err as Error).message}`);
+    }
+  }
+
   await bootOperational(deps, secretsResult.secrets, dbCfg);
 }
 

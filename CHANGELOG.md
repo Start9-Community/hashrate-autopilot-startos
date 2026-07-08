@@ -2,6 +2,10 @@
 
 ## 2026-07-07
 
+### `[Fix]` Security: the dashboard password is now stored as a hash, not plaintext (#331)
+
+The dashboard password is only ever checked, never recovered, so it's now stored as a one-way scrypt hash instead of plaintext in the database. Even someone who reads `state.db` can no longer recover the password itself (which matters because passwords get reused). Existing installs are upgraded automatically on the next daemon start, and operators who supply the password via environment variable / SOPS are unaffected. Part of the GHSA-wvpp hardening.
+
 ### `[Fix]` Chart no longer shows a stale "bid paused" band after a paused bid is cancelled
 
 A paused-bid band on the Hashrate and Price charts only ended when the bid resumed. But when a bid is paused and then cancelled (for example the stop-spend protection cancelling after a Datum outage, then creating a fresh bid), it never resumes, so the band ran to "now" and made the new, active, delivering bid look paused. The band now also closes when the paused bid is cancelled or replaced by a new bid, so it reflects the real paused window only.

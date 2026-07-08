@@ -11,6 +11,8 @@
  */
 
 import fastifyBasicAuth from '@fastify/basic-auth';
+
+import { verifyPassword } from '../config/password-hash.js';
 import fastifyCompress from '@fastify/compress';
 import fastifyCors from '@fastify/cors';
 import fastifyStatic from '@fastify/static';
@@ -173,9 +175,22 @@ export async function createHttpServer(deps: HttpServerDeps): Promise<HttpServer
     encodings: ['gzip', 'deflate'],
   });
 
+  // #331: `deps.password` may be a scrypt hash (DB-sourced) or plaintext
+  // (env / SOPS). verifyPassword handles both. scrypt is deliberately
+  // slow, so cache the verdict per presented credential - only one value
+  // is ever valid, so the cache stays tiny.
+  const authCache = new Map<string, boolean>();
   await app.register(fastifyBasicAuth, {
     validate: async (_username, password) => {
-      if (password !== deps.password) {
+      let ok = authCache.get(password);
+      if (ok === undefined) {
+        ok = verifyPassword(password, deps.password);
+        // Bound the cache defensively against a brute-force flood that
+        // slips past the rate limiter.
+        if (authCache.size > 64) authCache.clear();
+        authCache.set(password, ok);
+      }
+      if (!ok) {
         throw new Error('unauthorised');
       }
     },
