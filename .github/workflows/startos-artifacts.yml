@@ -16,6 +16,7 @@ jobs:
     timeout-minutes: 90
     env:
       START_CLI_VERSION: v0.4.0-alpha.21
+      START_CLI_SHA256: 0f77f0644f8e2f44bf82a11ae50d58f0d715a04d2a8c3de17eb1c3debb9ac1a6
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -38,24 +39,12 @@ jobs:
           curl -fsSL \
             "https://github.com/Start9Labs/start-technologies/releases/download/${START_CLI_VERSION}/start-cli_x86_64-linux" \
             -o /tmp/start-cli
+          echo "${START_CLI_SHA256}  /tmp/start-cli" | sha256sum -c -
           mkdir -p "$HOME/.local/bin"
           install -m 0755 /tmp/start-cli "$HOME/.local/bin/start-cli"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           export PATH="$HOME/.local/bin:$PATH"
           start-cli --version
-
-      - name: Install StartOS developer key
-        env:
-          STARTOS_DEVELOPER_KEY_PEM: ${{ secrets.STARTOS_DEVELOPER_KEY_PEM }}
-        run: |
-          set -euo pipefail
-          if [ -z "${STARTOS_DEVELOPER_KEY_PEM:-}" ]; then
-            echo "STARTOS_DEVELOPER_KEY_PEM is required for release-grade signed .s9pk artifacts." >&2
-            exit 1
-          fi
-          mkdir -p "$HOME/.startos"
-          printf '%s\n' "$STARTOS_DEVELOPER_KEY_PEM" > "$HOME/.startos/developer.key.pem"
-          chmod 600 "$HOME/.startos/developer.key.pem"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v4
@@ -67,7 +56,19 @@ jobs:
         run: pnpm run check
 
       - name: Build artifacts
+        env:
+          STARTOS_DEVELOPER_KEY_PEM: ${{ secrets.STARTOS_DEVELOPER_KEY_PEM }}
         run: |
+          set -euo pipefail
+          if [ -z "${STARTOS_DEVELOPER_KEY_PEM:-}" ]; then
+            echo "STARTOS_DEVELOPER_KEY_PEM is required for release-grade signed .s9pk artifacts." >&2
+            exit 1
+          fi
+          mkdir -p "$HOME/.startos"
+          key_path="$HOME/.startos/developer.key.pem"
+          trap 'rm -f "$key_path"' EXIT
+          printf '%s\n' "$STARTOS_DEVELOPER_KEY_PEM" > "$key_path"
+          chmod 600 "$key_path"
           make clean
           pnpm run build:release-inputs
           make x86
