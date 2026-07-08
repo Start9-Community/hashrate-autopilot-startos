@@ -2,6 +2,10 @@
 
 ## 2026-07-07
 
+### `[Infra]` StartOS packages use the prebuilt-input Dockerfile
+
+StartOS package manifests now build from `Dockerfile.startos`, so package images consume the prebuilt release inputs instead of repeating the app TypeScript/Vite build inside Docker.
+
 ### `[Infra]` StartOS package image skips Docker rebuilds
 
 StartOS packaging now has a dedicated runtime Dockerfile that consumes prebuilt release inputs and keeps the package build context limited to manifests, dist outputs, and build metadata.
