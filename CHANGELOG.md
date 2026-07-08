@@ -2,6 +2,10 @@
 
 ## 2026-07-08
 
+### `[Infra]` CI can build StartOS package artifacts
+
+A manual GitHub Actions workflow can now build signed x86_64 and aarch64 StartOS `.s9pk` artifacts, generate checksums, verify them, and upload the bundle for release review.
+
 ### `[Infra]` StartOS release artifacts prebuild inputs automatically
 
 The StartOS GitHub release profile now runs the clean release-input prebuild before packaging x86_64 and aarch64 `.s9pk` artifacts, so local release commands cannot accidentally package stale or mismatched generated assets.
