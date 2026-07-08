@@ -46,11 +46,13 @@ pnpm run release:verify -- --local
 ```
 
 The artifact build runs the clean release-input prebuild before packaging both architectures. After reviewing the
-generated artifacts and notes, run the full dry run and publish a draft release:
+generated artifacts and notes, run the full dry run and publish a draft release. `release:github` runs a fresh
+dry-run before uploading local artifacts.
 
 ```bash
 pnpm run release:dry-run
 pnpm run release:github
+pnpm run release:verify -- --download
 ```
 
 The wrapper delegates to the reusable `publishing-github-releases` Codex skill. Override
@@ -69,8 +71,18 @@ GitHub Release.
    start-cli s9pk inspect hashrate-autopilot-9_x86_64.s9pk manifest
    start-cli s9pk inspect hashrate-autopilot-9_aarch64.s9pk manifest
    ```
-5. Publish a draft GitHub release using the verified artifacts.
-6. Run release download verification.
+5. Move or unpack the verified `.s9pk` files and `SHA256SUMS` into the repo root.
+6. Publish a draft GitHub release using those existing files:
+   ```bash
+   ./scripts/release-github.sh publish
+   ```
+7. Run release download verification:
+   ```bash
+   pnpm run release:verify -- --download
+   ```
+
+Use `./scripts/release-github.sh publish` for downloaded CI bundles because it uploads the artifacts already present
+in the repo root. `pnpm run release:github` is the local release path; it rebuilds artifacts before publishing.
 
 Release-grade CI artifacts require the GitHub secret `STARTOS_DEVELOPER_KEY_PEM`. If CI and local builds use
 different signing keys, their `.s9pk` checksums will differ. `SHA256SUMS` verifies the artifact bundle it was
