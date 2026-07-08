@@ -2,6 +2,10 @@
 
 ## 2026-07-07
 
+### `[Infra]` StartOS package image skips Docker rebuilds
+
+StartOS packaging now has a dedicated runtime Dockerfile that consumes prebuilt release inputs and keeps the package build context limited to manifests, dist outputs, and build metadata.
+
 ### `[Infra]` Release inputs build from a clean prebuild
 
 StartOS release packaging now has a dedicated `build:release-inputs` script that cleans stale package and StartOS bundle outputs, exports the StartOS app version for the dashboard build, rebuilds workspace outputs, and regenerates the StartOS `javascript/` bundle.
