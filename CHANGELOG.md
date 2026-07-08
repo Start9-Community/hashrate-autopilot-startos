@@ -2,6 +2,10 @@
 
 ## 2026-07-07
 
+### `[Fix]` Security: DB-stored secrets are now encrypted at rest (#331)
+
+The credentials the daemon has to keep usable (Braiins tokens, bitcoind RPC password, Telegram token, DDNS credential) are now stored AES-256-GCM-encrypted in the database instead of plaintext, so a copied `state.db` or an app-data backup no longer hands over your secrets. The encryption key comes from `BHA_SECRET_KEY` if set (on Umbrel that's the device-derived `APP_SEED`, which lives outside the app's data folder), otherwise a generated key file next to the database. Existing installs encrypt in place on the next daemon start. If the key is ever lost the daemon degrades gracefully (treats the secret as unset and prompts you to re-enter it) rather than crash-looping. This does not - and by design cannot - protect against someone who already controls the running machine; it protects the data-leaves-the-box cases. Completes the GHSA-wvpp hardening. See `docs/security-secrets-at-rest.md` for the full threat model.
+
 ### `[Fix]` Security: credential fields are now write-only in the API (#331)
 
 The config API used to return your saved Telegram bot token, bitcoind RPC password, and DDNS credential in full to any logged-in dashboard session. It now blanks those on read and treats a blank value on save as "keep the existing one," so the raw secrets never leave the daemon. The Config screen shows "leave blank to keep saved value" on those fields. Usernames and node URLs stay visible since they aren't secrets. Part of the GHSA-wvpp hardening.

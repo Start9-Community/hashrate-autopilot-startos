@@ -1,6 +1,6 @@
 # Secrets at rest - design & threat model
 
-Status: **design for review** - implementation starts after operator sign-off.
+Status: **implemented** on `develop` (#331). Phases: (1A) dashboard password hashed, (1B) credentials write-only in the API, (2) field encryption + layered key resolution. Migrations are boot-time TS steps (they need the key), not SQL.
 Context: security advisory GHSA-wvpp-w528-9p8x ("Sensitive credentials are stored in plaintext in the app SQLite database"). Related: GHSA-x8x9-3m72-9w8w (config-change audit log leaked credentials - already fixed, migration 0117).
 
 ## 1. What secrets exist, and where they live today

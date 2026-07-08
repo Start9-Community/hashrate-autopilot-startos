@@ -12,7 +12,7 @@
 
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { resolve } from 'node:path';
+import { resolve, dirname } from 'node:path';
 
 import { createBitcoindClient } from '@hashrate-autopilot/bitcoind-client';
 import { BlockVersionService } from './services/block-version.js';
@@ -22,6 +22,8 @@ import { createBraiinsClient } from '@hashrate-autopilot/braiins-client';
 import { applyEnvOverridesToConfig } from './config/env-overrides.js';
 import type { AppConfig, Secrets } from './config/schema.js';
 import { loadSecretsAnySource } from './config/secret-sources.js';
+import { resolveSecretKey } from './config/secret-key.js';
+import { SecretCrypto } from './config/secret-crypto.js';
 import { createSetupModeServer, type SetupModeServer } from './setup-mode.js';
 import { SecretsRepo } from './state/repos/secrets.js';
 import { createHttpServer } from './http/server.js';
@@ -169,6 +171,23 @@ async function main(): Promise<void> {
   // boot paths (the wizard writes config + secrets through repos
   // backed by the same handle).
   const handle = await openDatabase({ path: dbPath });
+
+  // #331: resolve the at-rest encryption key before constructing the
+  // repos, so secret columns are encrypted on write and decrypted on
+  // read. Key source: BHA_SECRET_KEY env (Umbrel sets it to APP_SEED) >
+  // BHA_SECRET_KEY_FILE > a generated keyfile beside state.db. Never
+  // fatal - the keyfile fallback always yields a key.
+  const secretCrypto = (() => {
+    try {
+      const resolved = resolveSecretKey({ dataDir: dirname(dbPath), env: process.env, log });
+      log(`  secretkey: ${resolved.source}`);
+      return new SecretCrypto(resolved.key, log);
+    } catch (err) {
+      log(`  secretkey: resolution failed, secrets stay plaintext: ${(err as Error).message}`);
+      return undefined;
+    }
+  })();
+
   if (handle.migrations.reconciled.length > 0) {
     // Migrations whose schema effect was already present on the DB
     // (e.g., a half-applied state from a crashed prior run) but
@@ -180,7 +199,7 @@ async function main(): Promise<void> {
   }
   const deps: BootDeps = {
     handle,
-    configRepo: new ConfigRepo(handle.db),
+    configRepo: new ConfigRepo(handle.db, secretCrypto),
     runtimeRepo: new RuntimeStateRepo(handle.db),
     ownedBidsRepo: new OwnedBidsRepo(handle.db),
     decisionsRepo: new DecisionsRepo(handle.db),
@@ -193,7 +212,7 @@ async function main(): Promise<void> {
     rewardEventsRepo: new RewardEventsRepo(handle.db),
     oceanPayoutsRepo: new OceanPayoutsRepo(handle.db),
     closedBidsCacheRepo: new ClosedBidsCacheRepo(handle.db),
-    secretsRepo: new SecretsRepo(handle.db),
+    secretsRepo: new SecretsRepo(handle.db, secretCrypto),
     secretsPath,
     ageKeyPath,
   };
@@ -313,6 +332,20 @@ async function main(): Promise<void> {
     } catch (err) {
       log(`secrets:  password-hash upgrade failed (non-fatal): ${(err as Error).message}`);
     }
+  }
+
+  // #331: one-time upgrade - encrypt any plaintext secret columns in the
+  // DB under the current key. secrets-table only matters for db-sourced
+  // installs; config-table secrets (telegram/rpc/ddns) are always in the
+  // DB regardless of the secret source. Non-fatal.
+  try {
+    const encSecrets = await deps.secretsRepo.ensureEncrypted();
+    const encConfig = await deps.configRepo.ensureEncrypted();
+    if (encSecrets + encConfig > 0) {
+      log(`secrets:  encrypted ${encSecrets + encConfig} plaintext secret column(s) at rest (one-time upgrade)`);
+    }
+  } catch (err) {
+    log(`secrets:  at-rest encryption upgrade failed (non-fatal): ${(err as Error).message}`);
   }
 
   await bootOperational(deps, secretsResult.secrets, dbCfg);
