@@ -539,7 +539,10 @@ pnpm run release:dry-run
 ```
 
 That command verifies the repo, builds both package architectures, writes `SHA256SUMS`, and performs local artifact
-verification. Maintainers can publish the draft GitHub release with:
+verification. Maintainers can also run the steps individually with `pnpm run release:artifacts`,
+`pnpm run release:checksums`, and `pnpm run release:verify -- --local`. A manual `StartOS Artifacts` GitHub Actions
+workflow can produce the same bundle for review when `STARTOS_DEVELOPER_KEY_PEM` is configured. Maintainers can
+publish the draft GitHub release with:
 
 ```bash
 pnpm run release:github

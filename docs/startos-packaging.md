@@ -28,7 +28,7 @@ published packaging documentation at `https://docs.start9.com/packaging/`.
 - Keep operator-facing copy concise and explicit about DRY-RUN mode, live bid risk, dependencies, and backups.
 - Verify package builds after changing manifest, dependency, init, backup, Dockerfile, or Makefile behavior.
 
-## GitHub release workflow
+## Local StartOS release path
 
 StartOS package releases attach both architecture-specific `.s9pk` files and a checksum file:
 
@@ -39,14 +39,47 @@ StartOS package releases attach both architecture-specific `.s9pk` files and a c
 Use the release wrapper from the repo root:
 
 ```bash
-pnpm run release:dry-run
+pnpm run release:preflight
+pnpm run release:artifacts
+pnpm run release:checksums
+pnpm run release:verify -- --local
 ```
 
-After reviewing the generated artifacts and notes, publish a draft release:
+The artifact build runs the clean release-input prebuild before packaging both architectures. After reviewing the
+generated artifacts and notes, run the full dry run and publish a draft release:
 
 ```bash
+pnpm run release:dry-run
 pnpm run release:github
 ```
 
 The wrapper delegates to the reusable `publishing-github-releases` Codex skill. Override
 `GITHUB_RELEASE_SKILL_DIR` only when testing a local copy of that skill.
+
+## CI artifact path
+
+The manual `StartOS Artifacts` workflow can build the same release bundle in GitHub Actions without publishing a
+GitHub Release.
+
+1. Run the `StartOS Artifacts` workflow manually.
+2. Download the uploaded `startos-artifacts` bundle.
+3. Verify it locally with `sha256sum -c SHA256SUMS`.
+4. Inspect both package manifests:
+   ```bash
+   start-cli s9pk inspect hashrate-autopilot-9_x86_64.s9pk manifest
+   start-cli s9pk inspect hashrate-autopilot-9_aarch64.s9pk manifest
+   ```
+5. Publish a draft GitHub release using the verified artifacts.
+6. Run release download verification.
+
+Release-grade CI artifacts require the GitHub secret `STARTOS_DEVELOPER_KEY_PEM`. If CI and local builds use
+different signing keys, their `.s9pk` checksums will differ. `SHA256SUMS` verifies the artifact bundle it was
+generated with, not a separately signed rebuild.
+
+## Expected warnings
+
+These warnings are expected during release checks unless they become hard failures:
+
+- Generated Lingui catalog eslint warnings.
+- Vite chunk-size and plugin timing warnings.
+- StartOS dependency metadata warnings for `bitcoind`, `datum`, and `electrs`.
