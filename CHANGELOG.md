@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-07-08
+
+### `[Infra]` StartOS release artifacts prebuild inputs automatically
+
+The StartOS GitHub release profile now runs the clean release-input prebuild before packaging x86_64 and aarch64 `.s9pk` artifacts, so local release commands cannot accidentally package stale or mismatched generated assets.
+
 ## 2026-07-07
 
 ### `[Infra]` StartOS packages use the prebuilt-input Dockerfile

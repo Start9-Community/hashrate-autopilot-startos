@@ -45,6 +45,9 @@ command="${1:-help}"
 if [ "$#" -gt 0 ]; then
     shift
 fi
+if [ "${1:-}" = "--" ]; then
+    shift
+fi
 
 case "$command" in
     preflight)

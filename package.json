@@ -35,6 +35,7 @@
     "release:artifacts": "./scripts/release-github.sh build",
     "release:checksums": "./scripts/release-github.sh checksums",
     "release:dry-run": "./scripts/release-github.sh dry-run",
+    "release:verify": "./scripts/release-github.sh verify",
     "release:github": "./scripts/release-github.sh release",
     "smoke": "tsx scripts/smoke-braiins.ts",
     "setup": "tsx scripts/setup.ts",
