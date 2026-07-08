@@ -135,6 +135,42 @@ export class SecretsRepo {
   }
 
   /**
+   * #332: rotate a single credential in place, hashing/encrypting as this
+   * repo does on upsert. Used by the in-app Security panel. Requires a
+   * secrets row to already exist (DB-sourced install); returns false if
+   * there's none.
+   */
+  async setDashboardPassword(
+    plaintext: string,
+    now: number = Date.now(),
+  ): Promise<string | null> {
+    if (!(await this.exists())) return null;
+    const hash = hashPassword(plaintext);
+    await this.db
+      .updateTable('secrets')
+      .set({ dashboard_password: hash, updated_at: now })
+      .where('id', '=', 1)
+      .execute();
+    return hash;
+  }
+
+  async setBraiinsToken(
+    kind: 'owner' | 'read_only',
+    token: string,
+    now: number = Date.now(),
+  ): Promise<boolean> {
+    if (!(await this.exists())) return false;
+    const field = kind === 'owner' ? 'braiins_owner_token' : 'braiins_read_only_token';
+    const stored = this.crypto ? this.crypto.encrypt(field, token) : token;
+    await this.db
+      .updateTable('secrets')
+      .set({ [field]: stored, updated_at: now })
+      .where('id', '=', 1)
+      .execute();
+    return true;
+  }
+
+  /**
    * #331: one-time upgrade - encrypt any plaintext secret columns in
    * place under the current key. Idempotent (skips already-encrypted
    * values). Returns how many columns it encrypted. No-op without crypto.

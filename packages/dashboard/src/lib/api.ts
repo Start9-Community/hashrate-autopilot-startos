@@ -30,6 +30,32 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+/**
+ * #332: POST that returns the parsed JSON body on ANY status (never
+ * throws on 4xx), so the Security forms can show the server's error
+ * message. A genuine 401 still clears the session; 403/422/409 (wrong
+ * current password, weak password, managed-externally) surface `error`.
+ */
+export interface SecurityPostResult {
+  ok: boolean;
+  status: number;
+  error?: string;
+  detail?: string;
+  applies_on_restart?: boolean;
+}
+async function securityPost(path: string, body: unknown): Promise<SecurityPostResult> {
+  const password = getPassword();
+  const headers = new Headers({ Accept: 'application/json', 'Content-Type': 'application/json' });
+  if (password) headers.set('Authorization', basicAuthHeader(password));
+  const res = await fetch(path, { method: 'POST', headers, body: JSON.stringify(body) });
+  if (res.status === 401) {
+    clearPassword();
+    throw new UnauthorizedError();
+  }
+  const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  return { ok: res.ok, status: res.status, ...data };
+}
+
 export type NextActionDescriptor =
   | { kind: 'paused' }
   | { kind: 'unknown_bids'; ids: readonly string[] }
@@ -799,6 +825,18 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify(cfg),
     }),
+  // #332: in-app credential rotation. These use a body-preserving POST
+  // (not `request`) so a 403 "wrong current password" surfaces its error
+  // message instead of being swallowed into the session-logout path.
+  securityState: () =>
+    request<{ secret_source: 'env' | 'sops' | 'db'; editable: boolean }>('/api/security/state'),
+  changePassword: (body: { current_password: string; new_password: string }) =>
+    securityPost('/api/security/password', body),
+  rotateBraiinsToken: (body: {
+    kind: 'owner' | 'read_only';
+    current_password: string;
+    token: string;
+  }) => securityPost('/api/security/braiins-token', body),
   setRunMode: (run_mode: 'DRY_RUN' | 'LIVE' | 'PAUSED') =>
     request<{ run_mode: string }>('/api/run-mode', {
       method: 'POST',

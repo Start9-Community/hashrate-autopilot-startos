@@ -295,7 +295,7 @@ async function main(): Promise<void> {
         process.exit(1);
       }
       log(`setup: reloaded secrets from ${reloaded.source}`);
-      await bootOperational(deps, reloaded.secrets, reloadedCfg);
+      await bootOperational(deps, reloaded.secrets, reloadedCfg, reloaded.source);
     };
 
     setupServer = await createSetupModeServer({
@@ -348,13 +348,14 @@ async function main(): Promise<void> {
     log(`secrets:  at-rest encryption upgrade failed (non-fatal): ${(err as Error).message}`);
   }
 
-  await bootOperational(deps, secretsResult.secrets, dbCfg);
+  await bootOperational(deps, secretsResult.secrets, dbCfg, secretsResult.source);
 }
 
 async function bootOperational(
   deps: BootDeps,
   secrets: Secrets,
   dbCfgIn: AppConfig,
+  secretSource: 'env' | 'sops' | 'db' = 'db',
 ): Promise<void> {
   const {
     handle,
@@ -1150,6 +1151,8 @@ async function bootOperational(
     },
     db: handle.db,
     password: secrets.dashboard_password,
+    secretsRepo: deps.secretsRepo,
+    secretSource,
     tickIntervalMs: DEFAULT_TICK_INTERVAL_MS,
     secretsPath,
     ageKeyPath,

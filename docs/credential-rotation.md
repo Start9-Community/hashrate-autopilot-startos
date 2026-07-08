@@ -1,6 +1,6 @@
 # In-app credential rotation - design
 
-Status: **spec for review** (from the 2026-07-07 interview). Related: #331 (secrets at rest), GHSA-wvpp.
+Status: **implemented** (build 771). Related: #331 (secrets at rest), GHSA-wvpp.
 
 ## Why
 

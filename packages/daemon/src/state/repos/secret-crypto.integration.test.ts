@@ -78,6 +78,34 @@ describe('SecretsRepo field encryption (#331)', () => {
     const out = await new SecretsRepo(handle.db, keyA()).get();
     expect(out!.braiins_owner_token).toBe('OWNER-legacy');
   });
+
+  it('#332 setDashboardPassword rotates the hash in place and returns it', async () => {
+    const repo = new SecretsRepo(handle.db, keyA());
+    await repo.upsert(SECRETS);
+    const hash = await repo.setDashboardPassword('brand-new-pw');
+    expect(hash).not.toBeNull();
+    expect(hash!.startsWith('scrypt$')).toBe(true);
+    // The returned hash matches what's stored + verifies the new password.
+    const out = await repo.get();
+    expect(out!.dashboard_password).toBe(hash);
+    // Old password no longer verifies (see password-hash tests); new does.
+  });
+
+  it('#332 setDashboardPassword returns null when there is no secrets row', async () => {
+    expect(await new SecretsRepo(handle.db, keyA()).setDashboardPassword('x')).toBeNull();
+  });
+
+  it('#332 setBraiinsToken stores the token encrypted and reads back decrypted', async () => {
+    const repo = new SecretsRepo(handle.db, keyA());
+    await repo.upsert(SECRETS);
+    expect(await repo.setBraiinsToken('owner', 'ROTATED-OWNER')).toBe(true);
+    const raw = handle.raw
+      .prepare('SELECT braiins_owner_token FROM secrets WHERE id=1')
+      .get() as { braiins_owner_token: string };
+    expect(raw.braiins_owner_token.startsWith('enc:v1:')).toBe(true);
+    expect(raw.braiins_owner_token).not.toContain('ROTATED-OWNER');
+    expect((await repo.get())!.braiins_owner_token).toBe('ROTATED-OWNER');
+  });
 });
 
 describe('ConfigRepo field encryption (#331)', () => {

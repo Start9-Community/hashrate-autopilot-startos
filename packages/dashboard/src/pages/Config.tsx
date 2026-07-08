@@ -31,6 +31,7 @@ import {
   type StorageEstimateBucket,
   type StorageEstimateResponse,
 } from '../lib/api';
+import { isPasswordRemembered, setPassword } from '../lib/auth';
 import { blockFoundSoundUrl } from '../lib/block-found-sound';
 import { copyToClipboard } from '../lib/clipboard';
 import { useDenomination } from '../lib/denomination';
@@ -837,7 +838,7 @@ const TAB_SECTIONS: Record<TabId, readonly string[]> = {
   // knobs (max acceptable fee, edit deadband) modify the pricing
   // controller's behavior under marketplace fees.
   strategy: ['hashrate-targets', 'cheap-mode', 'pricing', 'fee-protection', 'budget', 'daemon-startup'],
-  pool: ['pool-destination', 'ddns', 'payout-source', 'profit-and-loss', 'btc-price-oracle'],
+  pool: ['pool-destination', 'ddns', 'payout-source', 'profit-and-loss', 'btc-price-oracle', 'security'],
   notifications: ['notifications', 'block-found-sound'],
   display: ['display-settings', 'chart-colors', 'solo-miners', 'block-explorer', 'chart-smoothing', 'chart-markers', 'log-retention', 'debug-api', 'diagnostics'],
 };
@@ -980,6 +981,20 @@ function ConfigTabsAndContent({
         'upload',
       ],
     },
+    security: {
+      title: t`Security & credentials`,
+      labels: [
+        t`Change dashboard password`,
+        t`Rotate Braiins owner token`,
+        t`Rotate Braiins read-only token`,
+        // Aliases - operators search by intent.
+        'password',
+        'reset password',
+        'rotate token',
+        'api token',
+        'credentials',
+      ],
+    },
     'solo-miners': {
       title: t`Bitaxe miners`,
       labels: [
@@ -1093,6 +1108,9 @@ function ConfigTabsAndContent({
     }
     if (sid === 'diagnostics') {
       return wrapHighlight(sid, <DiagnosticsSection />);
+    }
+    if (sid === 'security') {
+      return wrapHighlight(sid, <SecuritySection />);
     }
     const std = sections.find((s) => s.id === sid);
     if (!std) return null;
@@ -5590,6 +5608,254 @@ function CopyIcon({ done }: { done: boolean }) {
         </>
       )}
     </svg>
+  );
+}
+
+/**
+ * #332: in-app credential rotation. Change the dashboard password and
+ * rotate the Braiins owner / read-only tokens without a shell or SOPS -
+ * the only path on an Umbrel install. Editors show only when secrets are
+ * DB-sourced; env/SOPS installs get a read-only "managed elsewhere"
+ * notice so a change here can't be silently overwritten on next boot.
+ */
+function SecuritySection() {
+  const state = useQuery({
+    queryKey: ['security-state'],
+    queryFn: () => api.securityState(),
+    staleTime: 60_000,
+  });
+
+  return (
+    <section className="bg-slate-900 border border-slate-800 rounded-lg p-4">
+      <header className="mb-3">
+        <h3 className="text-sm uppercase tracking-wider text-amber-400">
+          <Trans>Security & credentials</Trans>
+        </h3>
+        <p className="text-xs text-slate-500 mt-1">
+          <Trans>
+            Change your dashboard password and rotate your Braiins API tokens. Every change
+            asks for your current password.
+          </Trans>
+        </p>
+      </header>
+      {state.isLoading && (
+        <div className="text-xs text-slate-500">
+          <Trans>Loading…</Trans>
+        </div>
+      )}
+      {state.isError && (
+        <div className="text-xs text-red-400">
+          <Trans>Could not load security settings.</Trans>
+        </div>
+      )}
+      {state.data && !state.data.editable && (
+        <div className="text-xs text-slate-400 bg-slate-950 border border-slate-800 rounded p-3 leading-relaxed">
+          {state.data.secret_source === 'sops' ? (
+            <Trans>
+              Your credentials come from your SOPS secrets file, not the database. Change them
+              with your SOPS tooling and restart the daemon. The in-app editors are disabled here
+              so a change couldn't be silently overwritten on the next boot.
+            </Trans>
+          ) : (
+            <Trans>
+              Your credentials come from environment variables, not the database. Change them
+              where they're defined and restart the daemon. The in-app editors are disabled here
+              so a change couldn't be silently overwritten on the next boot.
+            </Trans>
+          )}
+        </div>
+      )}
+      {state.data && state.data.editable && (
+        <div className="space-y-6">
+          <ChangePasswordForm />
+          <RotateTokenForm kind="owner" />
+          <RotateTokenForm kind="read_only" />
+        </div>
+      )}
+    </section>
+  );
+}
+
+const PW_INPUT_CLASS =
+  'w-full bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-sm text-slate-200 focus:border-amber-400 focus:outline-none';
+
+function ChangePasswordForm() {
+  const [current, setCurrent] = useState('');
+  const [next, setNext] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [clientError, setClientError] = useState<string | null>(null);
+
+  const mutation = useMutation({
+    mutationFn: () => api.changePassword({ current_password: current, new_password: next }),
+  });
+  const result = mutation.data;
+
+  const onSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setClientError(null);
+    mutation.reset();
+    if (next !== confirm) {
+      setClientError(t`The new password and its confirmation don't match.`);
+      return;
+    }
+    if (next.length < 8) {
+      setClientError(t`New password must be at least 8 characters.`);
+      return;
+    }
+    mutation.mutate(undefined, {
+      onSuccess: (res) => {
+        if (res.ok) {
+          // The old password is dead immediately server-side; re-store the
+          // new one (in whichever backend the session used) so the very
+          // next request authenticates instead of bouncing us to login.
+          setPassword(next, isPasswordRemembered());
+          setCurrent('');
+          setNext('');
+          setConfirm('');
+        }
+      },
+    });
+  };
+
+  return (
+    <form onSubmit={onSubmit} className="space-y-2">
+      <div className="text-sm font-medium text-slate-300">
+        <Trans>Change dashboard password</Trans>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <input
+          type="password"
+          autoComplete="current-password"
+          placeholder={t`Current password`}
+          value={current}
+          onChange={(e) => setCurrent(e.target.value)}
+          className={PW_INPUT_CLASS}
+        />
+        <input
+          type="password"
+          autoComplete="new-password"
+          placeholder={t`New password`}
+          value={next}
+          onChange={(e) => setNext(e.target.value)}
+          className={PW_INPUT_CLASS}
+        />
+        <input
+          type="password"
+          autoComplete="new-password"
+          placeholder={t`Confirm new password`}
+          value={confirm}
+          onChange={(e) => setConfirm(e.target.value)}
+          className={PW_INPUT_CLASS}
+        />
+      </div>
+      <div className="flex items-center gap-3">
+        <button
+          type="submit"
+          disabled={mutation.isPending || !current || !next || !confirm}
+          className="px-3 py-1.5 text-sm rounded bg-amber-400 text-slate-900 font-medium hover:bg-amber-300 disabled:opacity-50 whitespace-nowrap"
+        >
+          {mutation.isPending ? <Trans>Changing…</Trans> : <Trans>Change password</Trans>}
+        </button>
+        {clientError && <span className="text-xs text-red-400">{clientError}</span>}
+        {result && result.ok && (
+          <span className="text-xs text-emerald-300">
+            <Trans>Password changed.</Trans>
+          </span>
+        )}
+        {result && !result.ok && (
+          <span className="text-xs text-red-400">
+            {result.status === 403 ? (
+              <Trans>Current password is incorrect.</Trans>
+            ) : (
+              (result.error ?? t`Could not change the password.`)
+            )}
+          </span>
+        )}
+      </div>
+    </form>
+  );
+}
+
+function RotateTokenForm({ kind }: { kind: 'owner' | 'read_only' }) {
+  const [current, setCurrent] = useState('');
+  const [token, setToken] = useState('');
+
+  const mutation = useMutation({
+    mutationFn: () =>
+      api.rotateBraiinsToken({ kind, current_password: current, token: token.trim() }),
+  });
+  const result = mutation.data;
+
+  const onSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    mutation.reset();
+    mutation.mutate(undefined, {
+      onSuccess: (res) => {
+        if (res.ok) {
+          setCurrent('');
+          setToken('');
+        }
+      },
+    });
+  };
+
+  return (
+    <form onSubmit={onSubmit} className="space-y-2">
+      <div className="text-sm font-medium text-slate-300">
+        {kind === 'owner' ? (
+          <Trans>Rotate Braiins owner token</Trans>
+        ) : (
+          <Trans>Rotate Braiins read-only token</Trans>
+        )}
+      </div>
+      <p className="text-xs text-slate-500">
+        <Trans>
+          The new token is tested against Braiins before it's saved, so a typo can't disable
+          order authorization. It takes effect after the daemon restarts.
+        </Trans>
+      </p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <input
+          type="password"
+          autoComplete="current-password"
+          placeholder={t`Current password`}
+          value={current}
+          onChange={(e) => setCurrent(e.target.value)}
+          className={PW_INPUT_CLASS}
+        />
+        <input
+          type="password"
+          autoComplete="off"
+          placeholder={kind === 'owner' ? t`New owner token` : t`New read-only token`}
+          value={token}
+          onChange={(e) => setToken(e.target.value)}
+          className={PW_INPUT_CLASS}
+        />
+      </div>
+      <div className="flex items-center gap-3">
+        <button
+          type="submit"
+          disabled={mutation.isPending || !current || !token.trim()}
+          className="px-3 py-1.5 text-sm rounded border border-slate-700 text-slate-300 hover:bg-slate-800 disabled:opacity-50 whitespace-nowrap"
+        >
+          {mutation.isPending ? <Trans>Validating…</Trans> : <Trans>Rotate token</Trans>}
+        </button>
+        {result && result.ok && (
+          <span className="text-xs text-emerald-300">
+            <Trans>Token saved. It applies after the next daemon restart.</Trans>
+          </span>
+        )}
+        {result && !result.ok && (
+          <span className="text-xs text-red-400">
+            {result.status === 403 ? (
+              <Trans>Current password is incorrect.</Trans>
+            ) : (
+              (result.error ?? t`Braiins rejected this token.`)
+            )}
+          </span>
+        )}
+      </div>
+    </form>
   );
 }
 

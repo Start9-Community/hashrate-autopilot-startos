@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-07-08
+
+### `[Feature]` Change your password and rotate Braiins tokens from the dashboard (#332)
+
+Config → Pool & Payout now has a Security & credentials section. On installs whose secrets live in the database (the Umbrel/appliance path, where there's no shell or SOPS), you can change your dashboard password and rotate your Braiins owner and read-only tokens right from the browser. Changing the password takes effect immediately: the new one works on your next click and the old one stops instantly, which also boots anyone still holding it. A new token is test-called against Braiins before it's saved, so a typo can't silently break bidding; token rotations apply after the next daemon restart. Every change asks for your current password first. On env/SOPS installs the section shows a read-only notice pointing you to where those secrets are actually defined, rather than offering an editor that a reboot would quietly overwrite.
+
 ## 2026-07-07
 
 ### `[Fix]` Security: DB-stored secrets are now encrypted at rest (#331)

@@ -1077,6 +1077,10 @@ msgstr "API del marketplace de Braiins - accesible cuando el último observe() l
 msgid "Braiins marketplace empty for"
 msgstr "Mercado Braiins vacío durante"
 
+#: src/pages/Config.tsx
+msgid "Braiins rejected this token."
+msgstr "Braiins rechazó este token."
+
 #: src/components/TilesBar.tsx
 msgid "Braiins share-rejection ratio over the selected chart range. Same figure as the \"rejection ratio\" row in the Braiins panel below. Computed server-side from the first and last cumulative counter samples in the range."
 msgstr "Ratio de rechazo de shares de Braiins en el rango seleccionado. Mismo valor que la fila \"rejection ratio\" en el panel Braiins. Calculado en el servidor con la primera y la ultima muestra acumulada del contador."
@@ -1187,9 +1191,25 @@ msgstr "Celsius (°C)"
 msgid "change"
 msgstr "cambio"
 
+#: src/pages/Config.tsx
+msgid "Change dashboard password"
+msgstr "Cambiar la contraseña del panel"
+
+#: src/pages/Config.tsx
+msgid "Change password"
+msgstr "Cambiar contraseña"
+
+#: src/pages/Config.tsx
+msgid "Change your dashboard password and rotate your Braiins API tokens. Every change asks for your current password."
+msgstr "Cambia la contraseña de tu panel y rota tus tokens de API de Braiins. Cada cambio te pide tu contraseña actual."
+
 #: src/components/Layout.tsx
 msgid "changelog"
 msgstr "registro de cambios"
+
+#: src/pages/Config.tsx
+msgid "Changing…"
+msgstr "Cambiando…"
 
 #: src/pages/Config.tsx
 msgid "Chart colors"
@@ -1336,6 +1356,10 @@ msgstr "Instantánea de configuración (secretos eliminados)"
 msgid "Confirm cancel"
 msgstr "Confirmar cancelación"
 
+#: src/pages/Config.tsx
+msgid "Confirm new password"
+msgstr "Confirmar nueva contraseña"
+
 #: src/pages/Setup.tsx
 msgid "Confirm password"
 msgstr "Confirmar contraseña"
@@ -1413,6 +1437,14 @@ msgstr "Copiar JSON"
 msgid "copy URL"
 msgstr "copiar URL"
 
+#: src/pages/Config.tsx
+msgid "Could not change the password."
+msgstr "No se pudo cambiar la contraseña."
+
+#: src/pages/Config.tsx
+msgid "Could not load security settings."
+msgstr "No se pudieron cargar los ajustes de seguridad."
+
 #: src/components/BidEventDrawer.tsx
 #: src/components/PriceChart.tsx
 #: src/pages/Config.tsx
@@ -1485,6 +1517,14 @@ msgstr "Hashprice actual de Ocean (sat por PH por día en la ventana móvil más
 #: src/pages/Status.tsx
 msgid "Current owned-bid price (sat/PH/day). Under pay-your-bid this is exactly what Braiins charges per delivered EH-day - the live price you're paying. The plus/minus next to it is the spread vs Ocean's spot hashprice (positive = paying above break-even, negative = below). For the spend-weighted average paid across the selected chart range (handy when the bid moved during the window), see the AVG COST / PH DELIVERED stats card."
 msgstr "Current owned-bid price (sat/PH/day). Under pay-your-bid this is exactly what Braiins charges per delivered EH-day - the live price you're paying. The plus/minus next to it is the spread vs Ocean's spot hashprice (positive = paying above break-even, negative = below). For the spend-weighted average paid across the selected chart range (handy when the bid moved during the window), see the AVG COST / PH DELIVERED stats card."
+
+#: src/pages/Config.tsx
+msgid "Current password"
+msgstr "Contraseña actual"
+
+#: src/pages/Config.tsx
+msgid "Current password is incorrect."
+msgstr "La contraseña actual es incorrecta."
 
 #: src/pages/Config.tsx
 msgid "Currently: <0>{filename}</0> ({blobKb} KB)"
@@ -2595,6 +2635,7 @@ msgstr "Cargando tu historial de pagos desde Ocean. Esperando a que finalice la 
 msgid "loading…"
 msgstr "cargando…"
 
+#: src/pages/Config.tsx
 #: src/pages/History.tsx
 #: src/pages/Setup.tsx
 msgid "Loading…"
@@ -2853,6 +2894,22 @@ msgstr "nuevo"
 #: src/components/HashrateChart.tsx
 msgid "new difficulty"
 msgstr "nueva dificultad"
+
+#: src/pages/Config.tsx
+msgid "New owner token"
+msgstr "Nuevo token de propietario"
+
+#: src/pages/Config.tsx
+msgid "New password"
+msgstr "Nueva contraseña"
+
+#: src/pages/Config.tsx
+msgid "New password must be at least 8 characters."
+msgstr "La nueva contraseña debe tener al menos 8 caracteres."
+
+#: src/pages/Config.tsx
+msgid "New read-only token"
+msgstr "Nuevo token de solo lectura"
 
 #: src/components/BidEventDrawer.tsx
 #: src/components/PriceChart.tsx
@@ -3374,6 +3431,10 @@ msgstr "contraseña"
 #: src/pages/Setup.tsx
 msgid "Password"
 msgstr "Contraseña"
+
+#: src/pages/Config.tsx
+msgid "Password changed."
+msgstr "Contraseña cambiada."
 
 #: src/pages/Setup.tsx
 msgid "passwords don't match"
@@ -3949,6 +4010,18 @@ msgid "Rolling-window rejection ratio above which the alert fires. Default 10 %.
 msgstr "Ratio de rechazo en la ventana movil por encima del cual se dispara la alerta. Por defecto 10 %."
 
 #: src/pages/Config.tsx
+msgid "Rotate Braiins owner token"
+msgstr "Rotar el token de propietario de Braiins"
+
+#: src/pages/Config.tsx
+msgid "Rotate Braiins read-only token"
+msgstr "Rotar el token de solo lectura de Braiins"
+
+#: src/pages/Config.tsx
+msgid "Rotate token"
+msgstr "Rotar token"
+
+#: src/pages/Config.tsx
 #: src/pages/Setup.tsx
 msgid "RPC password"
 msgstr "Contraseña RPC"
@@ -4077,6 +4150,10 @@ msgstr "Buscar configuración..."
 #: src/pages/Alerts.tsx
 msgid "Search titles + bodies..."
 msgstr "Buscar en títulos + cuerpos..."
+
+#: src/pages/Config.tsx
+msgid "Security & credentials"
+msgstr "Seguridad y credenciales"
 
 #: src/pages/Config.tsx
 msgid "Select a price source to test."
@@ -4407,6 +4484,14 @@ msgstr "El daemon puede no estar en modo setup. Recarga la página o revisa los 
 msgid "The hostname being maintained. For No-IP DDNS Key groups (the modern auth flow that doesn't expose your account password), use the special hostname all.ddnskey.com - that updates every hostname assigned to the DDNS Key's group in one call. Test connection pushes a real update with the values currently in the form (without saving). `nochg` and `good` are both success."
 msgstr "El hostname que se mantiene. Para grupos de DDNS Key de No-IP (el flujo moderno que no expone la contraseña de tu cuenta), usa el hostname especial all.ddnskey.com - actualiza cada hostname asignado al grupo del DDNS Key en una sola llamada. Test connection envía una actualización real con los valores del formulario (sin guardar). `nochg` y `good` son ambos éxito."
 
+#: src/pages/Config.tsx
+msgid "The new password and its confirmation don't match."
+msgstr "La nueva contraseña y su confirmación no coinciden."
+
+#: src/pages/Config.tsx
+msgid "The new token is tested against Braiins before it's saved, so a typo can't disable order authorization. It takes effect after the daemon restarts."
+msgstr "El nuevo token se prueba contra Braiins antes de guardarse, para que un error tipográfico no pueda desactivar la autorización de órdenes. Tiene efecto después de reiniciar el daemon."
+
 #: src/pages/Status.tsx
 msgid "The part of collected that settled on-chain (has a transaction on the blockchain)."
 msgstr "La parte de lo cobrado que se liquidó on-chain (tiene una transacción en la blockchain)."
@@ -4477,6 +4562,10 @@ msgstr "Fecha hasta"
 #: src/components/DatePicker.tsx
 msgid "Today"
 msgstr "Hoy"
+
+#: src/pages/Config.tsx
+msgid "Token saved. It applies after the next daemon restart."
+msgstr "Token guardado. Se aplica tras el próximo reinicio del daemon."
 
 #: src/pages/Status.tsx
 msgid "total"
@@ -4636,6 +4725,10 @@ msgstr "Usa scantxoutset -- intensivo en CPU, 30+ segundos por escaneo. Consulta
 #: src/pages/Setup.tsx
 msgid "v{__APP_VERSION__} · build {__BUILD_NUMBER__} · {__BUILD_HASH__}"
 msgstr "v{__APP_VERSION__} · build {__BUILD_NUMBER__} · {__BUILD_HASH__}"
+
+#: src/pages/Config.tsx
+msgid "Validating…"
+msgstr "Validando…"
 
 #: src/pages/History.tsx
 msgid "View details"
@@ -4818,6 +4911,14 @@ msgstr "tu nodo Bitcoin no registra BIP 110 como una softfork con nombre"
 #: src/components/Bip110ScanCard.tsx
 msgid "Your Bitcoin node supports BIP 110, which is currently in its activation window. There are two paths it can activate by:"
 msgstr "Tu nodo Bitcoin admite BIP 110, que actualmente está en su ventana de activación. Hay dos caminos por los que puede activarse:"
+
+#: src/pages/Config.tsx
+msgid "Your credentials come from environment variables, not the database. Change them where they're defined and restart the daemon. The in-app editors are disabled here so a change couldn't be silently overwritten on the next boot."
+msgstr "Tus credenciales provienen de variables de entorno, no de la base de datos. Cámbialas donde estén definidas y reinicia el daemon. Los editores en la app están desactivados aquí para que un cambio no se sobrescriba silenciosamente en el próximo arranque."
+
+#: src/pages/Config.tsx
+msgid "Your credentials come from your SOPS secrets file, not the database. Change them with your SOPS tooling and restart the daemon. The in-app editors are disabled here so a change couldn't be silently overwritten on the next boot."
+msgstr "Tus credenciales provienen de tu archivo de secretos SOPS, no de la base de datos. Cámbialas con tu herramienta SOPS y reinicia el daemon. Los editores en la app están desactivados aquí para que un cambio no se sobrescriba silenciosamente en el próximo arranque."
 
 #: src/pages/Status.tsx
 msgid "Your layout is saved on this device."

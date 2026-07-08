@@ -53,6 +53,7 @@ import { registerBlockFoundSoundRoute } from './routes/block-found-sound.js';
 import { registerBtcPriceRoute } from './routes/btc-price.js';
 import { registerDiagnosticsRoute } from './routes/diagnostics.js';
 import { registerConfigRoutes } from './routes/config.js';
+import { registerSecurityRoutes } from './routes/security.js';
 import { registerDecisionsRoutes } from './routes/decisions.js';
 import { registerDepositsRoute } from './routes/deposits.js';
 import { registerFinanceRoute } from './routes/finance.js';
@@ -141,6 +142,10 @@ export interface HttpServerDeps {
   };
   readonly db: Kysely<Database>;
   readonly password: string;
+  /** #331: the SecretsRepo (with crypto) - used by the #332 rotation routes. */
+  readonly secretsRepo: import('../state/repos/secrets.js').SecretsRepo;
+  /** #332: where the running secrets came from; credential edits are only allowed for 'db'. */
+  readonly secretSource: 'env' | 'sops' | 'db';
   readonly tickIntervalMs: number;
   readonly secretsPath: string;
   readonly ageKeyPath: string;
@@ -180,11 +185,20 @@ export async function createHttpServer(deps: HttpServerDeps): Promise<HttpServer
   // slow, so cache the verdict per presented credential - only one value
   // is ever valid, so the cache stays tiny.
   const authCache = new Map<string, boolean>();
+  // #332: the dashboard password can be changed live via /api/security.
+  // Keep it in a mutable holder so a change takes effect on the next
+  // request (and the old one stops immediately). Clearing the cache is
+  // what boots any session still presenting the old password.
+  let currentPassword = deps.password;
+  const setDashboardPassword = (hashedOrPlain: string): void => {
+    currentPassword = hashedOrPlain;
+    authCache.clear();
+  };
   await app.register(fastifyBasicAuth, {
     validate: async (_username, password) => {
       let ok = authCache.get(password);
       if (ok === undefined) {
-        ok = verifyPassword(password, deps.password);
+        ok = verifyPassword(password, currentPassword);
         // Bound the cache defensively against a brute-force flood that
         // slips past the rate limiter.
         if (authCache.size > 64) authCache.clear();
@@ -248,6 +262,14 @@ export async function createHttpServer(deps: HttpServerDeps): Promise<HttpServer
   await registerStatusRoute(app, deps);
   await registerDecisionsRoutes(app, deps);
   await registerConfigRoutes(app, deps);
+  // #332: in-app credential rotation (password + Braiins tokens).
+  await registerSecurityRoutes(app, {
+    secretsRepo: deps.secretsRepo,
+    secretSource: deps.secretSource,
+    getCurrentPassword: () => currentPassword,
+    setDashboardPassword,
+    ...(deps.log ? { log: deps.log } : {}),
+  });
   await registerRunModeRoute(app, deps);
   await registerActionRoutes(app, deps);
   await registerMetricsRoute(app, deps);
