@@ -260,6 +260,12 @@ export interface DecisionDetail extends DecisionSummary {
 
 export interface ConfigResponse {
   readonly config: AppConfig;
+  /**
+   * #331: which credential fields are configured. Their values are
+   * blanked in `config` (write-only over the API); this tells the UI to
+   * show "configured / leave blank to keep" instead of an empty field.
+   */
+  readonly credentials_set?: Record<string, boolean>;
 }
 
 export interface UpdateRunModeBody {

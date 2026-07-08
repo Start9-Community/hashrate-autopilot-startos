@@ -2520,6 +2520,10 @@ msgid "Learn more →"
 msgstr "Meer informatie →"
 
 #: src/pages/Config.tsx
+msgid "leave blank to keep saved value"
+msgstr "laat leeg om de opgeslagen waarde te behouden"
+
+#: src/pages/Config.tsx
 msgid "Leave Disabled if you maintain DDNS elsewhere (router, VPS, static IP). When set, the daemon pushes an update every 5 minutes (and at minimum hourly to keep free hostnames active)."
 msgstr "Laat op Uitgeschakeld als je DDNS elders regelt (router, VPS, vast IP). Wanneer ingesteld stuurt de daemon elke 5 minuten een update (en minstens elk uur, zodat gratis hostnamen actief blijven)."
 

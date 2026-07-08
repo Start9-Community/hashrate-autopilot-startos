@@ -3302,7 +3302,7 @@ function NotificationsSection({
             type="password"
             value={draft.telegram_bot_token ?? ''}
             onChange={(e) => onChange('telegram_bot_token', e.target.value as never)}
-            placeholder="123456789:AA..."
+            placeholder={t`leave blank to keep saved value`}
             autoComplete="off"
             className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-1.5 text-sm font-mono"
           />
@@ -4550,6 +4550,7 @@ function BitcoindRpcFields({
             type="password"
             value={draft.bitcoind_rpc_password ?? ''}
             onChange={(e) => onChange('bitcoind_rpc_password', e.target.value as never)}
+            placeholder={t`leave blank to keep saved value`}
             className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-1.5 text-sm font-mono"
           />
           <span className="block text-xs text-slate-500 mt-1">
@@ -5315,6 +5316,7 @@ function DdnsCredentialFields({
           type="password"
           value={draft.ddns_credential}
           onChange={(e) => onChange('ddns_credential', e.target.value as never)}
+          placeholder={t`leave blank to keep saved value`}
           autoComplete="off"
           className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-1.5 text-sm font-mono"
         />

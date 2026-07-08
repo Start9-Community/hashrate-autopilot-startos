@@ -501,6 +501,8 @@ export interface AppConfig {
 
 export interface ConfigResponse {
   config: AppConfig;
+  /** #331: credential fields are write-only - blanked in `config`; this flags which are configured. */
+  credentials_set?: Record<string, boolean>;
 }
 
 // #149: solo-mining monitoring (Bitaxe / AxeOS / Nerdaxe). The

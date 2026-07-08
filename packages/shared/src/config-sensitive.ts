@@ -30,3 +30,22 @@ export const CONFIG_VALUE_REDACTED = '[redacted]';
 export function isSensitiveConfigField(field: string): boolean {
   return SENSITIVE_CONFIG_FIELDS.has(field);
 }
+
+/**
+ * Config fields that are true secrets (tokens / passwords / credentials)
+ * and must be write-only over the API: `GET /api/config` blanks them and
+ * `PUT` treats a blank value as "keep existing" (#331). This is a NARROWER
+ * set than SENSITIVE_CONFIG_FIELDS on purpose - usernames stay visible
+ * because seeing which user is configured is useful and a username is not
+ * a secret. (The `secrets`-table tokens - Braiins owner/read-only,
+ * dashboard password - are never returned by /api/config at all.)
+ */
+export const CONFIG_WRITE_ONLY_FIELDS: ReadonlySet<string> = new Set([
+  'telegram_bot_token',
+  'bitcoind_rpc_password',
+  'ddns_credential',
+]);
+
+export function isWriteOnlyConfigField(field: string): boolean {
+  return CONFIG_WRITE_ONLY_FIELDS.has(field);
+}

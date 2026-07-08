@@ -2,6 +2,10 @@
 
 ## 2026-07-07
 
+### `[Fix]` Security: credential fields are now write-only in the API (#331)
+
+The config API used to return your saved Telegram bot token, bitcoind RPC password, and DDNS credential in full to any logged-in dashboard session. It now blanks those on read and treats a blank value on save as "keep the existing one," so the raw secrets never leave the daemon. The Config screen shows "leave blank to keep saved value" on those fields. Usernames and node URLs stay visible since they aren't secrets. Part of the GHSA-wvpp hardening.
+
 ### `[Fix]` Security: the dashboard password is now stored as a hash, not plaintext (#331)
 
 The dashboard password is only ever checked, never recovered, so it's now stored as a one-way scrypt hash instead of plaintext in the database. Even someone who reads `state.db` can no longer recover the password itself (which matters because passwords get reused). Existing installs are upgraded automatically on the next daemon start, and operators who supply the password via environment variable / SOPS are unaffected. Part of the GHSA-wvpp hardening.
