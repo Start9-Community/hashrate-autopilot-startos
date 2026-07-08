@@ -19,6 +19,7 @@
   },
   "scripts": {
     "build": "pnpm -r run build",
+    "build:release-inputs": "./scripts/build-release-inputs.sh",
     "build:workspace-libs": "pnpm --filter @hashrate-autopilot/shared --filter @hashrate-autopilot/bitcoind-client --filter @hashrate-autopilot/braiins-client run build",
     "build:startos": "rm -rf ./javascript && ncc build startos/index.ts -o ./javascript && node -e \"require('fs').writeFileSync('javascript/package.json', '{\\\"type\\\":\\\"commonjs\\\"}\\n')\"",
     "prepare:checks": "pnpm run build:workspace-libs && pnpm --filter @hashrate-autopilot/dashboard run lingui:compile",

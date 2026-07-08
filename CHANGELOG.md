@@ -1,6 +1,10 @@
 # Changelog
 
-## 2026-07-06
+## 2026-07-07
+
+### `[Infra]` Release inputs build from a clean prebuild
+
+StartOS release packaging now has a dedicated `build:release-inputs` script that cleans stale package and StartOS bundle outputs, exports the StartOS app version for the dashboard build, rebuilds workspace outputs, and regenerates the StartOS `javascript/` bundle.
 
 ### `[Infra]` StartOS package builds work in Git worktrees
 
