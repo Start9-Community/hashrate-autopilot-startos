@@ -334,7 +334,8 @@ export function useCrosshairPointer(opts: {
 export interface CrosshairReadoutRow {
   color: string;
   label: string;
-  value: string;
+  /** May be a plain string or JSX (e.g. a value plus a dimmed unit glyph). */
+  value: React.ReactNode;
   /** Render the swatch as a dashed line (reference series). */
   dashed?: boolean;
 }

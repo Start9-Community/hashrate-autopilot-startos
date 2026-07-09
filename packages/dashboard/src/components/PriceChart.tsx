@@ -72,6 +72,7 @@ import {
   formatTimestampUtc,
 } from '../lib/format';
 import { useDateTimeLocale, useFormatters, useLocale } from '../lib/locale';
+import { RateSuffix } from './DenomUnit';
 import { SatSymbol } from './SatSymbol';
 import {
   PoolBlockTooltip,
@@ -910,6 +911,11 @@ export const PriceChart = memo(function PriceChart({
       stroke: string;
       axisLabel: string;
       formatTick: (v: number, axisSpan?: number) => string;
+      /** #331 follow-up: true for sat-denominated series (unpaid, paid,
+       *  lifetime, block reward, Braiins balance). The tooltip drops the
+       *  "(sat)" from the label and renders the value with a dimmed
+       *  currency glyph that follows the sats/BTC/USD toggle. */
+      currency?: boolean;
     } | null = (() => {
       switch (rightAxisSeries) {
         case 'none':
@@ -933,6 +939,7 @@ export const PriceChart = memo(function PriceChart({
             stroke: COLOR_RIGHT_AXIS,
             axisLabel: `block reward (${denomination.mode === 'usd' ? '$' : denomination.mode === 'btc' ? '₿' : 'sat'})`,
             formatTick: (v, span) => formatSatCompact(v, denomination, intlLocale, span),
+            currency: true,
           };
         case 'btc_usd_price':
           return {
@@ -961,6 +968,7 @@ export const PriceChart = memo(function PriceChart({
             stroke: COLOR_RIGHT_AXIS,
             axisLabel: `unpaid (${denomination.mode === 'usd' ? '$' : denomination.mode === 'btc' ? '₿' : 'sat'})`,
             formatTick: (v, span) => formatSatCompact(v, denomination, intlLocale, span),
+            currency: true,
           };
         case 'paid_total_sat':
           return {
@@ -972,6 +980,7 @@ export const PriceChart = memo(function PriceChart({
             stroke: COLOR_RIGHT_AXIS,
             axisLabel: `paid total (${denomination.mode === 'usd' ? '$' : denomination.mode === 'btc' ? '₿' : 'sat'})`,
             formatTick: (v, span) => formatSatCompact(v, denomination, intlLocale, span),
+            currency: true,
           };
         case 'total_balance_sat':
           return {
@@ -979,6 +988,7 @@ export const PriceChart = memo(function PriceChart({
             stroke: COLOR_RIGHT_AXIS,
             axisLabel: `Braiins balance (${denomination.mode === 'usd' ? '$' : denomination.mode === 'btc' ? '₿' : 'sat'})`,
             formatTick: (v, span) => formatSatCompact(v, denomination, intlLocale, span),
+            currency: true,
           };
         case 'solo_power_watts': {
           // Nearest-neighbor join with 15s tolerance - see HashrateChart's
@@ -1009,6 +1019,7 @@ export const PriceChart = memo(function PriceChart({
             stroke: COLOR_RIGHT_AXIS,
             axisLabel: `lifetime (${denomination.mode === 'usd' ? '$' : denomination.mode === 'btc' ? '₿' : 'sat'})`,
             formatTick: (v, span) => formatSatCompact(v, denomination, intlLocale, span),
+            currency: true,
           };
         case 'avg_overpay_intent':
           return {
@@ -2104,7 +2115,17 @@ export const PriceChart = memo(function PriceChart({
     const p = points[i]!;
     const rows: CrosshairReadoutRow[] = [];
     const dots: Array<{ cy: number; color: string }> = [];
-    const fmtRate = (v: number) => denomination.formatSatPerPhDay(v, intlLocale);
+    // Value + a dimmed unit suffix (the Satoshi glyph in sats mode, ₿/$ per
+    // the currency toggle), matching the muted "subtitle" unit look on the
+    // stat tiles - the unit reads at lower intensity than the number.
+    const fmtRate = (v: number): React.ReactNode => (
+      <>
+        {denomination.formatSatPerPhDayValue(v, intlLocale)}{' '}
+        <span className="text-slate-500">
+          <RateSuffix suffix={denomination.rateSuffix} />
+        </span>
+      </>
+    );
     const bid = smoothedPriceByTick.get(p.tick_at) ?? null;
     if (bid !== null) {
       rows.push({ color: COLOR_PRICE, label: t`our bid`, value: fmtRate(bid) });
@@ -2130,7 +2151,26 @@ export const PriceChart = memo(function PriceChart({
       const v = rightAxis.values[i];
       if (v !== null && v !== undefined && Number.isFinite(v)) {
         const span = (rightYTicks[rightYTicks.length - 1] ?? 1) - (rightYTicks[0] ?? 0);
-        rows.push({ color: rightAxis.stroke, label: rightAxis.axisLabel, value: rightAxis.formatTick(v, span) });
+        const num = rightAxis.formatTick(v, span);
+        // Currency series (unpaid, paid, lifetime, ...): drop the "(sat)"
+        // from the label and render the value with a dimmed glyph that
+        // follows the toggle. USD already carries a "$" prefix from the
+        // formatter, so it gets no suffix.
+        const label = rightAxis.currency
+          ? rightAxis.axisLabel.replace(/\s*\([^)]*\)\s*$/, '')
+          : rightAxis.axisLabel;
+        const value: React.ReactNode =
+          rightAxis.currency && denomination.mode !== 'usd' ? (
+            <>
+              {num}{' '}
+              <span className="text-slate-500">
+                {denomination.mode === 'btc' ? '₿' : <SatSymbol />}
+              </span>
+            </>
+          ) : (
+            num
+          );
+        rows.push({ color: rightAxis.stroke, label, value });
         dots.push({ cy: rightYScale(v), color: rightAxis.stroke });
       }
     }

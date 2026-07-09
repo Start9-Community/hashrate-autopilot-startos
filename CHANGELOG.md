@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-07-09
+
+### `[UI]` Price-chart tooltip units use the Satoshi glyph and follow the currency toggle
+
+The Price chart's hover/pinned tooltip now renders its rate units with the Satoshi symbol instead of the word "sat" (e.g. `47.104 ꜱ/PH/day`), styled in the same muted grey as the stat tiles so the unit reads at lower intensity than the number. The right-axis readout drops the unit from its label - the row now just says "unpaid" (or "paid total", "lifetime", etc.) and carries the unit as a dimmed glyph on the value instead. All of it follows the global sats/BTC/USD toggle: the Satoshi glyph in sats, ₿ in BTC, and $ amounts in USD.
+
 ## 2026-07-08
 
 ### `[Feature]` Change your password and rotate Braiins tokens from the dashboard (#332)
