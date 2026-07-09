@@ -2,6 +2,10 @@
 
 ## 2026-07-09
 
+### `[UI]` Hashrate-chart tooltip units are dimmed to match the Price tooltip
+
+The Hashrate chart's tooltip now renders its units (`PH/s`, and the `×` on pool luck, `%`, `°C`, etc. on the right axis) in the same muted grey as the Price tooltip and the stat tiles, so every chart readout is consistent - the unit sits at lower intensity than the number.
+
 ### `[UI]` Price-chart tooltip units use the Satoshi glyph and follow the currency toggle
 
 The Price chart's hover/pinned tooltip now renders its rate units with the Satoshi symbol instead of the word "sat" (e.g. `47.104 ꜱ/PH/day`), styled in the same muted grey as the stat tiles so the unit reads at lower intensity than the number. The right-axis readout drops the unit from its label - the row now just says "unpaid" (or "paid total", "lifetime", etc.) and carries the unit as a dimmed glyph on the value instead. All of it follows the global sats/BTC/USD toggle: the Satoshi glyph in sats, ₿ in BTC, and $ amounts in USD.

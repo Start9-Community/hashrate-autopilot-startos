@@ -355,6 +355,36 @@ export function projectSoloSeries(
   return out;
 }
 
+/**
+ * Split a formatted readout value into its number and trailing unit and
+ * render the unit in muted grey, so the unit reads at lower intensity
+ * than the number - matching the Price tooltip and the stat tiles.
+ * Handles space-separated units ("3,08 PH/s", "45 °C", "52 W") and the
+ * attached ×/% symbols ("0,33×", "0,0120%"); leaves magnitude-suffixed
+ * ("1.2M") and unitless values untouched.
+ */
+function withDimUnit(text: string): React.ReactNode {
+  const spaced = /^(.+ )([^\d\s].*)$/.exec(text);
+  if (spaced) {
+    return (
+      <>
+        {spaced[1]}
+        <span className="text-slate-500">{spaced[2]}</span>
+      </>
+    );
+  }
+  const symbol = /^(.+?)([×%])$/.exec(text);
+  if (symbol) {
+    return (
+      <>
+        {symbol[1]}
+        <span className="text-slate-500">{symbol[2]}</span>
+      </>
+    );
+  }
+  return text;
+}
+
 interface RightAxisSpec {
   /** Per-point values pulled off MetricPoint. */
   values: (number | null)[];
@@ -1646,7 +1676,7 @@ export const HashrateChart = memo(function HashrateChart({
     const { xScale, yScale, shareLogYScale, ys, datumYs, oceanYs, targets, floors, hasDatum, hasOcean, hasShareLog, rightAxis } = chartData;
     const rows: CrosshairReadoutRow[] = [];
     const dots: Array<{ cy: number; color: string }> = [];
-    const fmtHr = (v: number) => denomination.formatHashrate(v, intlLocale);
+    const fmtHr = (v: number): React.ReactNode => withDimUnit(denomination.formatHashrate(v, intlLocale));
     const delivered = ys[i];
     if (delivered !== undefined) {
       rows.push({ color: COLOR_DELIVERED, label: t`delivered (Braiins)`, value: fmtHr(delivered) });
@@ -1673,7 +1703,7 @@ export const HashrateChart = memo(function HashrateChart({
     if (hasShareLog && rightAxis) {
       const v = rightAxis.values[i];
       if (v !== null && v !== undefined && Number.isFinite(v)) {
-        rows.push({ color: rightAxis.stroke, label: rightAxis.axisLabel, value: rightAxis.formatTick(v) });
+        rows.push({ color: rightAxis.stroke, label: rightAxis.axisLabel, value: withDimUnit(rightAxis.formatTick(v)) });
         dots.push({ cy: shareLogYScale(v), color: rightAxis.stroke });
       }
     }
