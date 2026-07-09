@@ -1,6 +1,6 @@
 # Hashrate Autopilot - Specification (v2.17)
 
-> Status: current, aligned with code through 2026-06-15 (v1.15.0).
+> Status: current, aligned with code through 2026-07-08 (v1.17.0).
 >
 > This spec has been through three pricing regimes. **v1.x** used a depth-aware "fillable + overpay" controller with escalation timers, lowering-patience, and a dampening subsystem. **v2.0** (2026-04-23, same day) retired all of it on the hypothesis that Braiins matched CLOB-style and the bid was a matching-access ceiling. **v2.1** (2026-04-23, hours later) reversed v2.0 after a direct A/B on the live account showed Braiins matches pay-your-bid - the bid price *is* the paid price. The current controller tracks `fillable_ask + overpay_sat_per_eh_day` (the v1.x primitive) without the v1.x timer machinery (which was only needed to simulate that target under a misread of the mechanic); the retired escalation/patience/min-lower-delta knobs stay retired.
 >
@@ -57,6 +57,16 @@ Umbrel, Docker and scripted installs. See README.md for details.
   password on the dashboard (VPN is the real perimeter).
 - **Tech stack (locked):** TypeScript monorepo. Node daemon (control loop, API clients, ledger) + React dashboard +
   SQLite for persistent state.
+
+### 4.1 Secrets at rest (#331)
+
+- Database-stored secrets (Braiins owner + read-only tokens, `bitcoind` RPC password, Telegram bot token, DDNS credential) are AES-256-GCM encrypted at rest. Envelope format: `enc:v1:<base64 iv>:<base64 ciphertext+tag>`. The field name is used as the GCM additional-authenticated-data (AAD), so a ciphertext can't be moved between fields.
+- The dashboard password is stored as a one-way scrypt hash (N=2^15), never recoverable - only verified.
+- Encryption-key resolution order: `BHA_SECRET_KEY` env var (on Umbrel this is the device-derived `APP_SEED`, passed as `BHA_SECRET_KEY`) > `BHA_SECRET_KEY_FILE` > a generated `secret.key` file (mode 0600) next to `state.db`. Key material is HKDF-SHA256 derived.
+- Legacy plaintext rows are encrypted / hashed in place on the next daemon boot (idempotent upgrade - re-running is a no-op).
+- Graceful decrypt-failure: if the key is wrong or lost, the affected secret is treated as unset (`NEEDS_SETUP` for the owner token), never a crash loop.
+- The config API is write-only for credential fields: GET returns them blank, and a blank value on save means "keep existing".
+- Full threat model in `docs/security-secrets-at-rest.md`. This addresses advisory GHSA-wvpp. Per GHSA-x8x9 the config-change audit log (`system_events`) now redacts credential values, and migration 0117 scrubbed any previously-logged ones.
 
 ## 5. Inputs (observable signals)
 
@@ -663,11 +673,13 @@ Reorganised in v1.5.0 (#107) from a single long-scroll form into **four tabs** w
 | Tab | Sections |
 |---|---|
 | **Strategy** | Hashrate targets, Cheap mode, Pricing (fillable-tracking overpay + two safety ceilings), Budget, Daemon startup |
-| **Pool & Payout** | Pool destination + Test connection button, Datum stats API + Test connection button, Dynamic DNS (provider + hostname + credentials + Test connection button + diagnostic IPs - daemon's public IP, hostname resolves to, match/mismatch note), Payout source (none / electrs / bitcoind + Test connection buttons), Profit & Loss scope, BTC price oracle |
+| **Pool & Payout** | Pool destination + Test connection button, Datum stats API + Test connection button, Dynamic DNS (provider + hostname + credentials + Test connection button + diagnostic IPs - daemon's public IP, hostname resolves to, match/mismatch note), Payout source (none / electrs / bitcoind + Test connection buttons), Profit & Loss scope, BTC price oracle, Security & credentials (dashboard-password change + Braiins token rotation, DB-sourced installs only - #332) |
 | **Notifications** | Telegram bot token + chat ID + Test connection button, instance label, mute toggle, retry interval, wallet-runway threshold, per-event-class opt-out checklist, pool-block-credit toggle, block-found sound (off / bundled / custom upload) |
 | **Display & Logging** | Number format (separators) + Date layout (independent dropdowns; month names always follow the UI language picker - #147), block explorer URL template + transaction URL template, chart colors (Lines / Markers / Bid events sections with live SVG glyph previews per row), chart smoothing (Braiins / Datum / Braiins price), chart-markers cap, log retention (tick metrics / decisions uneventful / decisions eventful / alerts), Bitaxe miners device list + alert thresholds (when `solo_mining_enabled = true`) |
 
 Saves go through the Zod `AppConfigInvariantsSchema` and take effect on the next tick - no daemon restart needed. PUT `/api/config` snapshots the previous config before upsert and fires `onConfigSaved` callbacks; main.ts wires that to refresh the live `cfgRefHolder.value` immediately AND, when any DDNS-relevant field changed, kick the DDNS updater once so a Pool URL / hostname / credential edit pushes within seconds rather than waiting on the next periodic poll.
+
+**Security & credentials (#332).** A section inside the **Pool & Payout** tab (not a fifth tab - the Config page still has exactly four) that lets DB-sourced (appliance / Umbrel) installs change the dashboard password and rotate the Braiins owner and read-only tokens in-app. It is the only rotation path that needs no shell and no SOPS. Every change requires re-entering the current dashboard password. A password change is applied live - the running Basic Auth verifier is hot-swapped, so the new password works on the next request and the old one stops immediately. A new Braiins token is test-called against Braiins (an authenticated read) before it is committed; a bad token is rejected and nothing is written, and token changes take effect on the next daemon restart. On env- or SOPS-sourced installs the section is read-only (an edit would be overwritten on the next boot) and instead points the operator to where those secrets are defined. Backend routes, all under the existing Basic Auth: `GET /api/security/state` -> `{ secret_source: 'env'|'sops'|'db', editable }`; `POST /api/security/password` `{ current_password, new_password }`; `POST /api/security/braiins-token` `{ kind: 'owner'|'read_only', current_password, token }`. Wrong current password -> 403; an edit on a non-db source -> 409; a weak new password (<8 chars) or a Braiins-rejected token -> 422. Design in `docs/credential-rotation.md`.
 
 ### 12.3 Timeline page
 

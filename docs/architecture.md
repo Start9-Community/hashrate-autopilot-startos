@@ -219,7 +219,9 @@ hashrate-autopilot/
 │   │   │   └── execute.ts          (calls Braiins API with dry-run/live split)
 │   │   └── src/http/               (Fastify; dashboard API)
 │   │       ├── server.ts
-│   │       └── routes/             (status, config, decisions, actions, metrics [+ /api/retargets +
+│   │       └── routes/             (status, config, security [#332 - /api/security/state,
+│   │                                /api/security/password, /api/security/braiins-token],
+│   │                                decisions, actions, metrics [+ /api/retargets +
 │   │                                /api/system-events], run-mode, finance, stats, storage-estimate,
 │   │                                bid-events [+ /api/bid-history, /api/bid-history/:order_id/events,
 │   │                                /api/bid-history-events - the #256 v2 flat Timeline feed], ocean,
@@ -316,7 +318,7 @@ Core tables, WAL-mode, single file at `data/state.db`. Migration scripts live in
 
 ```sql
 -- Live-editable configuration (single-row pattern)
--- Reflects the current schema after all migrations through 0115.
+-- Reflects the current schema after all migrations through 0117.
 CREATE TABLE config (
   id INTEGER PRIMARY KEY CHECK (id = 1),
   -- Hashrate targets
@@ -943,7 +945,7 @@ concern (not by order; the file names are authoritative):
   with NULL on bid-rotation ticks (counter reset → negative
   Δpurchased) and on ticks where Δpurchased ≤ 0.
 
-- **Post-1.14 window (0107-0115):** 0107 (#243) scrubs orphan May 5-6 rows
+- **Post-1.14 window (0107-0117):** 0107 (#243) scrubs orphan May 5-6 rows
   left in the share-counter columns by the reverted #90 migration reusing
   the same names. 0108 (#244) adds the reserved/dormant `dashboard_card_order` column, 0109 (#250) creates `ip_change_events`, 0110 (#266) adds `dashboard_tiles`. 0111
   (#287) rebuilds `bid_events` to widen the kind CHECK constraint for
@@ -952,7 +954,17 @@ concern (not by order; the file names are authoritative):
   reconstruction); 0113 backfills it. 0114 (#318) creates `system_events`
   (config_change + daemon_started rows behind `GET /api/system-events`).
   0115 (2026-07-02 audit) drops `config.handover_window_minutes` - the
-  retired §7.3 manual-override knob nothing read.
+  retired §7.3 manual-override knob nothing read. 0116 (#323) creates the
+  `ocean_payouts` table, synced from Ocean's `/v1/earnpay` endpoint
+  (per-address backfill + trailing-window refresh). It holds both on-chain
+  payouts (has `on_chain_txid`) and Lightning payouts (`on_chain_txid IS
+  NULL`), and is the source of truth for the Profit & Loss "collected"
+  figure and its on-chain/Lightning rail split. 0117 (GHSA-x8x9) scrubs
+  credential values that a v1.16.0 config-change audit-log feature had
+  written in cleartext into `system_events` rows (`telegram_bot_token`,
+  `bitcoind_rpc_user`, `bitcoind_rpc_password`, `ddns_username`,
+  `ddns_credential`); the daemon also redacts these at write time going
+  forward.
 
 - **Gap-backfill + boot-time payout refresh (0104-0105):** 0104 (#241)
   adds `tick_metrics.synthetic INTEGER NOT NULL DEFAULT 0` marking rows
@@ -998,11 +1010,25 @@ Reconciliation pass: periodic full scan to catch anything real-time detection mi
 
 ## 7. Secrets and config
 
-- **sops** with an **age** key. Single-file, no keyring faff, easy to rotate.
-- Decryption happens once at daemon startup. Decrypted values are held in memory, never re-written to disk; pino log
-  redaction on `braiins_owner_token`, `braiins_read_only_token`, `bitcoind_rpc_password`, `dashboard_password`.
-- The age private key lives on the always-on box at a fixed path with chmod 600; operator is responsible for a
-  backup (printed or encrypted USB).
+- **Layered secret resolution** (first available wins): `BHA_*` environment variables > the SOPS-encrypted file
+  (`.env.sops.yaml`) > the encrypted `secrets` table in `state.db` (populated by the first-run web onboarding
+  wizard). Any one source can satisfy a given secret.
+- **Secrets-at-rest (#331).** The database-stored secrets - Braiins owner + read-only tokens, bitcoind RPC
+  password, Telegram bot token, DDNS credential - are AES-256-GCM encrypted at rest. Each value is stored as an
+  envelope `enc:v1:<b64 iv>:<b64 ciphertext+tag>`, with the field name bound in as the AAD. The dashboard password
+  is stored as a one-way scrypt hash (never recoverable, only verifiable).
+- **Encryption key resolution** (first available wins): `BHA_SECRET_KEY` env var (on Umbrel this is the
+  device-derived `APP_SEED`) > `BHA_SECRET_KEY_FILE` > a generated `secret.key` file (mode 0600) written next to
+  `state.db`. The resolved key is run through HKDF-SHA256 to derive the per-field encryption key.
+- A decrypt failure is handled gracefully - the secret is treated as unset rather than crashing the daemon into a
+  restart loop. Legacy plaintext rows (from before #331) are encrypted or hashed in place on the next boot; the
+  migration is idempotent.
+- **Write-only credential API.** The config API is write-only for credential fields (`bitcoind_rpc_password`,
+  `telegram_bot_token`, `ddns_credential`): they are accepted on POST but never echoed back on GET, and a blank
+  value on save keeps the existing secret rather than clearing it.
+- Decrypted values are held in memory only, never re-written to disk in plaintext; pino log redaction covers
+  `braiins_owner_token`, `braiins_read_only_token`, `bitcoind_rpc_password`, `dashboard_password`. See
+  `docs/security-secrets-at-rest.md` for the full threat model and key-management details.
 - Live tunables (non-secret) live in SQLite `config` table, editable via the dashboard and `/config` HTTP route.
   Validation against a Zod schema on every write.
 

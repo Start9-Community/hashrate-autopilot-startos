@@ -176,7 +176,7 @@ Full design: [`docs/spec.md`](docs/spec.md) · [`docs/architecture.md`](docs/arc
   Braiins service card is days-of-balance at the current measured spend rate.
 - **Dashboard** - hashrate and price charts with drag-to-pan and click-to-focus scroll-wheel zoom
   (TradingView-style; click a chart to activate zoom, click outside or press Escape to deactivate; blue
-  outline shows the focused chart), time-range presets (3h / 6h / 12h / 24h / 1w / 1m / 1y / all) that
+  outline shows the focused chart) plus pinch-to-zoom on touch devices, time-range presets (3h / 6h / 12h / 24h / 1w / 1m / 1y / all) that
   stay highlighted while panning and soft-snap during zoom, viewport-scoped Y-axis that only scales to
   visible data (out-of-view spikes don't compress the chart), **clickable legend** - tap any legend entry to
   hide that series and tap again to restore it (Chart.js / Bitaxe style); hiding a series also rescales the
@@ -321,7 +321,10 @@ Notifications and every message gets prefixed with `[<label>] ` so you can tell 
 
 Every bid event the autopilot or operator emitted - CREATE / EDIT_PRICE / EDIT_SPEED / CANCEL - lands in
 an append-only log surfaced at `/history` (titled "Timeline" in the nav) as a flat sortable table,
-interleaved with alert spans, on-chain events, difficulty retargets, and daemon restarts.
+interleaved with alert spans, on-chain events, difficulty retargets, config changes, and daemon restarts.
+Config-change rows open a readable semantic diff (field name, before → after) rather than raw JSON, and
+credential values are redacted from that audit trail so a leaked or exported Timeline never carries a
+secret (GHSA-x8x9).
 
 ![Timeline page](docs/images/timeline.png)
 
@@ -379,8 +382,11 @@ payouts* toggle with a **Backfill now** button that walks the address history an
 coinbase payouts into the lifetime-earnings line, and a *Pre-installation earnings* field for off-chain
 or pre-autopilot income the on-chain observer can't see - Lightning payouts, swept Ocean history -
 which becomes the starting value of the lifetime chart and folds into the net P&L), **Profit & Loss**
-spend scope (autopilot-tagged bids only vs the whole Braiins account), and **BTC price oracle** (feeds
-the sat ↔ USD header toggle; CoinGecko / Coinbase / Bitstamp / Kraken).
+spend scope (autopilot-tagged bids only vs the whole Braiins account), **BTC price oracle** (feeds
+the sat ↔ USD header toggle; CoinGecko / Coinbase / Bitstamp / Kraken), and **Security & credentials**
+(change the dashboard password and rotate the Braiins owner / read-only tokens in-app, each gated on your
+current password; the only rotation path that needs no shell or SOPS, so it works on Umbrel - #332. On
+env/SOPS installs this section is read-only and points you to where those secrets are defined).
 
 ### Notifications
 
@@ -435,7 +441,15 @@ schema. See [docs/configuration.md](docs/configuration.md) for the full list.
 ## Tech stack
 
 TypeScript monorepo (pnpm workspaces), Node 22+, React dashboard, SQLite (better-sqlite3). Secrets persist
-in `data/state.db` via the first-run wizard by default; SOPS-encrypted file remains supported for power users.
+in `data/state.db` via the first-run wizard by default; a SOPS-encrypted file remains supported for power
+users. Database-stored secrets (Braiins tokens, bitcoind RPC password, Telegram token, DDNS credential) are
+**AES-256-GCM encrypted at rest**, and the dashboard password is stored as a one-way **scrypt** hash, so a
+copied database or a backup no longer exposes them (#331). The encryption key comes from the `BHA_SECRET_KEY`
+environment variable (on Umbrel that's the device-derived `APP_SEED`, kept outside the app's data) or a
+generated key file next to `state.db`; if the key is ever lost the daemon treats the affected secret as unset
+and prompts you to re-enter it rather than crash-looping. The config API is write-only for credential fields:
+it returns them blank and treats a blank value on save as "keep the existing one." See
+[`docs/security-secrets-at-rest.md`](docs/security-secrets-at-rest.md) for the full threat model.
 
 ```
 packages/
@@ -826,14 +840,23 @@ autopilot is doing what you expect.
 Both behaviours are independent of which install path you picked.
 
 **Editing secrets later:** the wizard persists everything (config + secrets) into `data/state.db`
-(or `/app/data/state.db` in the Docker case). Two ways to rotate:
+(or `/app/data/state.db` in the Docker case). Ways to rotate, easiest first:
 
-1. **Re-run the wizard:** stop the daemon, run
-   `sqlite3 data/state.db 'DELETE FROM secrets;'` to force NEEDS_SETUP, restart, and the dashboard
-   redirects to `/setup` with your existing config pre-filled.
+1. **In-app (dashboard/DB installs, including Umbrel):** Config → Pool & Payout → **Security &
+   credentials** lets you change the dashboard password (takes effect immediately, the old one stops
+   working at once) and rotate the Braiins owner and read-only tokens (each test-called against Braiins
+   before it's saved, so a typo can't break bidding; token changes apply on the next daemon restart).
+   Every change asks for your current password first. This is the only rotation path that needs no shell
+   or SOPS, which is why it exists (#332). The Telegram token, bitcoind RPC password, and DDNS credential
+   stay editable in their own Config sections as before.
 2. **`BHA_*` env-var override:** set the env var (e.g. `BHA_BRAIINS_OWNER_TOKEN=…`) in the daemon's
    environment and it takes precedence over the DB value on every boot. On Docker, that's
-   `docker run -e BHA_…`. See [`docs/configuration.md`](docs/configuration.md).
+   `docker run -e BHA_…`. See [`docs/configuration.md`](docs/configuration.md). On env/SOPS installs the
+   in-app Security section is read-only and points you here, since a DB write would be overwritten on the
+   next boot.
+3. **Re-run the wizard:** stop the daemon, run
+   `sqlite3 data/state.db 'DELETE FROM secrets;'` to force NEEDS_SETUP, restart, and the dashboard
+   redirects to `/setup` with your existing config pre-filled.
 
 **Running on a second host (or migrating):** all operator-relevant state lives under `data/`
 (bare-metal) or in the named volume (Docker). Either:
