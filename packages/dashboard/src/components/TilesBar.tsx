@@ -110,10 +110,10 @@ interface TileResult {
    *  links the tip to the operator's block explorer. */
   readonly href?: string;
   /** #293: explicit grey caption under the value. When set, the value
-   *  is rendered whole (no unit-splitting) and this string is the
-   *  caption - lets a tile show a dynamic status line (e.g. cheap
-   *  threshold / sustained-window progress) instead of just a unit. */
-  readonly caption?: string;
+   *  is rendered whole (no unit-splitting) and this is the caption - lets
+   *  a tile show a dynamic status line (e.g. cheap threshold) or, for the
+   *  block-height tile, a two-line pool/worker block (#335). */
+  readonly caption?: React.ReactNode;
 }
 
 interface TileCtx {
@@ -193,6 +193,82 @@ function cleanPoolTag(raw: string | null): string {
   s = s.replace(/\/\d+$/, ''); // trailing "/595" block counter (SpiderPool etc.)
   s = s.replace(/\s*#\S+$/, ''); // trailing "#dropgold" miner note
   return s.replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * #335: split a coinbase tag into pool + worker for the two-line tile
+ * caption. Ocean already arrives split (pool "Ocean", inner miner tag);
+ * for other pools we split the raw run on the first "/" ("ViaBTC/Mined by
+ * wmklasson/" -> pool "ViaBTC", worker "wmklasson") or lift a trailing
+ * "#tag". Heuristic - not a curated pool database - so odd formats fall
+ * back to the tidied pool with no worker.
+ */
+function parsePoolWorker(
+  poolTag: string | null,
+  minerTag: string | null,
+): { pool: string; worker: string } {
+  const cleanWorker = (w: string) =>
+    w.replace(/\/+$/g, '').replace(/^mined by\s+/i, '').replace(/^#/, '').trim();
+  if (minerTag) return { pool: cleanPoolTag(poolTag), worker: cleanWorker(minerTag) };
+  if (!poolTag) return { pool: '', worker: '' };
+  let s = poolTag.trim().replace(/^\/+|\/+$/g, '').replace(/^powered by\s+/i, '');
+  s = s.replace(/^[^\s/]{1,4}\|\s*/, ''); // leading binary-ish junk prefix ("Sj| MARA..." -> "MARA...")
+  const slash = s.indexOf('/');
+  let pool = slash >= 0 ? s.slice(0, slash) : s;
+  let worker = slash >= 0 ? s.slice(slash + 1) : '';
+  const hashM = !worker ? /^(.*?)\s*#(\S+)$/.exec(pool) : null;
+  if (hashM) {
+    pool = hashM[1]!;
+    worker = hashM[2]!;
+  }
+  pool = pool.replace(/\/\d+$/, '').replace(/\s+/g, ' ').trim();
+  worker = cleanWorker(worker);
+  if (/^\d+$/.test(worker)) worker = ''; // a bare counter isn't a worker
+  return { pool, worker };
+}
+
+/** Lucide `waves` - the pool line's icon. Inherits the caption's grey. */
+function PoolWavesIcon() {
+  return (
+    <svg
+      width="0.85em"
+      height="0.85em"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="inline-block shrink-0 opacity-80"
+      aria-hidden="true"
+    >
+      <path d="M2 6c.6.5 1.2 1 2.5 1C7 7 7 5 9.5 5c2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1" />
+      <path d="M2 12c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1" />
+      <path d="M2 18c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1" />
+    </svg>
+  );
+}
+
+/** Lucide `hard-hat` - the worker line's icon. */
+function WorkerHatIcon() {
+  return (
+    <svg
+      width="0.85em"
+      height="0.85em"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="inline-block shrink-0 opacity-80"
+      aria-hidden="true"
+    >
+      <path d="M2 18a1 1 0 0 0 1 1h18a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1Z" />
+      <path d="M10 10V5a2 2 0 0 1 2-2 2 2 0 0 1 2 2v5" />
+      <path d="M4 15a8 8 0 0 1 16 0" />
+    </svg>
+  );
 }
 
 function fmtPct(v: number | null | undefined, digits = 1, intlLocale = 'en-US'): string {
@@ -361,13 +437,32 @@ const TILE_RENDERERS: Record<DashboardTileId, (ctx: TileCtx) => TileResult> = {
         : tip.found_by_ocean
           ? 'ocean'
           : 'gray';
-    const caption = [cleanPoolTag(tip.pool_tag), tip.miner_tag].filter(Boolean).join(' · ');
+    const { pool, worker } = parsePoolWorker(tip.pool_tag, tip.miner_tag);
+    const caption =
+      pool || worker ? (
+        <span className="flex flex-col items-center gap-0.5 leading-tight">
+          {pool && (
+            <span className="flex items-center gap-1">
+              <PoolWavesIcon />
+              {pool}
+            </span>
+          )}
+          {worker && (
+            <span className="flex items-center gap-1">
+              <WorkerHatIcon />
+              {worker}
+            </span>
+          )}
+        </span>
+      ) : (
+        EM_DASH
+      );
     return {
       value: formatNumber(tip.height, {}, intlLocale),
       // Gold number only for a block you actually found.
       color: foundByUs ? 'text-amber-300' : undefined,
       icon: <BlockTileIcon variant={variant} />,
-      caption: caption || EM_DASH,
+      caption,
       href: blockExplorerTemplate
         ? applyExplorerTemplate(blockExplorerTemplate, { block_hash: tip.hash, height: tip.height })
         : undefined,
