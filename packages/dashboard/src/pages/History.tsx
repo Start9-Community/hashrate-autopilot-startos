@@ -85,6 +85,7 @@ import { conditionLabel } from '../lib/alertConditions';
 import { DatePicker } from '../components/DatePicker';
 import { BidEventDrawer } from '../components/BidEventDrawer';
 import { AlertSpanDrawer } from '../components/AlertSpanDrawer';
+import { EventNoteField } from '../components/EventNoteField';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 
@@ -925,7 +926,9 @@ export function History() {
       // them in memory, sorted newest-first, then MERGE against the
       // paged/streamed bid events so the whole set is never materialized.
       const extras: Array<{ ts: number; row: TimelineExportRow }> = [];
-      const extraRow = (ts: number, type: string, reason: string) =>
+      // #336: fold the operator's per-event notes into the export.
+      const noteMap = (await api.eventNotes()).notes;
+      const extraRow = (ts: number, type: string, reason: string, key: string) =>
         extras.push({
           ts,
           row: {
@@ -939,6 +942,7 @@ export function History() {
             deltaPrice: null,
             speed: null,
             reason,
+            note: noteMap[key] ?? '',
           },
         });
       // Convert canonical values (sat/PH/day rates, PH/s hashrate) into
@@ -978,58 +982,59 @@ export function History() {
                 hashrate: (n) => denomination.formatHashrate(n),
               })
             : '',
+          note: noteMap[`event:${e.id}`] ?? '',
         };
       };
 
       if (shownExtraKinds.has('payout'))
         for (const p of payoutEvents) {
           if (!inRange(p.detected_at)) continue;
-          extraRow(p.detected_at, logExtraLabel('payout'), `${formatNumber(p.value_sat, {})} sat · ${p.rail === 'lightning' ? t`Lightning` : t`on-chain`}`);
+          extraRow(p.detected_at, logExtraLabel('payout'), `${formatNumber(p.value_sat, {})} sat · ${p.rail === 'lightning' ? t`Lightning` : t`on-chain`}`, `payout:${p.id}`);
         }
       if (shownExtraKinds.has('deposit'))
         for (const d of depositsQuery.data?.deposits ?? []) {
           const ts = d.credited_at_ms ?? d.tx_timestamp_ms ?? d.first_seen_at_ms;
           if (!inRange(ts)) continue;
-          extraRow(ts, logExtraLabel('deposit'), `${formatNumber(d.amount_sat, {})} sat · ${d.tx_id}`);
+          extraRow(ts, logExtraLabel('deposit'), `${formatNumber(d.amount_sat, {})} sat · ${d.tx_id}`, `deposit:${d.tx_id}`);
         }
       if (shownExtraKinds.has('block'))
         for (const b of oceanQuery.data?.our_recent_blocks ?? []) {
           if (!inRange(b.timestamp_ms)) continue;
           const lbl = b.found_by_us ? t`own pool block` : b.signals_bip110 === true ? t`BIP 110 block` : t`pool block`;
-          extraRow(b.timestamp_ms, lbl, `block ${b.height} · ${formatNumber(b.total_reward_sat, {})} sat · ${b.block_hash}`);
+          extraRow(b.timestamp_ms, lbl, `block ${b.height} · ${formatNumber(b.total_reward_sat, {})} sat · ${b.block_hash}`, `block:${b.block_hash}`);
         }
       if (shownExtraKinds.has('ip'))
         for (const c of ipChangesQuery.data?.events ?? []) {
           if (!inRange(c.occurred_at)) continue;
-          extraRow(c.occurred_at, logExtraLabel('ip'), `${c.old_ip ?? '—'} → ${c.new_ip}`);
+          extraRow(c.occurred_at, logExtraLabel('ip'), `${c.old_ip ?? '—'} → ${c.new_ip}`, `ip:${c.id}`);
         }
       if (shownExtraKinds.has('retarget'))
         for (const r of retargetsQuery.data?.retargets ?? []) {
           if (!inRange(r.tick_at)) continue;
           const pct = ((r.difficulty - r.previous) / r.previous) * 100;
-          extraRow(r.tick_at, logExtraLabel('retarget'), `${(r.difficulty / 1e12).toFixed(1)} T · ${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%`);
+          extraRow(r.tick_at, logExtraLabel('retarget'), `${(r.difficulty / 1e12).toFixed(1)} T · ${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%`, `retarget:${r.tick_at}`);
         }
       if (shownExtraKinds.has('alert'))
         for (const a of alertsLogQuery.data?.alerts ?? []) {
           const ec = a.event_class;
           if (!ec || ALERT_COVERED_ELSEWHERE.has(ec) || !inRange(a.created_at)) continue;
-          extraRow(a.created_at, pointAlertLabel(ec), a.body || a.title);
+          extraRow(a.created_at, pointAlertLabel(ec), a.body || a.title, `alert:${a.id}`);
         }
       for (const s of systemEventsQuery.data?.events ?? []) {
         if (!inRange(s.occurred_at)) continue;
         if (s.kind === 'config_change' && shownExtraKinds.has('config'))
-          extraRow(s.occurred_at, logExtraLabel('config'), `${s.field ?? '?'}: ${s.old_value ?? '—'} → ${s.new_value ?? '—'}`);
+          extraRow(s.occurred_at, logExtraLabel('config'), `${s.field ?? '?'}: ${s.old_value ?? '—'} → ${s.new_value ?? '—'}`, `config:${s.id}`);
         else if (s.kind === 'daemon_started' && shownExtraKinds.has('boot'))
-          extraRow(s.occurred_at, logExtraLabel('boot'), s.detail ?? '');
+          extraRow(s.occurred_at, logExtraLabel('boot'), s.detail ?? '', `boot:${s.id}`);
       }
       for (const s of alertSpansQuery.data?.spans ?? []) {
         if (!shownAlertClasses.has(s.event_class)) continue;
         if (inRange(s.start_ms)) {
-          extraRow(s.start_ms, conditionLabel(s.event_class), s.body ?? '');
+          extraRow(s.start_ms, conditionLabel(s.event_class), s.body ?? '', `alertspan:${s.open_id}`);
         }
         // #322: real recoveries export as their own rows too.
         if (s.end_ms !== null && s.recovery_body != null && inRange(s.end_ms)) {
-          extraRow(s.end_ms, t`${conditionLabel(s.event_class)} resolved`, s.recovery_body);
+          extraRow(s.end_ms, t`${conditionLabel(s.event_class)} resolved`, s.recovery_body, `alertspan:${s.open_id}`);
         }
       }
       extras.sort((a, b) => b.ts - a.ts);
@@ -2190,6 +2195,7 @@ function LogExtraDrawer({
           )}
 
           <LogExtraDetail extra={extra} />
+          <EventNoteField eventKey={extra.key} />
         </div>
       </aside>
     </div>

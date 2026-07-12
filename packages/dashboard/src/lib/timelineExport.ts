@@ -28,6 +28,8 @@ export interface TimelineExportRow {
   deltaPrice: number | null;
   speed: number | null;
   reason: string;
+  /** #336: the operator's personal note for this event, or ''. */
+  note: string;
 }
 
 // Cell style buckets. 'text' = inline string (s=0). 'rate' = a
@@ -49,8 +51,9 @@ const COLUMNS: Array<{ key: keyof TimelineExportRow; header: string; width: numb
   { key: 'deltaPrice', header: 'Δ price', width: 12, style: 'rate' },
   { key: 'speed', header: 'Speed (PH/s)', width: 12, style: 'speed' },
   { key: 'reason', header: 'Reason', width: 70, style: 'text' },
+  { key: 'note', header: 'Note', width: 40, style: 'text' },
 ];
-const COL_LETTERS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
+const COL_LETTERS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L'];
 const LAST_COL = COL_LETTERS[COLUMNS.length - 1]!;
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 

@@ -48,6 +48,7 @@ import { AlertsRepo } from './state/repos/alerts.js';
 import { BidEventsRepo } from './state/repos/bid_events.js';
 import { IpChangeEventsRepo } from './state/repos/ip_change_events.js';
 import { SystemEventsRepo } from './state/repos/system_events.js';
+import { EventNotesRepo } from './state/repos/event_notes.js';
 import { BraiinsDepositsRepo } from './state/repos/braiins_deposits.js';
 import { SoloMinersRepo } from './state/repos/solo_miners.js';
 import { AxeOSPoller } from './services/axeos-poller.js';
@@ -100,6 +101,7 @@ interface BootDeps {
   readonly bidEventsRepo: BidEventsRepo;
   readonly ipChangeEventsRepo: IpChangeEventsRepo;
   readonly systemEventsRepo: SystemEventsRepo;
+  readonly eventNotesRepo: EventNotesRepo;
   readonly alertsRepo: AlertsRepo;
   readonly poolBlocksRepo: PoolBlocksRepo;
   readonly rewardEventsRepo: RewardEventsRepo;
@@ -209,6 +211,7 @@ async function main(): Promise<void> {
     bidEventsRepo: new BidEventsRepo(handle.db),
     ipChangeEventsRepo: new IpChangeEventsRepo(handle.db),
     systemEventsRepo: new SystemEventsRepo(handle.db),
+    eventNotesRepo: new EventNotesRepo(handle.db),
     alertsRepo: new AlertsRepo(handle.db),
     poolBlocksRepo: new PoolBlocksRepo(handle.db),
     rewardEventsRepo: new RewardEventsRepo(handle.db),
@@ -369,6 +372,7 @@ async function bootOperational(
     bidEventsRepo,
     ipChangeEventsRepo,
     systemEventsRepo,
+    eventNotesRepo,
     alertsRepo,
     poolBlocksRepo,
     rewardEventsRepo,
@@ -1136,6 +1140,7 @@ async function bootOperational(
     bidEventsRepo,
     ipChangeEventsRepo,
     systemEventsRepo,
+    eventNotesRepo,
     alertsRepo,
     poolBlocksRepo,
     rewardEventsRepo,

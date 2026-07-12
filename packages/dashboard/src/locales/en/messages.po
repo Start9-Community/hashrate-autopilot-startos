@@ -382,6 +382,10 @@ msgstr "Add"
 msgid "Add {pickedCount} selected"
 msgstr "Add {pickedCount} selected"
 
+#: src/components/EventNoteField.tsx
+msgid "Add a personal note (saved when you click away)"
+msgstr "Add a personal note (saved when you click away)"
+
 #: src/components/TilesBar.tsx
 msgid "Add a tile"
 msgstr "Add a tile"
@@ -4103,6 +4107,10 @@ msgstr "save"
 msgid "save failed:"
 msgstr "save failed:"
 
+#: src/components/EventNoteField.tsx
+msgid "saved"
+msgstr "saved"
+
 #. placeholder {0}: formatAge(lastSavedAt)
 #: src/pages/Config.tsx
 msgid "saved {0}"
@@ -4944,6 +4952,10 @@ msgstr "Your credentials come from your SOPS secrets file, not the database. Cha
 #: src/pages/Status.tsx
 msgid "Your layout is saved on this device."
 msgstr "Your layout is saved on this device."
+
+#: src/components/EventNoteField.tsx
+msgid "Your note"
+msgstr "Your note"
 
 #: src/components/TilesBar.tsx
 msgid "Your share of Ocean's reward window. Approximately your hashrate ÷ pool hashrate; drives the unpaid-earnings line on the price chart."

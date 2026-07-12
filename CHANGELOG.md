@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-07-12
+
+### `[Feature]` Add your own notes to Timeline events (#336)
+
+Every event in the Timeline now has an optional note. Open any event's detail drawer and there's a text field where you can jot a personal note ("wired funds here", "switched pools", "this is the outage I was chasing") - it saves automatically when you click away, and clearing it removes it. Notes work on every event type (payouts, deposits, pool blocks, IP changes, retargets, config changes, boots, bid actions, and alert conditions) and are included as a "Note" column in the Excel export.
+
 ## 2026-07-11
 
 ### `[Feature]` New "block height" stats tile, crowned when the tip is an Ocean block (#335)

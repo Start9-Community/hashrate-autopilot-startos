@@ -143,6 +143,7 @@ describe('openDatabase - migrations', () => {
       '0115_drop_handover_window.sql',
       '0116_ocean_payouts.sql',
       '0117_scrub_config_change_secrets.sql',
+      '0118_event_notes.sql',
     ]);
     expect(handle.migrations.skipped).toEqual([]);
   });

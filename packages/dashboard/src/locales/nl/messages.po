@@ -382,6 +382,10 @@ msgstr "Toevoegen"
 msgid "Add {pickedCount} selected"
 msgstr "{pickedCount} geselecteerde toevoegen"
 
+#: src/components/EventNoteField.tsx
+msgid "Add a personal note (saved when you click away)"
+msgstr "Voeg een persoonlijke notitie toe (opgeslagen als je wegklikt)"
+
 #: src/components/TilesBar.tsx
 msgid "Add a tile"
 msgstr "Tegel toevoegen"
@@ -4103,6 +4107,10 @@ msgstr "opslaan"
 msgid "save failed:"
 msgstr "opslaan mislukt:"
 
+#: src/components/EventNoteField.tsx
+msgid "saved"
+msgstr "opgeslagen"
+
 #. placeholder {0}: formatAge(lastSavedAt)
 #: src/pages/Config.tsx
 msgid "saved {0}"
@@ -4944,6 +4952,10 @@ msgstr "Je inloggegevens komen uit je SOPS-secretsbestand, niet uit de database.
 #: src/pages/Status.tsx
 msgid "Your layout is saved on this device."
 msgstr "Je indeling wordt op dit apparaat opgeslagen."
+
+#: src/components/EventNoteField.tsx
+msgid "Your note"
+msgstr "Je notitie"
 
 #: src/components/TilesBar.tsx
 msgid "Your share of Ocean's reward window. Approximately your hashrate ÷ pool hashrate; drives the unpaid-earnings line on the price chart."

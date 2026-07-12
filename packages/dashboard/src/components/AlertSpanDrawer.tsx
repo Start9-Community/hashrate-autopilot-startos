@@ -19,6 +19,7 @@ import { useNavigate } from 'react-router-dom';
 
 import type { AlertConditionSpanView } from '../lib/api';
 import { conditionColor, conditionLabel } from '../lib/alertConditions';
+import { EventNoteField } from './EventNoteField';
 import { useChartColorOverrides } from '../lib/chartColorOverrides';
 import { formatDuration } from '../lib/format';
 import { useFormatters } from '../lib/locale';
@@ -124,6 +125,7 @@ export function AlertSpanDrawer({
               {recovery ? span.recovery_body ?? span.body : span.body}
             </p>
           </section>
+          <EventNoteField eventKey={`alertspan:${span.open_id}`} />
         </div>
       </aside>
     </div>

@@ -382,6 +382,10 @@ msgstr "Anadir"
 msgid "Add {pickedCount} selected"
 msgstr "Agregar {pickedCount} seleccionados"
 
+#: src/components/EventNoteField.tsx
+msgid "Add a personal note (saved when you click away)"
+msgstr "Añade una nota personal (se guarda al hacer clic fuera)"
+
 #: src/components/TilesBar.tsx
 msgid "Add a tile"
 msgstr "Añadir un mosaico"
@@ -4103,6 +4107,10 @@ msgstr "guardar"
 msgid "save failed:"
 msgstr "guardado fallido:"
 
+#: src/components/EventNoteField.tsx
+msgid "saved"
+msgstr "guardado"
+
 #. placeholder {0}: formatAge(lastSavedAt)
 #: src/pages/Config.tsx
 msgid "saved {0}"
@@ -4944,6 +4952,10 @@ msgstr "Tus credenciales provienen de tu archivo de secretos SOPS, no de la base
 #: src/pages/Status.tsx
 msgid "Your layout is saved on this device."
 msgstr "Tu disposición se guarda en este dispositivo."
+
+#: src/components/EventNoteField.tsx
+msgid "Your note"
+msgstr "Tu nota"
 
 #: src/components/TilesBar.tsx
 msgid "Your share of Ocean's reward window. Approximately your hashrate ÷ pool hashrate; drives the unpaid-earnings line on the price chart."

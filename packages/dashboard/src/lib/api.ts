@@ -914,6 +914,14 @@ export const api = {
     request<{ retargets: RetargetView[] }>(
       `/api/retargets?since_ms=${since}&until_ms=${until}`,
     ),
+  // #336: operator's personal notes on Timeline events, keyed by the
+  // row's stable `<kind>:<key>` id.
+  eventNotes: () => request<{ notes: Record<string, string> }>('/api/event-notes'),
+  setEventNote: (key: string, note: string) =>
+    request<{ event_key: string; note: string }>(
+      `/api/event-notes/${encodeURIComponent(key)}`,
+      { method: 'PUT', body: JSON.stringify({ note }) },
+    ),
   // #318: config-change + daemon-boot events for the unified History log.
   systemEvents: (since: number, until: number) =>
     request<{ events: SystemEventView[] }>(

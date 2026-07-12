@@ -290,6 +290,16 @@ export interface SystemEventsTable {
 }
 
 // ---------------------------------------------------------------------------
+// event_notes (#336): operator's personal notes on Timeline events, keyed
+// by the row's stable `<kind>:<key>` identity.
+// ---------------------------------------------------------------------------
+export interface EventNotesTable {
+  event_key: string;
+  note: string;
+  updated_at: number;
+}
+
+// ---------------------------------------------------------------------------
 // alerts
 // ---------------------------------------------------------------------------
 
@@ -709,6 +719,7 @@ export interface Database {
   solo_best_difficulty_events: SoloBestDifficultyEventsTable;
   ip_change_events: IpChangeEventsTable;
   system_events: SystemEventsTable;
+  event_notes: EventNotesTable;
   _migrations: MigrationsTable;
 }
 

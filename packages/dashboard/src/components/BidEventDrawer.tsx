@@ -41,6 +41,7 @@ import { formatAgeMinutes, formatTimestampUtc } from '../lib/format';
 import { copyToClipboard } from '../lib/clipboard';
 import { useDenomination } from '../lib/denomination';
 import { RateSuffix, ReasonText } from './DenomUnit';
+import { EventNoteField } from './EventNoteField';
 
 export interface BidEventDrawerProps {
   readonly event: BidHistoryFlatEvent;
@@ -324,6 +325,7 @@ export function BidEventDrawer({ event, onClose }: BidEventDrawerProps): React.J
               </p>
             </section>
           )}
+          <EventNoteField eventKey={`event:${event.id}`} />
         </div>
 
         <div className="border-t border-slate-800 px-4 py-3 sticky bottom-0 bg-slate-900 flex items-center gap-3">

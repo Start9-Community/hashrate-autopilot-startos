@@ -29,6 +29,7 @@ import type { AlertsRepo } from '../state/repos/alerts.js';
 import type { BidEventsRepo } from '../state/repos/bid_events.js';
 import type { IpChangeEventsRepo } from '../state/repos/ip_change_events.js';
 import type { SystemEventsRepo } from '../state/repos/system_events.js';
+import type { EventNotesRepo } from '../state/repos/event_notes.js';
 import type { ConfigRepo } from '../state/repos/config.js';
 import type { DecisionsRepo } from '../state/repos/decisions.js';
 import type { OwnedBidsRepo } from '../state/repos/owned_bids.js';
@@ -44,6 +45,7 @@ import type { PayoutObserver } from '../services/payout-observer.js';
 import { registerActionRoutes } from './routes/actions.js';
 import { registerAlertsRoutes } from './routes/alerts.js';
 import { registerBidEventsRoute } from './routes/bid-events.js';
+import { registerEventNotesRoutes } from './routes/event-notes.js';
 import { registerIpChangesRoute } from './routes/ip-changes.js';
 import { registerBuildRoute } from './routes/build.js';
 import { registerBip110ScanRoute } from './routes/bip110-scan.js';
@@ -95,6 +97,7 @@ export interface HttpServerDeps {
   /** #250: public-IP change events for the DDNS card + chart markers. */
   readonly ipChangeEventsRepo: IpChangeEventsRepo;
   readonly systemEventsRepo: SystemEventsRepo;
+  readonly eventNotesRepo: EventNotesRepo;
   readonly alertsRepo: AlertsRepo;
   readonly payoutObserver: PayoutObserver | null;
   readonly oceanClient: OceanClient | null;
@@ -276,6 +279,7 @@ export async function createHttpServer(deps: HttpServerDeps): Promise<HttpServer
   await registerActionRoutes(app, deps);
   await registerMetricsRoute(app, deps);
   await registerBidEventsRoute(app, deps);
+  await registerEventNotesRoutes(app, deps);
   await registerIpChangesRoute(app, deps);
   await registerBip110ScanRoute(app, { configRepo: deps.configRepo, secrets: deps.secrets });
   await registerBitcoindTestRoute(app);
