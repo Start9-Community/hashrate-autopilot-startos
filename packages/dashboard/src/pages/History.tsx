@@ -595,11 +595,19 @@ export function History() {
   // #316: alert-condition spans, fetched for the toolbar's date window
   // (default: last year) and merged into the feed as rows. Sparse, so a
   // single fetch covers the whole window.
+  // Without an explicit end-date filter the upper bound tracks the live
+  // edge. `lastFetchAt` (react-query's dataUpdatedAt) ticks on every poll,
+  // so keying the memo on it advances `until` each refetch instead of
+  // freezing it at mount - otherwise every merged extra source (boots,
+  // payouts, blocks, alerts, deposits, retargets) is clipped at page-open
+  // time and events that happen while the page stays open never appear
+  // until reload. This also repairs "following" mode, which clears
+  // untilMs but still saw the frozen bound.
   const alertWindow = useMemo(() => {
-    const until = filters.untilMs ?? Date.now();
+    const until = filters.untilMs ?? Math.max(Date.now(), lastFetchAt);
     const since = filters.sinceMs ?? until - YEAR_MS;
     return { since, until };
-  }, [filters.sinceMs, filters.untilMs]);
+  }, [filters.sinceMs, filters.untilMs, lastFetchAt]);
   // #320 audit follow-up: while following, the merged sources poll at
   // the same 15 s as the bid feed so a fresh payout/block/alert doesn't
   // lag up to a minute behind the rows around it.

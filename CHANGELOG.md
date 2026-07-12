@@ -2,6 +2,10 @@
 
 ## 2026-07-12
 
+### `[Fix]` Timeline now shows events that happen while the page is open (#337)
+
+The Timeline's merged event sources (daemon boots, payouts, pool blocks, alerts, deposits, difficulty retargets) used to freeze at the moment you opened the page - anything that happened afterwards only appeared after a manual reload. The daemon was recording everything correctly; the frontend had captured its window's end time once at page-load and never advanced it. A run of restarts, for example, would stop adding boot rows even though each restart was logged. The window's live edge now advances with every background refresh, so new events flow in on their own (and "following" mode works as intended again).
+
 ### `[Feature]` Add your own notes to Timeline events (#336)
 
 Every event in the Timeline now has an optional note. Open any event's detail drawer and there's a text field where you can jot a personal note ("wired funds here", "switched pools", "this is the outage I was chasing") - it saves automatically when you click away, and clearing it removes it. Notes work on every event type (payouts, deposits, pool blocks, IP changes, retargets, config changes, boots, bid actions, and alert conditions) and are included as a "Note" column in the Excel export.
