@@ -2,6 +2,10 @@
 
 ## 2026-07-12
 
+### `[Fix]` DDNS "Test connection" pushes the box's real IP, not the request's source (#339)
+
+The DDNS Test connection button did a real provider update but omitted the IP parameter (`myip=` for No-IP/dyndns2, `ip=` for DuckDNS). Per those protocols, when the IP is left out the provider records the source IP of the update request - so testing while a machine on the path was connected to a VPN wrote the VPN exit IP to the hostname, pointing your pool URL at the wrong place. The test now sends the daemon's own detected public IP explicitly, exactly like the periodic updater, so a test can only ever assert the box's real IP (and harmlessly returns `nochg` when it already matches).
+
 ### `[UI]` Block-height tile names the pool from a curated database (#335)
 
 The block-height tile used a heuristic on the raw coinbase to name the pool, which mangled real tags - Foundry's coinbase reads "(/Foundry USA Pool #dropgold/", so the tile showed a stray "(", the "#dropgold" slogan as a fake "worker", and wrapped over three lines. It now identifies the pool the same way every block explorer does: the daemon bundles mempool's curated pool database and matches the coinbase output address (or a known coinbase tag) to the canonical name - so the tile reads a clean "Foundry USA" on one line. The worker line (with the corrected hard-hat icon) now appears only for Ocean and your own blocks, where the coinbase carries a genuine per-miner identity; public pools show just the pool name. The database ships in the image and can be refreshed from upstream without a code change.
