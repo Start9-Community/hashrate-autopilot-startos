@@ -2,6 +2,10 @@
 
 ## 2026-07-12
 
+### `[UI]` Wider Timeline detail drawers on large screens (#338)
+
+The Timeline detail drawers (bid event, alert-condition span, and the log-extra drawer) were fixed at ~24rem, so Bitcoin addresses and transaction IDs wrapped and dropped their trailing characters even with empty space to spare. They now widen with the viewport (up to 40rem on extra-large screens) while staying full-width on mobile, so long identifiers fit on one line.
+
 ### `[Fix]` Timeline now shows events that happen while the page is open (#337)
 
 The Timeline's merged event sources (daemon boots, payouts, pool blocks, alerts, deposits, difficulty retargets) used to freeze at the moment you opened the page - anything that happened afterwards only appeared after a manual reload. The daemon was recording everything correctly; the frontend had captured its window's end time once at page-load and never advanced it. A run of restarts, for example, would stop adding boot rows even though each restart was logged. The window's live edge now advances with every background refresh, so new events flow in on their own (and "following" mode works as intended again).

@@ -196,7 +196,7 @@ export function BidEventDrawer({ event, onClose }: BidEventDrawerProps): React.J
       />
       {/* Panel. Full-screen on mobile, fixed-width on >= sm. */}
       <aside
-        className="bg-slate-900 border-l border-slate-700 shadow-2xl w-full sm:w-[24rem] max-w-full overflow-y-auto pointer-events-auto flex flex-col"
+        className="bg-slate-900 border-l border-slate-700 shadow-2xl w-full sm:w-[28rem] lg:w-[34rem] xl:w-[40rem] max-w-[92vw] overflow-y-auto pointer-events-auto flex flex-col"
         role="dialog"
         aria-label={t`Bid event detail`}
       >
