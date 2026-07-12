@@ -238,6 +238,7 @@ export interface StatusResponse {
    */
   readonly chain_tip: {
     readonly height: number;
+    readonly hash: string;
     readonly found_by_ocean: boolean;
     readonly signals_bip110: boolean;
     /** Coinbase pool tag ("Ocean", "Foundry USA Pool", ...) or null. */

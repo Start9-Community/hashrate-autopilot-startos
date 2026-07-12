@@ -292,6 +292,7 @@ function chainTipView(
   return snap
     ? {
         height: snap.height,
+        hash: snap.hash,
         found_by_ocean: snap.foundByOcean,
         signals_bip110: snap.signalsBip110,
         pool_tag: snap.poolTag,

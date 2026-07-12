@@ -56,6 +56,7 @@ describe('ChainTipPoller (#335)', () => {
     await poller.runOnce();
     expect(poller.getSnapshot()).toEqual({
       height: 957_329,
+      hash: 'aa',
       foundByOcean: true,
       signalsBip110: true,
       poolTag: 'Ocean',

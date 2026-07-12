@@ -959,6 +959,7 @@ export function Status() {
         oceanData={oceanQuery.data}
         soloMinersData={soloMinersQuery.data}
         financeRangeData={financeRangeQuery.data}
+        blockExplorerTemplate={configQuery.data?.config?.block_explorer_url_template}
         onTilesChange={handleTilesChange}
       />
     ),

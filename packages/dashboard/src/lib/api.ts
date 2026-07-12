@@ -404,6 +404,7 @@ export interface StatusResponse {
    *  when no bitcoind RPC is configured (the tile hides). */
   chain_tip: {
     height: number;
+    hash: string;
     found_by_ocean: boolean;
     signals_bip110: boolean;
     pool_tag: string | null;

@@ -66,6 +66,7 @@ import {
 
 import { useDenomination } from '../lib/denomination';
 import { useLocale } from '../lib/locale';
+import { applyExplorerTemplate } from '../lib/blockExplorer';
 import { formatNumber } from '../lib/format';
 import { SatSymbol } from './SatSymbol';
 import type { StatsResponse, StatusResponse, OceanResponse } from '../lib/api';
@@ -87,6 +88,9 @@ export interface TilesBarProps {
    * per-tick-delta SUM but not the first-/last-cumulative diff).
    */
   readonly financeRangeData: FinanceRangeResponse | undefined;
+  /** #335: block-explorer URL template (`{hash}` / `{height}`) so the
+   *  block-height tile can link the tip to the operator's explorer. */
+  readonly blockExplorerTemplate?: string;
   /**
    * Called when the operator adds, removes, or swaps a tile. The new
    * full list (in render order) is passed; caller persists to
@@ -101,6 +105,9 @@ interface TileResult {
   readonly color?: string;
   /** #335: small leading glyph before the value (e.g. the Ocean crown). */
   readonly icon?: React.ReactNode;
+  /** #335: makes the value a link (opens in a new tab) - block-height tile
+   *  links the tip to the operator's block explorer. */
+  readonly href?: string;
   /** #293: explicit grey caption under the value. When set, the value
    *  is rendered whole (no unit-splitting) and this string is the
    *  caption - lets a tile show a dynamic status line (e.g. cheap
@@ -114,6 +121,7 @@ interface TileCtx {
   readonly ocean: OceanResponse | undefined;
   readonly soloMiners: SoloMinersResponse | undefined;
   readonly finance: FinanceRangeResponse | undefined;
+  readonly blockExplorerTemplate?: string;
   readonly intlLocale: string;
   readonly denomination: ReturnType<typeof useDenomination>;
 }
@@ -139,6 +147,22 @@ function OceanCrown() {
       <line x1="0" y1="9.3" x2="10" y2="9.3" stroke="currentColor" strokeWidth="1.4" />
     </svg>
   );
+}
+
+/**
+ * #335: tidy a raw coinbase pool tag toward the clean name explorers show
+ * ("Powered by Luxor" -> "Luxor"; "/Foundry USA Pool #dropgold/" ->
+ * "Foundry USA Pool"). A heuristic - it strips wrapping slashes, a
+ * leading "Powered by", and a trailing "#tag" - not a curated pool
+ * database, so unusual formats fall through to the trimmed raw tag.
+ */
+function cleanPoolTag(raw: string | null): string {
+  if (!raw) return '';
+  let s = raw.trim().replace(/^powered by\s+/i, '');
+  s = s.replace(/^\/+|\/+$/g, ''); // wrapping slashes: /Foundry.../ -> Foundry...
+  s = s.replace(/\/\d+$/, ''); // trailing "/595" block counter (SpiderPool etc.)
+  s = s.replace(/\s*#\S+$/, ''); // trailing "#dropgold" miner note
+  return s.replace(/\s+/g, ' ').trim();
 }
 
 function fmtPct(v: number | null | undefined, digits = 1, intlLocale = 'en-US'): string {
@@ -288,15 +312,17 @@ const TILE_RENDERERS: Record<DashboardTileId, (ctx: TileCtx) => TileResult> = {
               : 'text-red-300',
     };
   },
-  chain_tip_height: ({ status, intlLocale }) => {
-    // #335: current chain-tip height. The caption names who found the
-    // block (coinbase pool tag, or miner tag when there's no pool); an
-    // Ocean tip gets a gold crown, and a BIP-110-signaling tip is tagged.
-    // When there's no bitcoind node the status field is null and the tile
-    // is filtered out entirely (see TilesBarImpl); this dash is defensive.
+  chain_tip_height: ({ status, blockExplorerTemplate, intlLocale }) => {
+    // #335: current chain-tip height. Clicking it opens the block in the
+    // operator's explorer. The caption names who found the block - the
+    // (tidied) coinbase pool tag plus the miner tag when present (Ocean
+    // carries a per-miner identity); an Ocean tip gets a gold crown and a
+    // BIP-110-signaling tip is tagged. Hidden entirely without a node.
     const tip = status?.chain_tip;
     if (!tip) return DASH;
-    const who = tip.pool_tag ?? tip.miner_tag ?? '';
+    const who = [cleanPoolTag(tip.pool_tag), tip.miner_tag]
+      .filter(Boolean)
+      .join(' · ');
     const caption = [who, tip.signals_bip110 ? 'BIP-110' : ''].filter(Boolean).join(' · ');
     return {
       value: formatNumber(tip.height, {}, intlLocale),
@@ -304,9 +330,12 @@ const TILE_RENDERERS: Record<DashboardTileId, (ctx: TileCtx) => TileResult> = {
       color: tip.found_by_ocean ? 'text-amber-300' : undefined,
       icon: tip.found_by_ocean ? <OceanCrown /> : undefined,
       caption: caption || EM_DASH,
+      href: blockExplorerTemplate
+        ? applyExplorerTemplate(blockExplorerTemplate, { block_hash: tip.hash, height: tip.height })
+        : undefined,
       tooltip: tip.found_by_ocean
-        ? t`Current Bitcoin block height. This block was found by Ocean.`
-        : t`Current Bitcoin block height. The caption names the pool (or miner) that found it.`,
+        ? t`Current Bitcoin block height (found by Ocean). Click to open it in your block explorer.`
+        : t`Current Bitcoin block height. The caption names the pool (or miner) that found it. Click to open it in your block explorer.`,
     };
   },
   pool_luck_24h: ({ ocean, intlLocale }) => {
@@ -616,6 +645,7 @@ function TilesBarImpl({
   oceanData,
   soloMinersData,
   financeRangeData,
+  blockExplorerTemplate,
   onTilesChange,
 }: TilesBarProps) {
   const { i18n } = useLingui();
@@ -642,6 +672,7 @@ function TilesBarImpl({
     ocean: oceanData,
     soloMiners: soloMinersData,
     finance: financeRangeData,
+    blockExplorerTemplate,
     intlLocale: intlLocale ?? 'en-US',
     denomination,
   };
@@ -839,8 +870,24 @@ function TileSlot({ id, inUse, result, onReplace, onRemove }: TileSlotProps) {
         {labelFor(id)}
       </div>
       <div className={`text-2xl font-mono tabular-nums text-center ${result.color ?? 'text-slate-100'}`}>
-        {result.icon}
-        {split ? split.num : result.value}
+        {result.href ? (
+          <a
+            href={result.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:underline decoration-dotted underline-offset-4"
+            // Don't let the click bubble to the tile's drag/tooltip layer.
+            onClick={(e) => e.stopPropagation()}
+          >
+            {result.icon}
+            {split ? split.num : result.value}
+          </a>
+        ) : (
+          <>
+            {result.icon}
+            {split ? split.num : result.value}
+          </>
+        )}
       </div>
       <div className="text-xs text-slate-500 mt-0.5 text-center min-h-[1.25rem]">
         {result.caption !== undefined ? result.caption : split ? <UnitCaption unit={split.unit} /> : ' '}

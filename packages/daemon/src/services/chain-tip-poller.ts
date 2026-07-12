@@ -16,6 +16,7 @@ import { extractCoinbaseTags, isBip110Signal } from '../http/routes/bip110-scan.
 
 export interface ChainTipSnapshot {
   readonly height: number;
+  readonly hash: string;
   readonly foundByOcean: boolean;
   readonly signalsBip110: boolean;
   /** Pool tag from the coinbase ("Ocean", "Foundry USA Pool", ...), or null. */
@@ -109,7 +110,7 @@ export class ChainTipPoller {
         // Coinbase enrichment is best-effort; height + BIP-110 still cache.
       }
 
-      this.snapshot = { height, foundByOcean, signalsBip110, poolTag, minerTag, fetchedAtMs: this.now() };
+      this.snapshot = { height, hash, foundByOcean, signalsBip110, poolTag, minerTag, fetchedAtMs: this.now() };
       this.lastHeight = height;
     } catch (err) {
       this.log(`[chain-tip] poll failed: ${(err as Error).message}`);
