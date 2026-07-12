@@ -6,7 +6,7 @@
 import { t } from '@lingui/core/macro';
 
 import { conditionSpanClass } from '@hashrate-autopilot/shared';
-import { CHART_COLOR_DEFAULTS, type ChartColorKey } from './chartColors';
+import { getChartColor, type ChartColorKey } from './chartColors';
 
 /** Short, translated label for a condition's *onset* (entering the state). */
 export function conditionLabel(openClass: string): string {
@@ -38,8 +38,15 @@ export function conditionRecoveryLabel(openClass: string): string {
   }
 }
 
-/** The configured (default) band color for a condition class. */
-export function conditionColor(openClass: string): string {
+/**
+ * Band color for a condition class, resolved against the operator's chart
+ * color overrides (#334). Pass the overrides bag from `useChartColorOverrides()`;
+ * defaults to `{}` (built-in colors) for non-React callers.
+ */
+export function conditionColor(
+  openClass: string,
+  overrides: Partial<Record<ChartColorKey, string>> = {},
+): string {
   const c = conditionSpanClass(openClass);
-  return c ? CHART_COLOR_DEFAULTS[c.colorSlot as ChartColorKey] : '#fb923c';
+  return c ? getChartColor(c.colorSlot as ChartColorKey, overrides) : '#fb923c';
 }

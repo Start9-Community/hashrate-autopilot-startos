@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-07-11
+
+### `[Fix]` Timeline colors now follow your Chart colors settings (#334)
+
+The Timeline used to draw its row glyphs with the built-in default colors, ignoring any customizations you made in Config → Display & Logging → Chart colors. So a recolored marker showed correctly on the charts but not in the Timeline - which is exactly why a real Braiins deposit didn't jump out. Now every Timeline color resolves through your overrides: the deposit / payout / pool-block / IP-change / difficulty-retarget rows, the bid-event action glyphs (create / edit / cancel / mode change / paused / resumed), and the alert-condition rows and their pop-ups all match the chart. Colors with no configurable key (config-change, daemon-boot, generic alerts) are unchanged. This also corrects a pre-existing mismatch where the "bid paused" glyph was amber in the Timeline but rose on the chart.
+
 ## 2026-07-09
 
 ### `[UI]` Hashrate-chart tooltip units are dimmed to match the Price tooltip

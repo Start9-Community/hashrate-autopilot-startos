@@ -54,7 +54,8 @@ import {
 } from '../lib/denomination';
 import { useFormatters } from '../lib/locale';
 import { formatNumber, formatDuration } from '../lib/format';
-import { CHART_COLOR_DEFAULTS, type ChartColorKey } from '../lib/chartColors';
+import { getChartColor, type ChartColorKey } from '../lib/chartColors';
+import { useChartColorOverrides, type ChartColorOverrides } from '../lib/chartColorOverrides';
 import { formatConfigChange, configFieldLabel, type HashrateUnit } from '../lib/configFieldFormat';
 import {
   isListField,
@@ -139,18 +140,38 @@ const BLOCK_VARIANT_SLOT: Record<BlockVariant, ChartColorKey> = {
   bip110: 'hashrate.pool_block_bip110',
 };
 
-function logExtraColor(kind: LogExtraKind, blockVariant?: BlockVariant, eventClass?: string): string {
+/** #334: bid-event action glyph → its chart color key, so the Timeline
+ *  glyph honors the operator's event-color overrides like the chart does. */
+const ACTION_COLOR_KEY: Record<BidEventView['kind'], ChartColorKey> = {
+  CREATE_BID: 'events.create',
+  EDIT_PRICE: 'events.edit_price',
+  EDIT_SPEED: 'events.edit_speed',
+  CANCEL_BID: 'events.cancel',
+  MODE_CHANGE: 'events.mode_change',
+  BID_PAUSED: 'events.bid_paused',
+  BID_RESUMED: 'events.bid_resumed',
+};
+
+function logExtraColor(
+  kind: LogExtraKind,
+  overrides: ChartColorOverrides,
+  blockVariant?: BlockVariant,
+  eventClass?: string,
+): string {
   if (kind === 'alert') {
     // #318 follow-up: "payout initiated" is good news, not a problem -
     // give it the positive payout-gem green instead of the alert amber.
+    // (No configurable chart-color key for these, so they stay fixed.)
     return eventClass === 'payout_initiated' ? '#10b981' : '#fbbf24';
   }
-  if (kind === 'config') return '#a78bfa'; // violet-400 - config change
-  if (kind === 'boot') return '#34d399'; // emerald-400 - daemon started
+  if (kind === 'config') return '#a78bfa'; // violet-400 - config change (no key)
+  if (kind === 'boot') return '#34d399'; // emerald-400 - daemon started (no key)
+  // #334: resolve through the operator's overrides so a recolored marker
+  // matches the chart everywhere it appears.
   if (kind === 'block') {
-    return CHART_COLOR_DEFAULTS[BLOCK_VARIANT_SLOT[blockVariant ?? 'others']];
+    return getChartColor(BLOCK_VARIANT_SLOT[blockVariant ?? 'others'], overrides);
   }
-  return CHART_COLOR_DEFAULTS[LOG_EXTRA_COLOR_SLOT[kind]];
+  return getChartColor(LOG_EXTRA_COLOR_SLOT[kind], overrides);
 }
 
 function logExtraLabel(kind: LogExtraKind): string {
@@ -186,7 +207,7 @@ function LogExtraGlyph({
   blockVariant?: BlockVariant;
   eventClass?: string;
 }) {
-  const color = logExtraColor(kind, blockVariant, eventClass);
+  const color = logExtraColor(kind, useChartColorOverrides(), blockVariant, eventClass);
   const base = {
     width: 12,
     height: 12,
@@ -1422,6 +1443,7 @@ function Toolbar({
   onToggleFollow: () => void;
 }) {
   const { i18n } = useLingui();
+  const chartOverrides = useChartColorOverrides();
   void i18n;
   const denomination = useDenomination();
   // #318: opt-out action filter (matches the Alerts/Events groups). All
@@ -1523,10 +1545,10 @@ function Toolbar({
         <div className="flex flex-wrap gap-1">
           {ALERT_FILTER_CLASSES.map((openClass) => {
             const active = shownAlertClasses.has(openClass);
-            const color =
-              CHART_COLOR_DEFAULTS[
-                (conditionSpanClass(openClass)?.colorSlot ?? 'events.alert_condition') as ChartColorKey
-              ];
+            const color = getChartColor(
+              (conditionSpanClass(openClass)?.colorSlot ?? 'events.alert_condition') as ChartColorKey,
+              chartOverrides,
+            );
             return (
               <button
                 key={openClass}
@@ -1910,10 +1932,13 @@ function AlertSpanRow({
 }) {
   const { i18n } = useLingui();
   void i18n;
+  const chartOverrides = useChartColorOverrides();
   const cls = conditionSpanClass(span.event_class);
   const color = recovery
     ? '#34d399' // emerald - good news, matching the resolved pill on /alerts
-    : cls ? CHART_COLOR_DEFAULTS[cls.colorSlot as ChartColorKey] : '#fb923c';
+    : cls
+      ? getChartColor(cls.colorSlot as ChartColorKey, chartOverrides)
+      : '#fb923c';
   const ongoing = span.end_ms === null;
   const durationMs = (span.end_ms ?? Date.now()) - span.start_ms;
   const dash = <span className="text-slate-600">—</span>;
@@ -2010,7 +2035,7 @@ function LogExtraRow({
 }) {
   const { i18n } = useLingui();
   void i18n;
-  const color = logExtraColor(extra.kind, extra.blockVariant, extra.eventClass);
+  const color = logExtraColor(extra.kind, useChartColorOverrides(), extra.blockVariant, extra.eventClass);
   const dash = <span className="text-slate-600">—</span>;
   return (
     <tr
@@ -2089,7 +2114,7 @@ function LogExtraDrawer({
   const { i18n } = useLingui();
   void i18n;
   const navigate = useNavigate();
-  const color = logExtraColor(extra.kind, extra.blockVariant, extra.eventClass);
+  const color = logExtraColor(extra.kind, useChartColorOverrides(), extra.blockVariant, extra.eventClass);
   const label = extra.label ?? logExtraLabel(extra.kind);
   const jumpUrl = logExtraJumpUrl(extra);
   // #318 follow-up: on-chain events get a "View in block explorer" button
@@ -2484,6 +2509,9 @@ function labelForKindShort(kind: Kind): string {
 }
 
 function ActionGlyph({ kind }: { kind: BidEventView['kind'] }) {
+  // #334: the glyph color follows the operator's event-color overrides,
+  // matching the chart markers everywhere.
+  const color = getChartColor(ACTION_COLOR_KEY[kind], useChartColorOverrides());
   const base = {
     width: 12,
     height: 12,
@@ -2496,7 +2524,7 @@ function ActionGlyph({ kind }: { kind: BidEventView['kind'] }) {
   };
   if (kind === 'CREATE_BID') {
     return (
-      <svg {...base} stroke="#34d399">
+      <svg {...base} stroke={color}>
         <circle cx="12" cy="12" r="10" />
         <path d="M8 12h8" />
         <path d="M12 8v8" />
@@ -2506,13 +2534,13 @@ function ActionGlyph({ kind }: { kind: BidEventView['kind'] }) {
   if (kind === 'EDIT_PRICE') {
     return (
       <svg width="12" height="12" viewBox="0 0 14 14" className="inline-block align-middle">
-        <circle cx="7" cy="7" r="4.5" fill="#facc15" stroke="#0f172a" strokeWidth="1.5" />
+        <circle cx="7" cy="7" r="4.5" fill={color} stroke="#0f172a" strokeWidth="1.5" />
       </svg>
     );
   }
   if (kind === 'EDIT_SPEED') {
     return (
-      <svg {...base} stroke="#38bdf8">
+      <svg {...base} stroke={color}>
         <path d="m12 14 4-4" />
         <path d="M3.34 19a10 10 0 1 1 17.32 0" />
       </svg>
@@ -2523,7 +2551,7 @@ function ActionGlyph({ kind }: { kind: BidEventView['kind'] }) {
     // PAUSED). Distinct from the `power` glyph, which daemon-started
     // owns; the two used to collide.
     return (
-      <svg {...base} stroke="#c4b5fd">
+      <svg {...base} stroke={color}>
         <path d="M8 3 4 7l4 4" />
         <path d="M4 7h16" />
         <path d="m16 21 4-4-4-4" />
@@ -2534,7 +2562,7 @@ function ActionGlyph({ kind }: { kind: BidEventView['kind'] }) {
   if (kind === 'BID_PAUSED') {
     // Lucide `circle-pause` - Braiins paused the bid.
     return (
-      <svg {...base} stroke="#fbbf24">
+      <svg {...base} stroke={color}>
         <circle cx="12" cy="12" r="10" />
         <line x1="10" x2="10" y1="15" y2="9" />
         <line x1="14" x2="14" y1="15" y2="9" />
@@ -2544,14 +2572,14 @@ function ActionGlyph({ kind }: { kind: BidEventView['kind'] }) {
   if (kind === 'BID_RESUMED') {
     // Lucide `circle-play` - Braiins resumed the bid.
     return (
-      <svg {...base} stroke="#34d399">
+      <svg {...base} stroke={color}>
         <circle cx="12" cy="12" r="10" />
         <polygon points="10 8 16 12 10 16 10 8" />
       </svg>
     );
   }
   return (
-    <svg {...base} stroke="#f87171">
+    <svg {...base} stroke={color}>
       <circle cx="12" cy="12" r="10" />
       <path d="m4.9 4.9 14.2 14.2" />
     </svg>

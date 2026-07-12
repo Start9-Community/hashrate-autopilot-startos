@@ -13,6 +13,7 @@ import { useNavigate } from 'react-router-dom';
 
 import type { AlertConditionSpanView } from '../lib/api';
 import { conditionColor, conditionLabel } from '../lib/alertConditions';
+import { useChartColorOverrides } from '../lib/chartColorOverrides';
 import { formatDuration } from '../lib/format';
 import { useFormatters } from '../lib/locale';
 
@@ -35,7 +36,7 @@ export function AlertSpanTooltip({
   const navigate = useNavigate();
   const ref = useRef<HTMLDivElement | null>(null);
   const { span } = tip;
-  const color = conditionColor(span.event_class);
+  const color = conditionColor(span.event_class, useChartColorOverrides());
   const ongoing = span.end_ms === null;
   const durationMs = (span.end_ms ?? Date.now()) - span.start_ms;
 

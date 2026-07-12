@@ -19,6 +19,7 @@ import { useNavigate } from 'react-router-dom';
 
 import type { AlertConditionSpanView } from '../lib/api';
 import { conditionColor, conditionLabel } from '../lib/alertConditions';
+import { useChartColorOverrides } from '../lib/chartColorOverrides';
 import { formatDuration } from '../lib/format';
 import { useFormatters } from '../lib/locale';
 
@@ -36,7 +37,7 @@ export function AlertSpanDrawer({
   void i18n;
   const fmt = useFormatters();
   const navigate = useNavigate();
-  const color = recovery ? '#34d399' : conditionColor(span.event_class);
+  const color = recovery ? '#34d399' : conditionColor(span.event_class, useChartColorOverrides());
   const ongoing = span.end_ms === null;
   const durationMs = (span.end_ms ?? Date.now()) - span.start_ms;
 

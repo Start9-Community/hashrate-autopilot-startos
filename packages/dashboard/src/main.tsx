@@ -13,6 +13,7 @@ import { getInitialLocale, i18n, loadAndActivate } from './lib/i18n';
 import { LocaleContext, useLocaleState } from './lib/locale';
 import { migrateLegacyStorageKeys } from './lib/storage-key-migration';
 import { Alerts } from './pages/Alerts';
+import { ChartColorOverridesProvider } from './lib/chartColorOverrides';
 import { Config } from './pages/Config';
 import { History } from './pages/History';
 import { Login } from './pages/Login';
@@ -64,7 +65,9 @@ function AppShell() {
                   <Route
                     element={
                       <RequireAuth>
-                        <Layout />
+                        <ChartColorOverridesProvider>
+                          <Layout />
+                        </ChartColorOverridesProvider>
                       </RequireAuth>
                     }
                   >
