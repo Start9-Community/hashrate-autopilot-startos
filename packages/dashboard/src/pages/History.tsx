@@ -2267,7 +2267,16 @@ function CopyableValue({ value }: { value: string }) {
 function LogExtraDetail({ extra }: { extra: LogExtraItem }) {
   const { i18n } = useLingui();
   void i18n;
-  const sat = (n: number) => `${formatNumber(n, {})} sat`;
+  // Locale-formatted amount with the Satoshi glyph rendered muted+small,
+  // matching the unit idiom everywhere else (bid-event drawer, tiles).
+  const sat = (n: number) => (
+    <>
+      {formatNumber(n, {})}
+      <span className="text-slate-500 text-[10px] ml-1">
+        <SatSymbol />
+      </span>
+    </>
+  );
 
   if (extra.kind === 'block' && extra.block) {
     const b = extra.block;
@@ -2275,13 +2284,16 @@ function LogExtraDetail({ extra }: { extra: LogExtraItem }) {
     return (
       <>
         <section className="space-y-1">
-          <DetailRow label={<Trans>height</Trans>} value={b.height} />
+          <DetailRow label={<Trans>height</Trans>} value={formatNumber(b.height, {})} />
           <DetailRow label={<Trans>pool reward</Trans>} value={sat(b.total_reward_sat)} />
           <DetailRow label={<Trans>subsidy</Trans>} value={sat(b.subsidy_sat)} />
           <DetailRow label={<Trans>fees</Trans>} value={sat(b.fees_sat)} />
           {share !== null && share > 0 && (
             <>
-              <DetailRow label={<Trans>share log</Trans>} value={`${share.toFixed(4)}%`} />
+              <DetailRow
+                label={<Trans>share log</Trans>}
+                value={`${formatNumber(share, { minimumFractionDigits: 4, maximumFractionDigits: 4 })}%`}
+              />
               <DetailRow
                 label={<Trans>our earnings (est.)</Trans>}
                 value={sat(Math.round((b.total_reward_sat * share) / 100))}

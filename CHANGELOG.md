@@ -2,6 +2,10 @@
 
 ## 2026-07-12
 
+### `[UI]` Consistent number/unit/colour formatting across Timeline drawers (#340)
+
+Swept a batch of formatting inconsistencies in the event detail drawers. The Pool Block drawer's height now carries a thousand separator (`957.746`, not `957746`). Units are uniformly muted-grey with the Satoshi glyph: the CREATE drawer's speed (`PH/s`) and budget (sat) rows, the block-reward/subsidy/fee/earnings rows, and the Edit-speed dialog all match the rate rows now, instead of baking a full-intensity unit into the number. The Edit-price `delta` is sign-coloured - green when it drops (you pay less), red when it rises (you pay more) - like the rest of the app. The Mode-change drawer shows localized run-mode labels (`Dry Run → Live`) instead of the raw enum keys (`DRY_RUN → LIVE`). Percentages (share log) follow the configured number format too.
+
 ### `[Fix]` DDNS "Test connection" pushes the box's real IP, not the request's source (#339)
 
 The DDNS Test connection button did a real provider update but omitted the IP parameter (`myip=` for No-IP/dyndns2, `ip=` for DuckDNS). Per those protocols, when the IP is left out the provider records the source IP of the update request - so testing while a machine on the path was connected to a VPN wrote the VPN exit IP to the hostname, pointing your pool URL at the wrong place. The test now sends the daemon's own detected public IP explicitly, exactly like the periodic updater, so a test can only ever assert the box's real IP (and harmlessly returns `nochg` when it already matches).

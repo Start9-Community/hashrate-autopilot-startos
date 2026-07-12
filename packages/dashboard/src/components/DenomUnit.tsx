@@ -33,6 +33,18 @@ export function RateSuffix({ suffix }: { suffix: string }) {
 }
 
 /**
+ * An amount-unit token (from `denomination.satSuffix`): the Satoshi glyph
+ * for "sat", or the short symbol (₿) as-is. Empty suffix (USD, whose "$"
+ * is a prefix baked into the value) renders nothing. Mirrors RateSuffix
+ * for plain amounts (budget, block reward, ...).
+ */
+export function SatSuffix({ suffix }: { suffix: string }) {
+  if (suffix === '') return null;
+  if (suffix === 'sat') return <SatSymbol />;
+  return <>{suffix}</>;
+}
+
+/**
  * A bid-event reason with its canonical sat/PH/day + PH/s tokens rendered
  * in the active denomination (sat values carry the Satoshi glyph). Text
  * between tokens is verbatim (the daemon's English audit wording).
