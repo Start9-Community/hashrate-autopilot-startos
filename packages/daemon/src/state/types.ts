@@ -337,6 +337,12 @@ export interface AlertsTable {
   delivery_meta_json: string | null;
   /** #100: ms-epoch when the operator clicked acknowledge. Null = unacknowledged. */
   acknowledged_at_ms: number | null;
+  /**
+   * #341: ms-epoch when the underlying condition first went bad
+   * (bad_since), stamped on the firing row. NULL on recovery rows and
+   * every pre-0119 alert; the span builder falls back to created_at.
+   */
+  condition_started_at: number | null;
 }
 
 // ---------------------------------------------------------------------------

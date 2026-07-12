@@ -66,6 +66,8 @@ export interface AlertInsert {
   delivery_attempts: number;
   next_retry_at_ms: number | null;
   paired_alert_id: number | null;
+  /** #341: condition-onset (bad_since) for firing rows; null otherwise. */
+  condition_started_at?: number | null;
 }
 
 export interface AlertRow {
@@ -84,6 +86,7 @@ export interface AlertRow {
   paired_alert_id: number | null;
   delivery_meta_json: string | null;
   acknowledged_at_ms: number | null;
+  condition_started_at: number | null;
 }
 
 export interface AlertListFilters {
@@ -140,6 +143,7 @@ export class AlertsRepo {
         paired_alert_id: args.paired_alert_id,
         delivery_meta_json: null,
         acknowledged_at_ms: null,
+        condition_started_at: args.condition_started_at ?? null,
       })
       .executeTakeFirstOrThrow();
     return Number(result.insertId);
@@ -479,7 +483,10 @@ export class AlertsRepo {
         severity: o.severity,
         title: o.title,
         body: o.body,
-        start_ms: o.created_at,
+        // #341: span starts at condition-onset (bad_since) when the firing
+        // row recorded it, so Started/Duration cover the true outage and
+        // match the recovery body. Pre-0119 rows fall back to the fire time.
+        start_ms: o.condition_started_at ?? o.created_at,
         end_ms: endMs,
         recovery_body: recovery !== undefined ? recovery.body : null,
       });

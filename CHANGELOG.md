@@ -2,6 +2,10 @@
 
 ## 2026-07-12
 
+### `[Fix]` Alert duration now reflects the true outage window (#341)
+
+An alert's detail drawer showed a "Duration" that contradicted its own body - e.g. Duration `56s` under a body reading "was zero for 16m", or Duration `30m` next to "unreachable for 5m". The cause: alerts fire only after a sustained-threshold delay, so the span was measured from the fire time, not from when the condition actually went bad. The daemon now stamps the condition-onset on the firing alert, and the Timeline span (its row position, duration badge, detail-drawer Started/Recovered/Duration, and chart band) covers the full outage from onset to recovery - so Duration matches the recovery body. The alert row's own timestamp stays the fire time for delivery and Alerts-list ordering. Applies to newly-fired alerts; historical alerts keep their previous behaviour.
+
 ### `[UI]` Consistent number/unit/colour formatting across Timeline drawers (#340)
 
 Swept a batch of formatting inconsistencies in the event detail drawers. The Pool Block drawer's height now carries a thousand separator (`957.746`, not `957746`). Units are uniformly muted-grey with the Satoshi glyph: the CREATE drawer's speed (`PH/s`) and budget (sat) rows, the block-reward/subsidy/fee/earnings rows, and the Edit-speed dialog all match the rate rows now, instead of baking a full-intensity unit into the number. The Edit-price `delta` is sign-coloured - green when it drops (you pay less), red when it rises (you pay more) - like the rest of the app. The Mode-change drawer shows localized run-mode labels (`Dry Run → Live`) instead of the raw enum keys (`DRY_RUN → LIVE`). Percentages (share log) follow the configured number format too.

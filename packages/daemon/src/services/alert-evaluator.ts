@@ -1132,6 +1132,10 @@ export class AlertEvaluator {
           title: args.title,
           body: args.bodyForFiring(nowMs - armedSince),
           event_class: args.event_class,
+          // #341: stamp the condition-onset so the drawer's span covers
+          // the true outage (Started/Duration match the recovery body),
+          // not just the fire -> recovery window.
+          condition_started_at: armedSince,
         });
         return { bad_since_ms: armedSince, active_alert_id: id };
       }
