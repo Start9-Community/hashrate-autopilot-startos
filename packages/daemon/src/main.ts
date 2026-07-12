@@ -15,6 +15,8 @@ import { homedir } from 'node:os';
 import { resolve, dirname } from 'node:path';
 
 import { createBitcoindClient } from '@hashrate-autopilot/bitcoind-client';
+
+import { ChainTipPoller } from './services/chain-tip-poller.js';
 import { BlockVersionService } from './services/block-version.js';
 import { BUILD } from './http/routes/build.js';
 import { createBraiinsClient } from '@hashrate-autopilot/braiins-client';
@@ -1021,6 +1023,14 @@ async function bootOperational(
   );
   hashpriceRefresher.start();
 
+  // #335: poll the Bitcoin chain tip for the "block height" tile (height
+  // + Ocean-found + BIP-110 signal). Only when bitcoind RPC is configured;
+  // without a node the tile hides, so there's nothing to poll.
+  const chainTipPoller = bitcoindClient
+    ? new ChainTipPoller(bitcoindClient, { log: (m) => log(m) })
+    : null;
+  chainTipPoller?.start();
+
   // Same shape as the hashprice refresher above, for the BTC/USD
   // oracle. Without it, the BtcPriceService cache was driven entirely
   // by dashboard activity (the `/api/btc-price` route was the only
@@ -1136,6 +1146,7 @@ async function bootOperational(
     accountSpend,
     btcPriceService,
     hashpriceCache,
+    chainTipPoller,
     blockVersionService,
     bitcoindClient,
     publicIpService,
@@ -1273,6 +1284,7 @@ async function bootOperational(
     void oceanPayoutsService.stop();
     retentionService.stop();
     hashpriceRefresher.stop();
+    chainTipPoller?.stop();
     btcPriceRefresher.stop();
     publicIpService.stop();
     ddnsUpdater.stop();

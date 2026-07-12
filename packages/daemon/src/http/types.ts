@@ -232,6 +232,15 @@ export interface StatusResponse {
       readonly minutes: number;
     } | null;
   } | null;
+  /**
+   * #335: current Bitcoin chain tip, for the "block height" tile. Null
+   * when no bitcoind RPC is configured (the tile hides in that case).
+   */
+  readonly chain_tip: {
+    readonly height: number;
+    readonly found_by_ocean: boolean;
+    readonly signals_bip110: boolean;
+  } | null;
 }
 
 export interface ProposalView {

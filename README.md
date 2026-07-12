@@ -190,9 +190,11 @@ Full design: [`docs/spec.md`](docs/spec.md) · [`docs/architecture.md`](docs/arc
   gaps render as a hatched band, and a boot-time backfill walks the gap inserting synthetic ticks every
   5 min plus one at each detected difficulty retarget so the pool-luck line step-changes through the gap
   and retarget markers land at (close to) canonical time even after long outages, **configurable stats bar** -
-  the operator picks which tiles appear (#266); a catalogue of ~22 tiles covers uptime decomposition (bid coverage
+  the operator picks which tiles appear (#266); a catalogue of ~23 tiles covers uptime decomposition (bid coverage
   vs delivery while bidding), avg-hashrate cards (Braiins / Datum / Ocean), avg cost vs hashprice + overpay
-  intent/settled, hashprice, pool blocks (30d), three pool-luck tiles (24h/7d/30d, window-aware emerald/amber/red
+  intent/settled, hashprice, pool blocks (30d), the current Bitcoin block height (gold when the tip is an Ocean
+  block, tagged when it signals BIP 110; hidden without a node - #335), three pool-luck tiles (24h/7d/30d,
+  window-aware emerald/amber/red
   bands), share log %, share rejection, wallet runway, hashrate target, and Bitaxe fleet tiles (hashrate always
   in TH/s, power in W, J/TH efficiency, best-difficulty record). Picker dropdown on each slot, drag-to-reorder
   inside the bar via hover-revealed grip handles, up to 24 tiles, persists daemon-side so the choice follows

@@ -281,7 +281,7 @@ interface SoftforkEntry {
   bip9?: SoftforkBip9;
 }
 
-function isBip110Signal(version: number): boolean {
+export function isBip110Signal(version: number): boolean {
   return (version & 0xe000_0000) === 0x2000_0000 && (version & 0x10) !== 0;
 }
 

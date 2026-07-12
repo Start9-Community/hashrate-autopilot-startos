@@ -951,6 +951,7 @@ msgid "Block hash"
 msgstr "Block hash"
 
 #: src/components/HashrateChart.tsx
+#: src/components/TilesBar.tsx
 msgid "block height"
 msgstr "block height"
 
@@ -1501,6 +1502,14 @@ msgstr "current bid"
 #: src/pages/Status.tsx
 msgid "current bid · primary of {0}"
 msgstr "current bid · primary of {0}"
+
+#: src/components/TilesBar.tsx
+msgid "Current Bitcoin block height."
+msgstr "Current Bitcoin block height."
+
+#: src/components/TilesBar.tsx
+msgid "Current Bitcoin block height. This block was found by Ocean."
+msgstr "Current Bitcoin block height. This block was found by Ocean."
 
 #: src/components/StaleUrlBanner.tsx
 msgid "Current config:"

@@ -108,6 +108,7 @@ export async function registerStatusRoute(
         // bid-vs-hashprice tile shows a dash until the controller has
         // a market + hashprice to compare.
         cheap_status: null,
+        chain_tip: chainTipView(deps.chainTipPoller?.getSnapshot() ?? null),
       };
     }
 
@@ -279,8 +280,22 @@ export async function registerStatusRoute(
         fillable?.price_sat ?? null,
       ),
       cheap_status,
+      chain_tip: chainTipView(deps.chainTipPoller?.getSnapshot() ?? null),
     };
   });
+}
+
+/** #335: map the poller's camelCase snapshot to the status field shape. */
+function chainTipView(
+  snap: import('../../services/chain-tip-poller.js').ChainTipSnapshot | null,
+): StatusResponse['chain_tip'] {
+  return snap
+    ? {
+        height: snap.height,
+        found_by_ocean: snap.foundByOcean,
+        signals_bip110: snap.signalsBip110,
+      }
+    : null;
 }
 
 /**

@@ -2,6 +2,10 @@
 
 ## 2026-07-11
 
+### `[Feature]` New "block height" stats tile, gold when the tip is an Ocean block (#335)
+
+There's a new pickable stat tile showing the current Bitcoin block height. When the chain tip was found by Ocean it turns gold and says "Ocean" - a rare, satisfying moment since Ocean finds only a small share of blocks. When the tip signals BIP 110 the tile tags it, and both marks can show together. The tile needs a Bitcoin node (it reads the tip's coinbase and header from bitcoind), so it hides itself entirely on installs without one. Add it from the stats-bar tile picker. The daemon polls the tip each minute and only re-reads the full block when the height changes, so it's cheap.
+
 ### `[Fix]` Timeline colors now follow your Chart colors settings (#334)
 
 The Timeline used to draw its row glyphs with the built-in default colors, ignoring any customizations you made in Config → Display & Logging → Chart colors. So a recolored marker showed correctly on the charts but not in the Timeline - which is exactly why a real Braiins deposit didn't jump out. Now every Timeline color resolves through your overrides: the deposit / payout / pool-block / IP-change / difficulty-retarget rows, the bid-event action glyphs (create / edit / cancel / mode change / paused / resumed), and the alert-condition rows and their pop-ups all match the chart. Colors with no configurable key (config-change, daemon-boot, generic alerts) are unchanged. This also corrects a pre-existing mismatch where the "bid paused" glyph was amber in the Timeline but rose on the chart.

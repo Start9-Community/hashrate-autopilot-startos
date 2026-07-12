@@ -951,6 +951,7 @@ msgid "Block hash"
 msgstr "Blokhash"
 
 #: src/components/HashrateChart.tsx
+#: src/components/TilesBar.tsx
 msgid "block height"
 msgstr "blokhoogte"
 
@@ -1501,6 +1502,14 @@ msgstr "huidig bod"
 #: src/pages/Status.tsx
 msgid "current bid · primary of {0}"
 msgstr "huidig bod · primair van {0}"
+
+#: src/components/TilesBar.tsx
+msgid "Current Bitcoin block height."
+msgstr "Huidige Bitcoin-blokhoogte."
+
+#: src/components/TilesBar.tsx
+msgid "Current Bitcoin block height. This block was found by Ocean."
+msgstr "Huidige Bitcoin-blokhoogte. Dit blok is gevonden door Ocean."
 
 #: src/components/StaleUrlBanner.tsx
 msgid "Current config:"

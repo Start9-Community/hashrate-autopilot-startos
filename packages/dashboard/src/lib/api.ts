@@ -400,6 +400,13 @@ export interface StatusResponse {
       minutes: number;
     } | null;
   } | null;
+  /** #335: current Bitcoin chain tip for the "block height" tile. Null
+   *  when no bitcoind RPC is configured (the tile hides). */
+  chain_tip: {
+    height: number;
+    found_by_ocean: boolean;
+    signals_bip110: boolean;
+  } | null;
 }
 
 export interface DecisionSummary {

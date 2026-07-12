@@ -266,6 +266,27 @@ const TILE_RENDERERS: Record<DashboardTileId, (ctx: TileCtx) => TileResult> = {
               : 'text-red-300',
     };
   },
+  chain_tip_height: ({ status, intlLocale }) => {
+    // #335: current chain-tip height, marked when the tip is an Ocean
+    // block and/or signals BIP-110. When there's no bitcoind node the
+    // status field is null and the tile is filtered out entirely (see
+    // TilesBarImpl), so this dash is only a defensive fallback.
+    const tip = status?.chain_tip;
+    if (!tip) return DASH;
+    const marks: string[] = [];
+    if (tip.found_by_ocean) marks.push('Ocean');
+    if (tip.signals_bip110) marks.push('BIP-110');
+    return {
+      value: formatNumber(tip.height, {}, intlLocale),
+      // Ocean is rare (~pool share) - tint the number gold when the tip
+      // is one of ours; BIP-110 is common, so it rides in the caption.
+      color: tip.found_by_ocean ? 'text-amber-300' : undefined,
+      caption: marks.length > 0 ? marks.join(' · ') : t`block height`,
+      tooltip: tip.found_by_ocean
+        ? t`Current Bitcoin block height. This block was found by Ocean.`
+        : t`Current Bitcoin block height.`,
+    };
+  },
   pool_luck_24h: ({ ocean, intlLocale }) => {
     const v = ocean?.pool_luck_24h ?? null;
     // #266 follow-up: window-aware colour bands. Short windows are
@@ -485,6 +506,7 @@ function labelFor(id: DashboardTileId): string {
     case 'bid_vs_hashprice': return t`bid vs hashprice`;
     case 'hashprice_now': return t`hashprice now`;
     case 'pool_blocks_30d': return t`pool blocks 30d`;
+    case 'chain_tip_height': return t`block height`;
     case 'pool_luck_24h': return t`pool luck 24h`;
     case 'pool_luck_7d': return t`pool luck 7d`;
     case 'pool_luck_30d': return t`pool luck 30d`;
@@ -585,7 +607,12 @@ function TilesBarImpl({
   // look). The operator removes the last tile by clicking ×; if they
   // remove all of them the bar reverts to defaults on next render so
   // the page is never tile-less and unrecoverable.
-  const effective = tileIds.length === 0 ? DEFAULT_DASHBOARD_TILES : tileIds;
+  const effective = (tileIds.length === 0 ? DEFAULT_DASHBOARD_TILES : tileIds).filter(
+    // #335: the block-height tile needs a Bitcoin node. Hide it entirely
+    // (rather than show a dash) once the daemon confirms there's no chain
+    // tip; keep it while status is still loading so it doesn't pop in.
+    (id) => id !== 'chain_tip_height' || statusData === undefined || statusData.chain_tip != null,
+  );
 
   const ctx: TileCtx = {
     stats: statsData,

@@ -101,6 +101,8 @@ export interface HttpServerDeps {
   readonly accountSpend: AccountSpendService | null;
   readonly btcPriceService: BtcPriceService;
   readonly hashpriceCache: HashpriceCache;
+  /** #335: chain-tip poller for the "block height" tile. Null when no bitcoind RPC is configured (the tile hides). */
+  readonly chainTipPoller: import('../services/chain-tip-poller.js').ChainTipPoller | null;
   /** #94: block-header version lookup for the BIP-110 crown marker. Optional - chart degrades to standard markers when absent. */
   readonly blockVersionService: BlockVersionService | null;
   /** #95: bitcoind RPC client for the BIP 110 scanner endpoint. Null when bitcoind RPC creds are not configured (scanner returns rpc_available: false). */
