@@ -1504,8 +1504,12 @@ msgid "current bid · primary of {0}"
 msgstr "current bid · primary of {0}"
 
 #: src/components/TilesBar.tsx
-msgid "Current Bitcoin block height."
-msgstr "Current Bitcoin block height."
+#~ msgid "Current Bitcoin block height."
+#~ msgstr "Current Bitcoin block height."
+
+#: src/components/TilesBar.tsx
+msgid "Current Bitcoin block height. The caption names the pool (or miner) that found it."
+msgstr "Current Bitcoin block height. The caption names the pool (or miner) that found it."
 
 #: src/components/TilesBar.tsx
 msgid "Current Bitcoin block height. This block was found by Ocean."

@@ -406,6 +406,8 @@ export interface StatusResponse {
     height: number;
     found_by_ocean: boolean;
     signals_bip110: boolean;
+    pool_tag: string | null;
+    miner_tag: string | null;
   } | null;
 }
 

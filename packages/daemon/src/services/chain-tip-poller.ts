@@ -18,6 +18,10 @@ export interface ChainTipSnapshot {
   readonly height: number;
   readonly foundByOcean: boolean;
   readonly signalsBip110: boolean;
+  /** Pool tag from the coinbase ("Ocean", "Foundry USA Pool", ...), or null. */
+  readonly poolTag: string | null;
+  /** Inner miner tag (mainly Ocean's per-miner identity), or null. */
+  readonly minerTag: string | null;
   readonly fetchedAtMs: number;
 }
 
@@ -82,6 +86,8 @@ export class ChainTipPoller {
       const signalsBip110 = isBip110Signal(header.version);
 
       let foundByOcean = false;
+      let poolTag: string | null = null;
+      let minerTag: string | null = null;
       try {
         const [block] = await this.client.batch<BlockVerbosity1>([
           { method: 'getblock', params: [hash, 1] },
@@ -92,13 +98,18 @@ export class ChainTipPoller {
             { method: 'getrawtransaction', params: [cbTxid, true, hash] },
           ]);
           const scriptSig = tx?.vin[0]?.coinbase;
-          if (scriptSig) foundByOcean = extractCoinbaseTags(scriptSig).pool === 'Ocean';
+          if (scriptSig) {
+            const tags = extractCoinbaseTags(scriptSig);
+            poolTag = tags.pool;
+            minerTag = tags.miner;
+            foundByOcean = tags.pool === 'Ocean';
+          }
         }
       } catch {
         // Coinbase enrichment is best-effort; height + BIP-110 still cache.
       }
 
-      this.snapshot = { height, foundByOcean, signalsBip110, fetchedAtMs: this.now() };
+      this.snapshot = { height, foundByOcean, signalsBip110, poolTag, minerTag, fetchedAtMs: this.now() };
       this.lastHeight = height;
     } catch (err) {
       this.log(`[chain-tip] poll failed: ${(err as Error).message}`);

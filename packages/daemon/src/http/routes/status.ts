@@ -294,6 +294,8 @@ function chainTipView(
         height: snap.height,
         found_by_ocean: snap.foundByOcean,
         signals_bip110: snap.signalsBip110,
+        pool_tag: snap.poolTag,
+        miner_tag: snap.minerTag,
       }
     : null;
 }

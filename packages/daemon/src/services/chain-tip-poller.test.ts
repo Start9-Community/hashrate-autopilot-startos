@@ -58,6 +58,8 @@ describe('ChainTipPoller (#335)', () => {
       height: 957_329,
       foundByOcean: true,
       signalsBip110: true,
+      poolTag: 'Ocean',
+      minerTag: null,
       fetchedAtMs: 1000,
     });
   });
@@ -70,6 +72,7 @@ describe('ChainTipPoller (#335)', () => {
     expect(snap.foundByOcean).toBe(false);
     expect(snap.signalsBip110).toBe(false);
     expect(snap.height).toBe(957_330);
+    expect(snap.poolTag).toBe('Foundry USA Pool');
   });
 
   it('reuses the cached verdict while the height is unchanged (one block fetch per new tip)', async () => {

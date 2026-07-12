@@ -240,6 +240,10 @@ export interface StatusResponse {
     readonly height: number;
     readonly found_by_ocean: boolean;
     readonly signals_bip110: boolean;
+    /** Coinbase pool tag ("Ocean", "Foundry USA Pool", ...) or null. */
+    readonly pool_tag: string | null;
+    /** Inner miner tag (mainly Ocean's per-miner identity) or null. */
+    readonly miner_tag: string | null;
   } | null;
 }
 

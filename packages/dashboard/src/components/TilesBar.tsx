@@ -99,6 +99,8 @@ interface TileResult {
   readonly value: string;
   readonly tooltip?: string;
   readonly color?: string;
+  /** #335: small leading glyph before the value (e.g. the Ocean crown). */
+  readonly icon?: React.ReactNode;
   /** #293: explicit grey caption under the value. When set, the value
    *  is rendered whole (no unit-splitting) and this string is the
    *  caption - lets a tile show a dynamic status line (e.g. cheap
@@ -118,6 +120,26 @@ interface TileCtx {
 
 const EM_DASH = '—';
 const DASH: TileResult = { value: EM_DASH };
+
+/**
+ * #335: own-Ocean-block crown, the same 10x10 marker the charts draw for
+ * our pool blocks. Inherits the value's text color (gold on the
+ * block-height tile) via currentColor.
+ */
+function OceanCrown() {
+  return (
+    <svg
+      width="0.8em"
+      height="0.8em"
+      viewBox="0 0 10 10"
+      className="inline-block mr-1 align-baseline"
+      aria-label="Ocean block"
+    >
+      <path d="M0 8 L1.5 3 L4 5.5 L5 1 L6 5.5 L8.5 3 L10 8 Z" fill="currentColor" />
+      <line x1="0" y1="9.3" x2="10" y2="9.3" stroke="currentColor" strokeWidth="1.4" />
+    </svg>
+  );
+}
 
 function fmtPct(v: number | null | undefined, digits = 1, intlLocale = 'en-US'): string {
   if (v === null || v === undefined) return EM_DASH;
@@ -267,24 +289,24 @@ const TILE_RENDERERS: Record<DashboardTileId, (ctx: TileCtx) => TileResult> = {
     };
   },
   chain_tip_height: ({ status, intlLocale }) => {
-    // #335: current chain-tip height, marked when the tip is an Ocean
-    // block and/or signals BIP-110. When there's no bitcoind node the
-    // status field is null and the tile is filtered out entirely (see
-    // TilesBarImpl), so this dash is only a defensive fallback.
+    // #335: current chain-tip height. The caption names who found the
+    // block (coinbase pool tag, or miner tag when there's no pool); an
+    // Ocean tip gets a gold crown, and a BIP-110-signaling tip is tagged.
+    // When there's no bitcoind node the status field is null and the tile
+    // is filtered out entirely (see TilesBarImpl); this dash is defensive.
     const tip = status?.chain_tip;
     if (!tip) return DASH;
-    const marks: string[] = [];
-    if (tip.found_by_ocean) marks.push('Ocean');
-    if (tip.signals_bip110) marks.push('BIP-110');
+    const who = tip.pool_tag ?? tip.miner_tag ?? '';
+    const caption = [who, tip.signals_bip110 ? 'BIP-110' : ''].filter(Boolean).join(' · ');
     return {
       value: formatNumber(tip.height, {}, intlLocale),
-      // Ocean is rare (~pool share) - tint the number gold when the tip
-      // is one of ours; BIP-110 is common, so it rides in the caption.
+      // Ocean is rare (~pool share) - tint the number gold + crown it.
       color: tip.found_by_ocean ? 'text-amber-300' : undefined,
-      caption: marks.length > 0 ? marks.join(' · ') : t`block height`,
+      icon: tip.found_by_ocean ? <OceanCrown /> : undefined,
+      caption: caption || EM_DASH,
       tooltip: tip.found_by_ocean
         ? t`Current Bitcoin block height. This block was found by Ocean.`
-        : t`Current Bitcoin block height.`,
+        : t`Current Bitcoin block height. The caption names the pool (or miner) that found it.`,
     };
   },
   pool_luck_24h: ({ ocean, intlLocale }) => {
@@ -817,6 +839,7 @@ function TileSlot({ id, inUse, result, onReplace, onRemove }: TileSlotProps) {
         {labelFor(id)}
       </div>
       <div className={`text-2xl font-mono tabular-nums text-center ${result.color ?? 'text-slate-100'}`}>
+        {result.icon}
         {split ? split.num : result.value}
       </div>
       <div className="text-xs text-slate-500 mt-0.5 text-center min-h-[1.25rem]">

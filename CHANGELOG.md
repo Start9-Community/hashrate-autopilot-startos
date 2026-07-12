@@ -2,9 +2,9 @@
 
 ## 2026-07-11
 
-### `[Feature]` New "block height" stats tile, gold when the tip is an Ocean block (#335)
+### `[Feature]` New "block height" stats tile, crowned when the tip is an Ocean block (#335)
 
-There's a new pickable stat tile showing the current Bitcoin block height. When the chain tip was found by Ocean it turns gold and says "Ocean" - a rare, satisfying moment since Ocean finds only a small share of blocks. When the tip signals BIP 110 the tile tags it, and both marks can show together. The tile needs a Bitcoin node (it reads the tip's coinbase and header from bitcoind), so it hides itself entirely on installs without one. Add it from the stats-bar tile picker. The daemon polls the tip each minute and only re-reads the full block when the height changes, so it's cheap.
+There's a new pickable stat tile showing the current Bitcoin block height. Its caption names the pool that found the current tip (or the miner when there's no pool tag) - e.g. "Foundry USA Pool". When the tip was found by Ocean the number turns gold with a crown and the caption reads "Ocean" - a rare, satisfying moment since Ocean finds only a small share of blocks. A BIP 110-signaling tip is tagged in the caption too. The tile needs a Bitcoin node (it reads the tip's coinbase and header from bitcoind), so it hides itself entirely on installs without one. Add it from the stats-bar tile picker. The daemon polls the tip each minute and only re-reads the full block when the height changes, so it's cheap.
 
 ### `[Fix]` Timeline colors now follow your Chart colors settings (#334)
 
