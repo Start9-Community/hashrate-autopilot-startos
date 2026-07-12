@@ -8,9 +8,9 @@ Every event in the Timeline now has an optional note. Open any event's detail dr
 
 ## 2026-07-11
 
-### `[Feature]` New "block height" stats tile, crowned when the tip is an Ocean block (#335)
+### `[Feature]` New "block height" stats tile, crowned when you found the block (#335)
 
-There's a new pickable stat tile showing the current Bitcoin block height. Clicking it opens that block in your configured block explorer in a new tab. Its caption names the pool that found the current tip (tidied toward the clean name, so "Powered by Luxor" reads "Luxor") plus the miner when the coinbase carries one. When the tip was found by Ocean the number turns gold with a crown and the caption reads "Ocean" - a rare, satisfying moment since Ocean finds only a small share of blocks. A BIP 110-signaling tip is tagged in the caption too. The tile needs a Bitcoin node (it reads the tip's coinbase and header from bitcoind), so it hides itself entirely on installs without one. Add it from the stats-bar tile picker. The daemon polls the tip each minute and only re-reads the full block when the height changes, so it's cheap.
+There's a new pickable stat tile showing the current Bitcoin block height. Clicking it opens that block in your configured block explorer in a new tab. Its caption names the pool that found the current tip (tidied toward the clean name, so "Powered by Luxor" reads "Luxor") plus the miner when the coinbase carries one. A leading icon mirrors the chart's pool-block markers and honors your Chart-colors settings: a gold crown (with a gold number) only when *you* found the block, a BIP 110 cube when the tip signals, a blue cube for any other Ocean block, and a muted grey cube otherwise. The tile needs a Bitcoin node (it reads the tip's coinbase and header from bitcoind), so it hides itself entirely on installs without one. Add it from the stats-bar tile picker. The daemon polls the tip each minute and only re-reads the full block when the height changes, so it's cheap.
 
 ### `[Fix]` Timeline colors now follow your Chart colors settings (#334)
 

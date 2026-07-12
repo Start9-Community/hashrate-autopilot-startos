@@ -67,6 +67,7 @@ import {
 import { useDenomination } from '../lib/denomination';
 import { useLocale } from '../lib/locale';
 import { applyExplorerTemplate } from '../lib/blockExplorer';
+import { useChartColor } from '../lib/chartColorOverrides';
 import { formatNumber } from '../lib/format';
 import { SatSymbol } from './SatSymbol';
 import type { StatsResponse, StatusResponse, OceanResponse } from '../lib/api';
@@ -130,21 +131,50 @@ const EM_DASH = '—';
 const DASH: TileResult = { value: EM_DASH };
 
 /**
- * #335: own-Ocean-block crown, the same 10x10 marker the charts draw for
- * our pool blocks. Inherits the value's text color (gold on the
- * block-height tile) via currentColor.
+ * #335: block-height tile marker, mirroring the chart's pool-block icons
+ * and honoring the Chart-colors overrides:
+ *   - 'crown'  : YOUR block (found_by_us)          - gold crown
+ *   - 'bip110' : signals BIP-110                    - BIP-110-cube color
+ *   - 'ocean'  : an Ocean block (not yours)         - pool-block color
+ *   - 'gray'   : any other block                    - muted grey
  */
-function OceanCrown() {
+function BlockTileIcon({ variant }: { variant: 'crown' | 'bip110' | 'ocean' | 'gray' }) {
+  const ours = useChartColor('hashrate.pool_block_ours');
+  const bip110 = useChartColor('hashrate.pool_block_bip110');
+  const others = useChartColor('hashrate.pool_block_others');
+  if (variant === 'crown') {
+    return (
+      <svg
+        width="0.85em"
+        height="0.85em"
+        viewBox="0 0 10 10"
+        className="inline-block mr-1.5 align-baseline"
+        aria-label="your block"
+      >
+        <g fill={ours} fillOpacity="0.45" stroke={ours} strokeWidth="1.1" strokeLinejoin="round">
+          <path d="M0 8 L1.5 3 L4 5.5 L5 1 L6 5.5 L8.5 3 L10 8 Z" />
+          <line x1="0" y1="9.5" x2="10" y2="9.5" stroke={ours} strokeWidth="1.4" />
+        </g>
+      </svg>
+    );
+  }
+  const color = variant === 'bip110' ? bip110 : variant === 'ocean' ? others : '#64748b';
   return (
     <svg
       width="0.8em"
       height="0.8em"
-      viewBox="0 0 10 10"
-      className="inline-block mr-1 align-baseline"
-      aria-label="Ocean block"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={color}
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="inline-block mr-1.5 align-baseline"
+      aria-label={variant === 'bip110' ? 'BIP-110 block' : variant === 'ocean' ? 'Ocean block' : 'block'}
     >
-      <path d="M0 8 L1.5 3 L4 5.5 L5 1 L6 5.5 L8.5 3 L10 8 Z" fill="currentColor" />
-      <line x1="0" y1="9.3" x2="10" y2="9.3" stroke="currentColor" strokeWidth="1.4" />
+      <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" />
+      <path d="m3.3 7 8.7 5 8.7-5" />
+      <path d="M12 22V12" />
     </svg>
   );
 }
@@ -312,30 +342,38 @@ const TILE_RENDERERS: Record<DashboardTileId, (ctx: TileCtx) => TileResult> = {
               : 'text-red-300',
     };
   },
-  chain_tip_height: ({ status, blockExplorerTemplate, intlLocale }) => {
+  chain_tip_height: ({ status, ocean, blockExplorerTemplate, intlLocale }) => {
     // #335: current chain-tip height. Clicking it opens the block in the
-    // operator's explorer. The caption names who found the block - the
-    // (tidied) coinbase pool tag plus the miner tag when present (Ocean
-    // carries a per-miner identity); an Ocean tip gets a gold crown and a
-    // BIP-110-signaling tip is tagged. Hidden entirely without a node.
+    // operator's explorer. The caption names who found it (tidied pool tag
+    // plus the miner tag when present). The leading icon mirrors the
+    // chart's pool-block markers: a gold crown only when YOU found the tip
+    // (found_by_us, matched against Ocean's own-block list), a BIP-110 cube
+    // when it signals, a blue cube for any other Ocean block, else a muted
+    // grey cube. Hidden entirely without a node.
     const tip = status?.chain_tip;
     if (!tip) return DASH;
-    const who = [cleanPoolTag(tip.pool_tag), tip.miner_tag]
-      .filter(Boolean)
-      .join(' · ');
-    const caption = [who, tip.signals_bip110 ? 'BIP-110' : ''].filter(Boolean).join(' · ');
+    const foundByUs =
+      ocean?.our_recent_blocks?.some((b) => b.height === tip.height && b.found_by_us) ?? false;
+    const variant: 'crown' | 'bip110' | 'ocean' | 'gray' = foundByUs
+      ? 'crown'
+      : tip.signals_bip110
+        ? 'bip110'
+        : tip.found_by_ocean
+          ? 'ocean'
+          : 'gray';
+    const caption = [cleanPoolTag(tip.pool_tag), tip.miner_tag].filter(Boolean).join(' · ');
     return {
       value: formatNumber(tip.height, {}, intlLocale),
-      // Ocean is rare (~pool share) - tint the number gold + crown it.
-      color: tip.found_by_ocean ? 'text-amber-300' : undefined,
-      icon: tip.found_by_ocean ? <OceanCrown /> : undefined,
+      // Gold number only for a block you actually found.
+      color: foundByUs ? 'text-amber-300' : undefined,
+      icon: <BlockTileIcon variant={variant} />,
       caption: caption || EM_DASH,
       href: blockExplorerTemplate
         ? applyExplorerTemplate(blockExplorerTemplate, { block_hash: tip.hash, height: tip.height })
         : undefined,
-      tooltip: tip.found_by_ocean
-        ? t`Current Bitcoin block height (found by Ocean). Click to open it in your block explorer.`
-        : t`Current Bitcoin block height. The caption names the pool (or miner) that found it. Click to open it in your block explorer.`,
+      tooltip: foundByUs
+        ? t`Current Bitcoin block height - you found this one! Click to open it in your block explorer.`
+        : t`Current Bitcoin block height. The caption names the pool (or miner) that found it, and the icon marks Ocean / BIP-110 blocks. Click to open it in your block explorer.`,
     };
   },
   pool_luck_24h: ({ ocean, intlLocale }) => {
