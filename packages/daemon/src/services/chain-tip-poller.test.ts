@@ -73,7 +73,10 @@ describe('ChainTipPoller (#335)', () => {
     expect(snap.foundByOcean).toBe(false);
     expect(snap.signalsBip110).toBe(false);
     expect(snap.height).toBe(957_330);
-    expect(snap.poolTag).toBe('Foundry USA Pool');
+    // Resolved to the canonical mempool name (the "Foundry USA Pool"
+    // coinbase tag maps to pool "Foundry USA"), not the raw run.
+    expect(snap.poolTag).toBe('Foundry USA');
+    expect(snap.minerTag).toBeNull();
   });
 
   it('reuses the cached verdict while the height is unchanged (one block fetch per new tip)', async () => {

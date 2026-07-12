@@ -2,6 +2,10 @@
 
 ## 2026-07-12
 
+### `[UI]` Block-height tile names the pool from a curated database (#335)
+
+The block-height tile used a heuristic on the raw coinbase to name the pool, which mangled real tags - Foundry's coinbase reads "(/Foundry USA Pool #dropgold/", so the tile showed a stray "(", the "#dropgold" slogan as a fake "worker", and wrapped over three lines. It now identifies the pool the same way every block explorer does: the daemon bundles mempool's curated pool database and matches the coinbase output address (or a known coinbase tag) to the canonical name - so the tile reads a clean "Foundry USA" on one line. The worker line (with the corrected hard-hat icon) now appears only for Ocean and your own blocks, where the coinbase carries a genuine per-miner identity; public pools show just the pool name. The database ships in the image and can be refreshed from upstream without a code change.
+
 ### `[UI]` Wider Timeline detail drawers on large screens (#338)
 
 The Timeline detail drawers (bid event, alert-condition span, and the log-extra drawer) were fixed at ~24rem, so Bitcoin addresses and transaction IDs wrapped and dropped their trailing characters even with empty space to spare. They now widen with the viewport (up to 40rem on extra-large screens) while staying full-width on mobile, so long identifiers fit on one line.

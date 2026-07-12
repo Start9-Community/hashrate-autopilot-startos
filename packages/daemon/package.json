@@ -21,7 +21,7 @@
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json && cp -R src/state/migrations dist/state/",
+    "build": "tsc -p tsconfig.json && cp -R src/state/migrations dist/state/ && mkdir -p dist/data && cp src/data/pools-v2.json dist/data/",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

@@ -192,8 +192,10 @@ Full design: [`docs/spec.md`](docs/spec.md) · [`docs/architecture.md`](docs/arc
   and retarget markers land at (close to) canonical time even after long outages, **configurable stats bar** -
   the operator picks which tiles appear (#266); a catalogue of ~23 tiles covers uptime decomposition (bid coverage
   vs delivery while bidding), avg-hashrate cards (Braiins / Datum / Ocean), avg cost vs hashprice + overpay
-  intent/settled, hashprice, pool blocks (30d), the current Bitcoin block height (gold when the tip is an Ocean
-  block, tagged when it signals BIP 110; hidden without a node - #335), three pool-luck tiles (24h/7d/30d,
+  intent/settled, hashprice, pool blocks (30d), the current Bitcoin block height (names the pool that found the
+  tip - canonical names from the bundled mempool pool database, e.g. "Foundry USA"; gold crown when you found the
+  block, a BIP 110 / Ocean / grey cube otherwise; a worker line only for Ocean and your own blocks; click to open
+  it in your block explorer; hidden without a node - #335), three pool-luck tiles (24h/7d/30d,
   window-aware emerald/amber/red
   bands), share log %, share rejection, wallet runway, hashrate target, and Bitaxe fleet tiles (hashrate always
   in TH/s, power in W, J/TH efficiency, best-difficulty record). Picker dropdown on each slot, drag-to-reorder

@@ -13,6 +13,7 @@
 import type { BitcoindClient } from '@hashrate-autopilot/bitcoind-client';
 
 import { extractCoinbaseTags, isBip110Signal } from '../http/routes/bip110-scan.js';
+import { defaultPoolIdentifier, type PoolIdentifier } from './coinbase-pools.js';
 
 export interface ChainTipSnapshot {
   readonly height: number;
@@ -31,6 +32,26 @@ interface BlockVerbosity1 {
 }
 interface RawCoinbaseTx {
   readonly vin: readonly { readonly coinbase?: string }[];
+  readonly vout?: readonly {
+    readonly scriptPubKey?: { readonly address?: string; readonly addresses?: readonly string[] };
+  }[];
+}
+
+/**
+ * Fallback tidy for a coinbase run when mempool's DB has no match:
+ * strip wrapping punctuation ("(/Foo Pool/" -> "Foo Pool") and a
+ * trailing slogan ("#dropgold") or block counter. Best-effort only -
+ * the curated DB is the real quality path.
+ */
+export function cleanRawPoolTag(raw: string | null): string | null {
+  if (!raw) return null;
+  let s = raw.trim();
+  s = s.replace(/^[^A-Za-z0-9]+/, ''); // leading push bytes / slashes / "("
+  s = s.replace(/[^A-Za-z0-9)]+$/, ''); // trailing slashes / punctuation
+  s = s.replace(/\s*#\S+\s*$/, ''); // trailing "#dropgold" slogan
+  s = s.replace(/\/\d+$/, ''); // trailing "/595" block counter
+  s = s.replace(/\s+/g, ' ').trim();
+  return s.length > 0 ? s : null;
 }
 
 export class ChainTipPoller {
@@ -41,14 +62,21 @@ export class ChainTipPoller {
   private readonly intervalMs: number;
   private readonly log: (msg: string) => void;
   private readonly now: () => number;
+  private readonly pools: PoolIdentifier;
 
   constructor(
     private readonly client: BitcoindClient,
-    opts: { intervalMs?: number; log?: (m: string) => void; now?: () => number } = {},
+    opts: {
+      intervalMs?: number;
+      log?: (m: string) => void;
+      now?: () => number;
+      pools?: PoolIdentifier;
+    } = {},
   ) {
     this.intervalMs = opts.intervalMs ?? 60_000;
     this.log = opts.log ?? (() => {});
     this.now = opts.now ?? ((): number => Date.now());
+    this.pools = opts.pools ?? defaultPoolIdentifier;
   }
 
   start(): void {
@@ -101,9 +129,26 @@ export class ChainTipPoller {
           const scriptSig = tx?.vin[0]?.coinbase;
           if (scriptSig) {
             const tags = extractCoinbaseTags(scriptSig);
-            poolTag = tags.pool;
-            minerTag = tags.miner;
-            foundByOcean = tags.pool === 'Ocean';
+            if (tags.pool === 'Ocean') {
+              // Ocean is handled specially: the pool is "Ocean" and the
+              // inner run is the per-miner identity (kept as the worker).
+              poolTag = 'Ocean';
+              minerTag = tags.miner;
+              foundByOcean = true;
+            } else {
+              // Everyone else: resolve the canonical pool name from
+              // mempool's curated DB (output-address or coinbase-tag
+              // match), falling back to the tidied raw run. No worker -
+              // a public pool's coinbase carries a slogan, not a miner.
+              const outputAddresses = (tx?.vout ?? []).flatMap((o) => {
+                const spk = o.scriptPubKey;
+                if (!spk) return [];
+                return spk.address ? [spk.address] : (spk.addresses ?? []);
+              });
+              const ident = this.pools.identify(scriptSig, outputAddresses);
+              poolTag = ident?.name ?? cleanRawPoolTag(tags.pool);
+              minerTag = null;
+            }
           }
         }
       } catch {

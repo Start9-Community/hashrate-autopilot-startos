@@ -180,51 +180,28 @@ function BlockTileIcon({ variant }: { variant: 'crown' | 'bip110' | 'ocean' | 'g
 }
 
 /**
- * #335: tidy a raw coinbase pool tag toward the clean name explorers show
- * ("Powered by Luxor" -> "Luxor"; "/Foundry USA Pool #dropgold/" ->
- * "Foundry USA Pool"). A heuristic - it strips wrapping slashes, a
- * leading "Powered by", and a trailing "#tag" - not a curated pool
- * database, so unusual formats fall through to the trimmed raw tag.
+ * #335: the daemon now resolves the canonical pool name from mempool's
+ * curated database (output-address or coinbase-tag match), so pool_tag
+ * arrives clean ("Foundry USA", "Ocean", ...) - no client-side heuristic
+ * needed beyond whitespace tidy. The old fragile slash/hash splitting is
+ * gone; a legacy daemon's raw tag just displays as-is.
  */
-function cleanPoolTag(raw: string | null): string {
-  if (!raw) return '';
-  let s = raw.trim().replace(/^powered by\s+/i, '');
-  s = s.replace(/^\/+|\/+$/g, ''); // wrapping slashes: /Foundry.../ -> Foundry...
-  s = s.replace(/\/\d+$/, ''); // trailing "/595" block counter (SpiderPool etc.)
-  s = s.replace(/\s*#\S+$/, ''); // trailing "#dropgold" miner note
-  return s.replace(/\s+/g, ' ').trim();
+function poolLabel(poolTag: string | null): string {
+  return (poolTag ?? '').replace(/\s+/g, ' ').trim();
 }
 
 /**
- * #335: split a coinbase tag into pool + worker for the two-line tile
- * caption. Ocean already arrives split (pool "Ocean", inner miner tag);
- * for other pools we split the raw run on the first "/" ("ViaBTC/Mined by
- * wmklasson/" -> pool "ViaBTC", worker "wmklasson") or lift a trailing
- * "#tag". Heuristic - not a curated pool database - so odd formats fall
- * back to the tidied pool with no worker.
+ * The worker line is only meaningful for Ocean (and our own) blocks,
+ * where the coinbase encodes a genuine per-miner identity. Public pools
+ * carry a slogan, not a worker, so their miner tag is dropped entirely.
  */
-function parsePoolWorker(
-  poolTag: string | null,
-  minerTag: string | null,
-): { pool: string; worker: string } {
-  const cleanWorker = (w: string) =>
-    w.replace(/\/+$/g, '').replace(/^mined by\s+/i, '').replace(/^#/, '').trim();
-  if (minerTag) return { pool: cleanPoolTag(poolTag), worker: cleanWorker(minerTag) };
-  if (!poolTag) return { pool: '', worker: '' };
-  let s = poolTag.trim().replace(/^\/+|\/+$/g, '').replace(/^powered by\s+/i, '');
-  s = s.replace(/^[^\s/]{1,4}\|\s*/, ''); // leading binary-ish junk prefix ("Sj| MARA..." -> "MARA...")
-  const slash = s.indexOf('/');
-  let pool = slash >= 0 ? s.slice(0, slash) : s;
-  let worker = slash >= 0 ? s.slice(slash + 1) : '';
-  const hashM = !worker ? /^(.*?)\s*#(\S+)$/.exec(pool) : null;
-  if (hashM) {
-    pool = hashM[1]!;
-    worker = hashM[2]!;
-  }
-  pool = pool.replace(/\/\d+$/, '').replace(/\s+/g, ' ').trim();
-  worker = cleanWorker(worker);
-  if (/^\d+$/.test(worker)) worker = ''; // a bare counter isn't a worker
-  return { pool, worker };
+function workerLabel(minerTag: string | null): string {
+  return (minerTag ?? '')
+    .replace(/\/+$/g, '')
+    .replace(/^mined by\s+/i, '')
+    .replace(/^#/, '')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 /** Lucide `waves` - the pool line's icon. Inherits the caption's grey. */
@@ -264,9 +241,10 @@ function WorkerHatIcon() {
       className="inline-block shrink-0 opacity-80"
       aria-hidden="true"
     >
-      <path d="M2 18a1 1 0 0 0 1 1h18a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1Z" />
+      <path d="M2 18a1 1 0 0 0 1 1h18a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1z" />
       <path d="M10 10V5a2 2 0 0 1 2-2 2 2 0 0 1 2 2v5" />
-      <path d="M4 15a8 8 0 0 1 16 0" />
+      <path d="M4 15v-3a6 6 0 0 1 6-6" />
+      <path d="M14 6a6 6 0 0 1 6 6v3" />
     </svg>
   );
 }
@@ -437,20 +415,24 @@ const TILE_RENDERERS: Record<DashboardTileId, (ctx: TileCtx) => TileResult> = {
         : tip.found_by_ocean
           ? 'ocean'
           : 'gray';
-    const { pool, worker } = parsePoolWorker(tip.pool_tag, tip.miner_tag);
+    const pool = poolLabel(tip.pool_tag);
+    // Worker line only for Ocean / our own blocks - public pools carry a
+    // slogan, not a miner. Most tips are then a single clean line.
+    const worker =
+      tip.found_by_ocean || foundByUs ? workerLabel(tip.miner_tag) : '';
     const caption =
       pool || worker ? (
         <span className="flex flex-col items-center gap-0.5 leading-tight">
           {pool && (
-            <span className="flex items-center gap-1">
+            <span className="flex items-center gap-1 min-w-0">
               <PoolWavesIcon />
-              {pool}
+              <span className="truncate">{pool}</span>
             </span>
           )}
           {worker && (
-            <span className="flex items-center gap-1">
+            <span className="flex items-center gap-1 min-w-0">
               <WorkerHatIcon />
-              {worker}
+              <span className="truncate">{worker}</span>
             </span>
           )}
         </span>
