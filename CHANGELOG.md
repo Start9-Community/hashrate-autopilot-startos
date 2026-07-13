@@ -2,6 +2,10 @@
 
 ## 2026-07-13
 
+### `[UI]` Durations round to the nearest unit instead of truncating (#341)
+
+Duration labels (alert drawer total, chart tooltips, "was open for Xm") rounded down: a 15m56s total showed "15m" even though the recovery text correctly said "was zero for 16m". Durations now round to the nearest displayed unit - 30s and up rounds a minute up - so the numbers match and no longer read a whole minute short.
+
 ### `[UI]` Alert drawer shows threshold + duration + total, not just the fire window (#341)
 
 An alert-condition drawer used to show a single "Duration" that was really the window from the loud alert *firing* to recovery (e.g. "56s") - misleadingly small when the underlying problem lasted far longer (the alert fires only after a sustained threshold). The drawer now breaks it into rows: the threshold waited out before firing, when the alert fired, when it recovered, the alert duration, and a **total condition time** (onset to recovery) - the number you actually care about. When the firing row recorded the exact onset, these are exact; for older rows that predate onset-recording, the threshold and total are estimated from your current alert settings and marked with `≈` plus a footnote, since historical config changes aren't stored. No stored data is changed - this is purely how the drawer reads it.
