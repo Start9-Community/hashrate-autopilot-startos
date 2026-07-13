@@ -2252,10 +2252,19 @@ function DetailRow({
 }) {
   return (
     <div className="flex justify-between gap-3 text-xs">
-      <span className="text-slate-500">{label}</span>
-      <span className="text-slate-200 font-mono text-right break-all tabular-nums">
-        {value}
-        {unit != null && <span className="text-slate-500 text-[10px] ml-1">{unit}</span>}
+      <span className="text-slate-500 shrink-0">{label}</span>
+      {/* #340: numbers right-align to a shared column edge, units sit in a
+          fixed-width column to their right - so the sat glyph, %, and T all
+          line up down the drawer regardless of how wide each number is. The
+          unit cell is always reserved (even when empty) so unit-less rows
+          keep the same number edge. */}
+      <span className="flex-1 min-w-0 flex justify-end items-baseline">
+        <span className="text-slate-200 font-mono text-right break-all tabular-nums">
+          {value}
+        </span>
+        <span className="text-slate-500 text-[10px] w-4 shrink-0 text-left pl-1">
+          {unit}
+        </span>
       </span>
     </div>
   );
@@ -2306,16 +2315,10 @@ function CopyableValue({ value }: { value: string }) {
 function LogExtraDetail({ extra }: { extra: LogExtraItem }) {
   const { i18n } = useLingui();
   void i18n;
-  // Locale-formatted amount with the Satoshi glyph rendered muted+small,
-  // matching the unit idiom everywhere else (bid-event drawer, tiles).
-  const sat = (n: number) => (
-    <>
-      {formatNumber(n, {})}
-      <span className="text-slate-500 text-[10px] ml-1">
-        <SatSymbol />
-      </span>
-    </>
-  );
+  // #340: the amount is just the number; the Satoshi glyph rides the
+  // DetailRow `unit` slot so it lines up in the unit column with %, T, etc.
+  const sat = (n: number) => formatNumber(n, {});
+  const satUnit = <SatSymbol />;
 
   if (extra.kind === 'block' && extra.block) {
     const b = extra.block;
@@ -2324,9 +2327,9 @@ function LogExtraDetail({ extra }: { extra: LogExtraItem }) {
       <>
         <section className="space-y-1">
           <DetailRow label={<Trans>height</Trans>} value={formatNumber(b.height, {})} />
-          <DetailRow label={<Trans>pool reward</Trans>} value={sat(b.total_reward_sat)} />
-          <DetailRow label={<Trans>subsidy</Trans>} value={sat(b.subsidy_sat)} />
-          <DetailRow label={<Trans>fees</Trans>} value={sat(b.fees_sat)} />
+          <DetailRow label={<Trans>pool reward</Trans>} value={sat(b.total_reward_sat)} unit={satUnit} />
+          <DetailRow label={<Trans>subsidy</Trans>} value={sat(b.subsidy_sat)} unit={satUnit} />
+          <DetailRow label={<Trans>fees</Trans>} value={sat(b.fees_sat)} unit={satUnit} />
           {share !== null && share > 0 && (
             <>
               <DetailRow
@@ -2337,6 +2340,7 @@ function LogExtraDetail({ extra }: { extra: LogExtraItem }) {
               <DetailRow
                 label={<Trans>our earnings (est.)</Trans>}
                 value={sat(Math.round((b.total_reward_sat * share) / 100))}
+                unit={satUnit}
               />
             </>
           )}
@@ -2361,7 +2365,7 @@ function LogExtraDetail({ extra }: { extra: LogExtraItem }) {
     return (
       <>
         <section className="space-y-1">
-          <DetailRow label={<Trans>amount</Trans>} value={sat(e.value_sat)} />
+          <DetailRow label={<Trans>amount</Trans>} value={sat(e.value_sat)} unit={satUnit} />
           <DetailRow
             label={<Trans>rail</Trans>}
             value={isLightning ? <Trans>Lightning (off-chain)</Trans> : <Trans>on-chain</Trans>}
@@ -2385,7 +2389,7 @@ function LogExtraDetail({ extra }: { extra: LogExtraItem }) {
     return (
       <>
         <section className="space-y-1">
-          <DetailRow label={<Trans>amount</Trans>} value={sat(d.amount_sat)} />
+          <DetailRow label={<Trans>amount</Trans>} value={sat(d.amount_sat)} unit={satUnit} />
           {d.address && <DetailRow label={<Trans>address</Trans>} value={d.address} />}
         </section>
         <section>

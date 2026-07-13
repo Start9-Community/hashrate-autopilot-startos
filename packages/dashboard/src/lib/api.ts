@@ -292,6 +292,16 @@ export interface AlertConditionSpanView {
   body: string;
   start_ms: number;
   end_ms: number | null;
+  /** #341: when the loud alert fired (opener.created_at). The gap from
+   *  start_ms is the sustained threshold waited out before paging. */
+  fired_at: number;
+  /** #341: true when condition-onset was recorded, so the threshold and
+   *  total are exact; false = pre-0119 row, drawer estimates + footnotes. */
+  onset_known: boolean;
+  /** #341: current-config sustained threshold (minutes) for this class,
+   *  for the estimate when onset_known is false; null when the class has
+   *  no minutes-based threshold (wallet runway / overheating). */
+  threshold_minutes: number | null;
   /** #322: the paired recovery alert's body; null when the span closed
    *  implicitly or is still open. Non-null = a real recovery moment. */
   recovery_body: string | null;

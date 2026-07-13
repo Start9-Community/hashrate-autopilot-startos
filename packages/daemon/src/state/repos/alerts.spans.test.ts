@@ -100,6 +100,24 @@ describe('AlertsRepo.conditionSpansSince (#316)', () => {
     await insertRecovery('zero_hashrate_recovery', 16_500, openId);
     const spans = await repo.conditionSpansSince(0, Number.MAX_SAFE_INTEGER, 2e12);
     expect(spans[0]).toMatchObject({ open_id: openId, start_ms: 1_000, end_ms: 16_500 });
+    // #341: onset was recorded, so the drawer can compute the threshold
+    // (fired_at - start_ms = 15s here) and total exactly, no estimate.
+    expect(spans[0]).toMatchObject({ fired_at: 16_000, onset_known: true });
+  });
+
+  it('#341: fired_at falls back to created_at and onset_known is false pre-0119', async () => {
+    // No condition_started_at on the opener -> the drawer can't know the
+    // real onset, so it must flag the span for a config-based estimate.
+    await insertOpener('zero_hashrate', 20_000);
+    const spans = await repo.conditionSpansSince(0, Number.MAX_SAFE_INTEGER, 21_000);
+    expect(spans[0]).toMatchObject({
+      start_ms: 20_000,
+      fired_at: 20_000,
+      onset_known: false,
+      // The repo leaves threshold_minutes null; the HTTP route fills it
+      // from live config.
+      threshold_minutes: null,
+    });
   });
 
   it('recovery_body is null for implicit closes and open spans (#322)', async () => {

@@ -441,6 +441,14 @@ msgstr "alertconditie"
 msgid "Alert condition detail"
 msgstr "Alarmconditie-detail"
 
+#: src/components/AlertSpanDrawer.tsx
+msgid "Alert duration"
+msgstr "Duur van de melding"
+
+#: src/components/AlertSpanDrawer.tsx
+msgid "Alert fired"
+msgstr "Melding verstuurd"
+
 #: src/pages/Config.tsx
 msgid "Alert thresholds"
 msgstr "Alarmdrempels"
@@ -748,10 +756,6 @@ msgstr "Bod vult op {speed}."
 #: src/components/BidEventDrawer.tsx
 msgid "bid id"
 msgstr "bod-id"
-
-#: src/pages/History.tsx
-#~ msgid "Bid id contains"
-#~ msgstr "Bod-id bevat"
 
 #: src/components/PriceChart.tsx
 #: src/pages/Config.tsx
@@ -1518,28 +1522,8 @@ msgid "Current Bitcoin block height - you found this one! Click to open it in yo
 msgstr "Huidige Bitcoin-blokhoogte - dit blok heb jij gevonden! Klik om het in je blokverkenner te openen."
 
 #: src/components/TilesBar.tsx
-#~ msgid "Current Bitcoin block height (found by Ocean). Click to open it in your block explorer."
-#~ msgstr "Huidige Bitcoin-blokhoogte (gevonden door Ocean). Klik om het in je blokverkenner te openen."
-
-#: src/components/TilesBar.tsx
-#~ msgid "Current Bitcoin block height."
-#~ msgstr "Huidige Bitcoin-blokhoogte."
-
-#: src/components/TilesBar.tsx
 msgid "Current Bitcoin block height. The caption names the pool (or miner) that found it, and the icon marks Ocean / BIP-110 blocks. Click to open it in your block explorer."
 msgstr "Huidige Bitcoin-blokhoogte. Het bijschrift toont de pool (of miner) die het vond, en het icoon markeert Ocean- / BIP-110-blokken. Klik om het in je blokverkenner te openen."
-
-#: src/components/TilesBar.tsx
-#~ msgid "Current Bitcoin block height. The caption names the pool (or miner) that found it."
-#~ msgstr "Huidige Bitcoin-blokhoogte. Het bijschrift toont de pool (of miner) die het blok vond."
-
-#: src/components/TilesBar.tsx
-#~ msgid "Current Bitcoin block height. The caption names the pool (or miner) that found it. Click to open it in your block explorer."
-#~ msgstr "Huidige Bitcoin-blokhoogte. Het bijschrift toont de pool (of miner) die het vond. Klik om het in je blokverkenner te openen."
-
-#: src/components/TilesBar.tsx
-#~ msgid "Current Bitcoin block height. This block was found by Ocean."
-#~ msgstr "Huidige Bitcoin-blokhoogte. Dit blok is gevonden door Ocean."
 
 #: src/components/StaleUrlBanner.tsx
 msgid "Current config:"
@@ -1848,7 +1832,6 @@ msgstr "Dry Run"
 msgid "DRY RUN"
 msgstr "DRY RUN"
 
-#: src/components/AlertSpanDrawer.tsx
 #: src/components/AlertSpanTooltip.tsx
 msgid "Duration"
 msgstr "Duur"
@@ -2503,10 +2486,6 @@ msgid "Informational. Off by default. Fires the moment Ocean debits your unpaid 
 msgstr "Informatief. Standaard uit. Wordt geactiveerd zodra Ocean je onbetaalde saldo afboekt - Ocean heeft je uitbetaling in de wachtrij gezet en handelt die af via een gebundelde betaaltransactie, maar ze is nog niet on-chain bevestigd. Detectie: de ocean_unpaid_sat per tick van de daemon daalt met meer dan 30% EN het restant ligt onder de uitbetalingsdrempel van 1.048.576 sat (filtert tick-ruis / Ocean-boekhoudcorrecties eruit)."
 
 #: src/pages/Config.tsx
-#~ msgid "Informational. Off by default. Fires when the on-chain payout scanner observes a new transaction crediting your payout address - i.e. the payout Ocean queued has now confirmed (any tx, not just a coinbase - Ocean pays out via batched sweeps). Includes block height, payout amount, and a truncated tx id. Source: reward_events ledger (populated by your Electrum server or bitcoind scantxoutset, whichever the operator has wired)."
-#~ msgstr "Informatief. Standaard uit. Wordt geactiveerd wanneer de on-chain uitbetalingsscanner een nieuwe transactie ziet die je uitbetalingsadres crediteert - d.w.z. de door Ocean in de wachtrij gezette uitbetaling is nu bevestigd (elke transactie, niet alleen een coinbase - Ocean betaalt uit via gebundelde sweeps). Bevat blokhoogte, uitbetalingsbedrag en een ingekorte tx-id. Bron: reward_events-grootboek (gevuld door je Electrum-server of bitcoind scantxoutset, afhankelijk van wat de operator heeft ingesteld)."
-
-#: src/pages/Config.tsx
 msgid "Informational. Off by default. The follow-up to \"payout initiated\": fires once Ocean's own payout ledger reports the settlement with its confirmed amount and rail. Works for both on-chain and Lightning payouts (a Lightning payout never touches the blockchain, so the old on-chain scanner could not confirm it). Message states the amount and whether it settled on-chain or over Lightning."
 msgstr "Informatief. Standaard uit. Het vervolg op \"uitbetaling gestart\": vuurt zodra Ocean's eigen uitbetalingsgrootboek de afwikkeling meldt met het bevestigde bedrag en de rail. Werkt voor zowel on-chain- als Lightning-uitbetalingen (een Lightning-uitbetaling raakt de blockchain nooit, dus de oude on-chain-scanner kon die niet bevestigen). Het bericht vermeldt het bedrag en of het on-chain of via Lightning is afgewikkeld."
 
@@ -3142,10 +3121,6 @@ msgid "Ocean"
 msgstr "Ocean"
 
 #: src/components/TilesBar.tsx
-#~ msgid "Ocean blocks found in the past 30 days. Used by the pool-luck calculation as the numerator."
-#~ msgstr "Door Ocean gevonden blokken in de laatste 30 dagen. Wordt gebruikt als teller in de pool-geluk-berekening."
-
-#: src/components/TilesBar.tsx
 msgid "Ocean blocks found in the past 30 days. Used by the pool-luck calculation as the numerator. Colour reflects the 30-day pool luck (actual ÷ expected): green >=1.0, amber 0.9-1.0, red below 0.9."
 msgstr "Ocean-blokken gevonden in de afgelopen 30 dagen. Gebruikt als teller in de pool-luck-berekening. De kleur weerspiegelt de 30-daagse pool luck (werkelijk ÷ verwacht): groen >=1,0, amber 0,9-1,0, rood onder 0,9."
 
@@ -3177,10 +3152,6 @@ msgstr "Ocean mining heeft een blok gevonden (stem)"
 #: src/pages/Config.tsx
 msgid "Ocean payout confirmed"
 msgstr "Ocean-uitbetaling bevestigd"
-
-#: src/pages/Config.tsx
-#~ msgid "Ocean payout confirmed on-chain"
-#~ msgstr "Ocean-uitbetaling bevestigd on-chain"
 
 #: src/pages/Config.tsx
 msgid "Ocean payout initiated"
@@ -4404,7 +4375,6 @@ msgstr "uitgegeven (hele account)"
 msgid "Start a chat with your bot, then send /start. Send any message to <0>@userinfobot</0> and copy the numeric Id back into this field. Test connection validates the values currently in the form, before saving."
 msgstr "Start een chat met je bot en stuur /start. Stuur daarna een willekeurig bericht naar <0>@userinfobot</0> en kopieer de numerieke Id terug in dit veld. Test connection valideert de waarden uit het formulier, vóór het opslaan."
 
-#: src/components/AlertSpanDrawer.tsx
 #: src/components/AlertSpanTooltip.tsx
 msgid "Started"
 msgstr "Gestart"
@@ -4599,6 +4569,14 @@ msgstr "Scheidingstekens voor duizendtallen en decimalen."
 msgid "Three append-only logs back the dashboard: tick_metrics powers every chart, decisions is a per-tick forensic log split by whether the autopilot proposed any action, and alerts is the Telegram notification history. Pruning runs hourly and on daemon boot. 0 on any field = keep forever."
 msgstr "Drie append-only-logs ondersteunen het dashboard: tick_metrics voedt alle grafieken, decisions is een per-tick forensisch log opgesplitst naar of de autopilot een actie voorstelde, en alerts is de Telegram-notificatie-geschiedenis. Pruning draait elk uur en bij start van de daemon. 0 op een veld = altijd bewaren."
 
+#: src/components/AlertSpanDrawer.tsx
+msgid "Threshold and total are estimated from your current alert settings. Historical config changes aren't stored, so this is a best guess (≈), not an exact record."
+msgstr "Drempel en totaal zijn geschat op basis van je huidige meldingsinstellingen. Historische configuratiewijzigingen worden niet bewaard, dus dit is een schatting (≈), geen exacte registratie."
+
+#: src/components/AlertSpanDrawer.tsx
+msgid "Threshold before firing"
+msgstr "Drempel voor activering"
+
 #: src/pages/Config.tsx
 msgid "Tick any event type you want pushed. Untouched types skip the daemon entirely - no Telegram, no /alerts row, no retry ladder."
 msgstr "Vink elk type gebeurtenis aan dat je wilt ontvangen. Niet aangevinkte types slaan de daemon volledig over - geen Telegram, geen /alerts-regel, geen retry-ladder."
@@ -4660,6 +4638,10 @@ msgstr "Totaal aantal blokken dat Ocean heeft gevonden sinds de daemon begon met
 #: src/pages/Config.tsx
 msgid "Total Braiins balance ÷ trailing-3h burn rate has dropped below the configured threshold. Off by default; tick the box and pick a day count to enable."
 msgstr "Totaal Braiins-saldo ÷ verbrandingstempo over de laatste 3 uur is onder de ingestelde drempel gezakt. Standaard uit; vink het vakje aan en kies een aantal dagen om in te schakelen."
+
+#: src/components/AlertSpanDrawer.tsx
+msgid "Total condition time"
+msgstr "Totale duur van de conditie"
 
 #: src/pages/Status.tsx
 msgid "Total earned at this address since first share, per Ocean."
@@ -4956,14 +4938,6 @@ msgstr "Verhoogt naar {target} over ~{0} min (nu {current})."
 #: src/pages/Config.tsx
 msgid "Window over which the rejection ratio is computed."
 msgstr "Venster waarover de afwijzingsratio wordt berekend."
-
-#: src/pages/Status.tsx
-#~ msgid "Wipe the local terminal-bid cache and re-paginate every bid from Braiins on the next refresh? This is safe but slower than a normal refresh."
-#~ msgstr "De lokale cache van afgesloten biedingen wissen en bij de volgende refresh elk bod opnieuw pagineren vanaf Braiins? Dit is veilig maar trager dan een normale refresh."
-
-#: src/pages/Status.tsx
-#~ msgid "Wipe the local terminal-bid cache and re-paginate every bid from Braiins on the next refresh. Use if the 'spent (whole account)' figure looks wrong."
-#~ msgstr "Wis de lokale cache van afgesloten biedingen en pagineer bij de volgende refresh elk bod opnieuw vanaf Braiins. Gebruik als het 'uitgegeven (hele account)' bedrag verkeerd lijkt."
 
 #: src/pages/Config.tsx
 #: src/pages/Setup.tsx

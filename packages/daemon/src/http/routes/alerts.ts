@@ -214,7 +214,37 @@ export async function registerAlertsRoutes(
         return { spans: [] };
       }
       const spans = await deps.alertsRepo.conditionSpansSince(sinceMs, untilMs, now);
-      return { spans };
+      // #341: attach the current-config sustained threshold per class, so
+      // the drawer can estimate the pre-firing wait for pre-0119 rows that
+      // never recorded condition-onset. Rows that DID record onset ignore
+      // this and compute the exact threshold from fired_at - start_ms.
+      const cfg = await deps.configRepo.get();
+      const thresholdFor = (cls: string): number | null => {
+        if (!cfg) return null;
+        switch (cls) {
+          case 'hashrate_below_floor':
+            return cfg.below_floor_alert_after_minutes ?? null;
+          case 'zero_hashrate':
+            return cfg.zero_hashrate_loud_alert_after_minutes ?? null;
+          case 'datum_unreachable':
+            return cfg.datum_unreachable_alert_after_minutes ?? null;
+          case 'api_unreachable':
+            return cfg.api_outage_alert_after_minutes ?? null;
+          case 'marketplace_empty':
+            return cfg.marketplace_empty_alert_after_minutes ?? null;
+          case 'sustained_paused':
+            return cfg.sustained_paused_alert_after_minutes ?? null;
+          // wallet_runway (day-based projection) and solo_overheating
+          // (temperature) have no minutes-based sustained wait.
+          default:
+            return null;
+        }
+      };
+      const enriched = spans.map((s) => ({
+        ...s,
+        threshold_minutes: thresholdFor(s.event_class),
+      }));
+      return { spans: enriched };
     },
   );
 

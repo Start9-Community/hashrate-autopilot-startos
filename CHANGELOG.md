@@ -2,6 +2,14 @@
 
 ## 2026-07-13
 
+### `[UI]` Alert drawer shows threshold + duration + total, not just the fire window (#341)
+
+An alert-condition drawer used to show a single "Duration" that was really the window from the loud alert *firing* to recovery (e.g. "56s") - misleadingly small when the underlying problem lasted far longer (the alert fires only after a sustained threshold). The drawer now breaks it into rows: the threshold waited out before firing, when the alert fired, when it recovered, the alert duration, and a **total condition time** (onset to recovery) - the number you actually care about. When the firing row recorded the exact onset, these are exact; for older rows that predate onset-recording, the threshold and total are estimated from your current alert settings and marked with `≈` plus a footnote, since historical config changes aren't stored. No stored data is changed - this is purely how the drawer reads it.
+
+### `[UI]` Timeline pool-block drawer numbers and units line up in columns (#340)
+
+Follow-up to the unit sweep: numbers in the block/payout/deposit drawer now right-align to a shared edge with the unit (Satoshi glyph, `%`, `T`) in its own fixed column to the right, so both the digits and the units line up straight down regardless of how wide each value is.
+
 ### `[UI]` Timeline drawer units muted + aligned for % and difficulty (#340)
 
 Continuing the unit-consistency sweep: the pool-block drawer's share-log `%` and the difficulty-retarget drawer's `T` and `%` now render in the same muted grey, space-separated style as the Satoshi glyph, so numbers and units line up down the column. The difficulty and change also follow your number format now (they were using a period decimal regardless of locale).
