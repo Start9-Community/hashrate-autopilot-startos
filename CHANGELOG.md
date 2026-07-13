@@ -2,6 +2,10 @@
 
 ## 2026-07-13
 
+### `[UI]` Timeline drawer units muted + aligned for % and difficulty (#340)
+
+Continuing the unit-consistency sweep: the pool-block drawer's share-log `%` and the difficulty-retarget drawer's `T` and `%` now render in the same muted grey, space-separated style as the Satoshi glyph, so numbers and units line up down the column. The difficulty and change also follow your number format now (they were using a period decimal regardless of locale).
+
 ### `[UI]` P&L rebuild/hard-reset move to the lifetime card + confirm what they did (#343)
 
 The "rebuild" and "hard reset" controls now live on the Profit & Loss **lifetime** card, where the data they rebuild (collected + spent) actually is, instead of the per-day card. And they now confirm the outcome: after running, a short line reports how many payouts were pulled and the resulting collected total (e.g. "hard reset done · 604 payouts · collected 0,0188 ₿"), so you're not left guessing whether it finished.

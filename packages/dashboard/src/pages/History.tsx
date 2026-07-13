@@ -2239,11 +2239,24 @@ function LogExtraDrawer({
 }
 
 /** Label/value row for the detail drawer (mono, right-aligned value). */
-function DetailRow({ label, value }: { label: ReactNode; value: ReactNode }) {
+function DetailRow({
+  label,
+  value,
+  unit,
+}: {
+  label: ReactNode;
+  value: ReactNode;
+  /** #340: unit rendered muted + small + space-separated (T, %, sat glyph),
+   *  so numbers and units line up the same way across every drawer. */
+  unit?: ReactNode;
+}) {
   return (
     <div className="flex justify-between gap-3 text-xs">
       <span className="text-slate-500">{label}</span>
-      <span className="text-slate-200 font-mono text-right break-all">{value}</span>
+      <span className="text-slate-200 font-mono text-right break-all tabular-nums">
+        {value}
+        {unit != null && <span className="text-slate-500 text-[10px] ml-1">{unit}</span>}
+      </span>
     </div>
   );
 }
@@ -2318,7 +2331,8 @@ function LogExtraDetail({ extra }: { extra: LogExtraItem }) {
             <>
               <DetailRow
                 label={<Trans>share log</Trans>}
-                value={`${formatNumber(share, { minimumFractionDigits: 4, maximumFractionDigits: 4 })}%`}
+                value={formatNumber(share, { minimumFractionDigits: 4, maximumFractionDigits: 4 })}
+                unit="%"
               />
               <DetailRow
                 label={<Trans>our earnings (est.)</Trans>}
@@ -2397,11 +2411,20 @@ function LogExtraDetail({ extra }: { extra: LogExtraItem }) {
     const pct = ((r.difficulty - r.previous) / r.previous) * 100;
     return (
       <section className="space-y-1">
-        <DetailRow label={<Trans>difficulty</Trans>} value={`${(r.difficulty / 1e12).toFixed(2)} T`} />
-        <DetailRow label={<Trans>previous</Trans>} value={`${(r.previous / 1e12).toFixed(2)} T`} />
+        <DetailRow
+          label={<Trans>difficulty</Trans>}
+          value={formatNumber(r.difficulty / 1e12, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          unit="T"
+        />
+        <DetailRow
+          label={<Trans>previous</Trans>}
+          value={formatNumber(r.previous / 1e12, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          unit="T"
+        />
         <DetailRow
           label={<Trans>change</Trans>}
-          value={`${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%`}
+          value={`${pct >= 0 ? '+' : ''}${formatNumber(pct, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+          unit="%"
         />
       </section>
     );
