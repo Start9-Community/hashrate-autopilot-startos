@@ -2,6 +2,10 @@
 
 ## 2026-07-13
 
+### `[Fix]` Profit & Loss "collected" self-heals when the payout store is incomplete (#343)
+
+The P&L "collected" figure comes from a local store of Ocean's earnpay payout history. That store was full-backfilled exactly once (only when empty), so if that single fetch ever came back partial - a transient Ocean hiccup during the upgrade would do it - collected stayed permanently short, inflating the loss rate (one operator jumped from ~7% to ~32%), with no way to recover. The daemon now re-runs the full backfill periodically (and on every restart), which re-fetches the complete history and fills any gaps - a full earnpay fetch returns everything, and re-storing rows you already have is a no-op, so it's safe. The Profit & Loss "rebuild" button now also forces this payout re-fetch (not just the spend cache), for an instant fix. Unpaid earnings and spend were never affected.
+
 ### `[Feature]` Timeline "Bid id" box is now a smart full-text search (#342)
 
 The Timeline's "Bid id contains" filter is now a general "Search" box that matches, case-insensitively, across the bid id, the Reason text, your personal note on the row, and the identifiers a row shows (block height/hash, IP addresses, deposit tx ids, config-change values). It searches your entire history, not just the loaded rows: the daemon matches reason + note (via the event-notes join), so a hit in an old row that hasn't paged in yet still surfaces. The merged extra rows (blocks, payouts, IP changes, difficulty retargets, config changes, alerts) are filtered client-side against their summary + identifiers + note. It ANDs with the type chips and date range as before. The free-text term is now a bound SQL parameter with LIKE-wildcard escaping.

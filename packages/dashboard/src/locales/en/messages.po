@@ -3891,6 +3891,10 @@ msgstr "received (Datum)"
 msgid "received (Ocean)"
 msgstr "received (Ocean)"
 
+#: src/pages/Status.tsx
+msgid "Recompute the Profit & Loss panel from scratch? Re-paginates every bid from Braiins (spent) and re-fetches your full Ocean payout history (collected). Safe, just slower than a normal refresh."
+msgstr "Recompute the Profit & Loss panel from scratch? Re-paginates every bid from Braiins (spent) and re-fetches your full Ocean payout history (collected). Safe, just slower than a normal refresh."
+
 #: src/lib/alertConditions.ts
 msgid "recovered"
 msgstr "recovered"
@@ -4924,8 +4928,8 @@ msgid "Window over which the rejection ratio is computed."
 msgstr "Window over which the rejection ratio is computed."
 
 #: src/pages/Status.tsx
-msgid "Wipe the local terminal-bid cache and re-paginate every bid from Braiins on the next refresh? This is safe but slower than a normal refresh."
-msgstr "Wipe the local terminal-bid cache and re-paginate every bid from Braiins on the next refresh? This is safe but slower than a normal refresh."
+#~ msgid "Wipe the local terminal-bid cache and re-paginate every bid from Braiins on the next refresh? This is safe but slower than a normal refresh."
+#~ msgstr "Wipe the local terminal-bid cache and re-paginate every bid from Braiins on the next refresh? This is safe but slower than a normal refresh."
 
 #: src/pages/Status.tsx
 msgid "Wipe the local terminal-bid cache and re-paginate every bid from Braiins on the next refresh. Use if the 'spent (whole account)' figure looks wrong."

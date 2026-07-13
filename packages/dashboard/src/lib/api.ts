@@ -1124,6 +1124,11 @@ export const api = {
     request<{ ok: boolean; error?: string }>('/api/finance/spend/rebuild', {
       method: 'POST',
     }),
+  /** #343: force a full re-fetch of the Ocean payout history (heals `collected`). */
+  rebuildPayouts: () =>
+    request<{ ok: boolean; error?: string }>('/api/finance/payouts/rebuild', {
+      method: 'POST',
+    }),
   stats: (range: ChartRange) =>
     request<StatsResponse>(`/api/stats?range=${encodeURIComponent(range)}`),
   statsViewport: (since: number, until: number) =>

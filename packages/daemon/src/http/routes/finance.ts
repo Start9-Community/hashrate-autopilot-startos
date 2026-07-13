@@ -289,6 +289,17 @@ export async function registerFinanceRoute(
     return { ok: true };
   });
 
+  app.post('/api/finance/payouts/rebuild', async () => {
+    // #343: force a full re-fetch of Ocean's earnpay payout history and
+    // upsert it, healing a `collected` figure that ended up short because
+    // the one-shot backfill captured a partial list. Safe + idempotent.
+    if (!deps.oceanPayoutsService) {
+      return { ok: false, error: 'ocean payouts service not configured' };
+    }
+    await deps.oceanPayoutsService.requestFullBackfill();
+    return { ok: true };
+  });
+
   app.get('/api/finance', async (): Promise<FinanceResponse> => {
     const config = await deps.configRepo.get();
     const scope = config?.spent_scope ?? 'autopilot';

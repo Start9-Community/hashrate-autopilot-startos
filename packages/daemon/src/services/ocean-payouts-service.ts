@@ -33,6 +33,16 @@ const REFRESH_WINDOW_DAYS = 60;
 // Wide lower bound for the full backfill. Predates Ocean itself, so it
 // always captures the operator's entire settlement history.
 const BACKFILL_START_DATE = '2020-01-01';
+// #343: re-run the full backfill (not just the 60-day refresh) at least
+// this often, so a store that ended up incomplete self-heals. The
+// original design only full-backfilled once (when the store was empty),
+// so a single partial earnpay read during that one shot left `collected`
+// permanently short with no way to recover. A full earnpay fetch returns
+// the entire history (verified, no server-side cap), and upsert is a
+// no-op for rows we already have, so periodically re-fetching everything
+// closes any gap. Also runs on the first sync of every boot
+// (`lastFullBackfillMs` starts at 0), so a restart heals too.
+const FULL_BACKFILL_INTERVAL_MS = 24 * 60 * 60 * 1000;
 // Slow steady-state cadence. Payouts are days apart; a 5-min poll is
 // polite to Ocean's public API and still surfaces a fresh settlement
 // well within one dashboard refresh.
@@ -69,6 +79,13 @@ export class OceanPayoutsService {
   // address whose payouts we haven't fetched yet vs an em-dash for no
   // address at all. Null until the first successful sync completes.
   private syncedAddress: string | null = null;
+  // #343: when the last full (whole-history) backfill ran. Starts at 0 so
+  // the first sync of every boot re-fetches everything; refreshed on each
+  // successful full backfill to gate the periodic re-heal.
+  private lastFullBackfillMs = 0;
+  // #343: set by requestFullBackfill() (the P&L "rebuild" button) to force
+  // the next sync to re-fetch the whole history regardless of the timer.
+  private forceFullBackfill = false;
 
   constructor(private readonly options: OceanPayoutsServiceOptions) {}
 
@@ -107,7 +124,12 @@ export class OceanPayoutsService {
     }
 
     const endDate = toDateParam(nowMs + DAY_MS);
-    const fullBackfill = stored === 0;
+    // Full backfill when: the store is empty (fresh install / address
+    // change), the operator forced it (rebuild button), OR it's been long
+    // enough since the last one (#343 self-heal). Otherwise the cheap
+    // trailing-window refresh.
+    const dueForPeriodicFull = nowMs - this.lastFullBackfillMs >= FULL_BACKFILL_INTERVAL_MS;
+    const fullBackfill = stored === 0 || this.forceFullBackfill || dueForPeriodicFull;
     const startDate = fullBackfill
       ? BACKFILL_START_DATE
       : toDateParam(nowMs - REFRESH_WINDOW_DAYS * DAY_MS);
@@ -129,6 +151,13 @@ export class OceanPayoutsService {
     // the P&L panel can now treat a 0 collected as "genuinely no
     // payouts yet" instead of "still loading".
     this.syncedAddress = address;
+    // A full fetch just completed successfully: reset the heal timer and
+    // consume any forced-rebuild request (#343). Only on success, so a
+    // failed fetch retries the full backfill next cycle.
+    if (fullBackfill) {
+      this.lastFullBackfillMs = nowMs;
+      this.forceFullBackfill = false;
+    }
 
     const rows: OceanPayoutInsert[] = payouts.map((p) => ({
       address,
@@ -178,6 +207,17 @@ export class OceanPayoutsService {
   getCollectedStatus(address: string): 'computing' | 'ready' | 'idle' {
     if (!address) return 'idle';
     return this.syncedAddress === address ? 'ready' : 'computing';
+  }
+
+  /**
+   * #343: force the next sync to re-fetch the entire payout history and
+   * upsert it, healing a store that ended up incomplete. Backs the P&L
+   * "rebuild" button. Runs a sync immediately and resolves when it's
+   * done, so the caller can report a fresh `collected`.
+   */
+  async requestFullBackfill(): Promise<void> {
+    this.forceFullBackfill = true;
+    await this.syncOnce();
   }
 
   start(): void {

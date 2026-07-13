@@ -3195,12 +3195,15 @@ function FinancePanel({
 
   const handleRebuild = async () => {
     if (rebuilding) return;
-    if (!window.confirm(t`Wipe the local terminal-bid cache and re-paginate every bid from Braiins on the next refresh? This is safe but slower than a normal refresh.`)) {
+    // #343: rebuild both sides of the ledger - the spend cache (re-paginate
+    // bids from Braiins) AND the Ocean payout store (re-fetch the full
+    // earnpay history, healing a "collected" that ended up short).
+    if (!window.confirm(t`Recompute the Profit & Loss panel from scratch? Re-paginates every bid from Braiins (spent) and re-fetches your full Ocean payout history (collected). Safe, just slower than a normal refresh.`)) {
       return;
     }
     setRebuilding(true);
     try {
-      await api.rebuildSpendCache();
+      await Promise.all([api.rebuildSpendCache(), api.rebuildPayouts()]);
       qc.invalidateQueries({ queryKey: ['finance'] });
     } finally {
       setRebuilding(false);
