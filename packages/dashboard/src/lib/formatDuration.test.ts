@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { formatDuration } from './format';
+import { formatDuration } from './formatDuration';
 
 describe('formatDuration (#341: round-to-nearest, not truncate)', () => {
   it('returns "-" for null/undefined/negative', () => {
