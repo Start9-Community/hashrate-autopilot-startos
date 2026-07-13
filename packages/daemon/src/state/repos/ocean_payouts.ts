@@ -130,6 +130,17 @@ export class OceanPayoutsRepo {
   }
 
   /**
+   * #343: delete every stored payout for an address. Backs the P&L
+   * "hard reset" - the service re-fetches the whole earnpay history and
+   * re-inserts it, so the store ends up an exact copy of Ocean's ledger
+   * with no stale rows. ocean_payouts is a leaf table (no FKs point at
+   * it), so this can't cascade or orphan anything.
+   */
+  async deleteForAddress(address: string): Promise<void> {
+    await this.db.deleteFrom('ocean_payouts').where('address', '=', address).execute();
+  }
+
+  /**
    * Sum of `net_sat` for the given address with `ts <= throughMs`.
    * This is lifetime "collected" for the P&L panel. Returns 0 when the
    * address has no payouts yet (fresh install / never paid).

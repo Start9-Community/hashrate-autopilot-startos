@@ -164,4 +164,37 @@ describe('OceanPayoutsService.syncOnce (#323)', () => {
     await svc.requestFullBackfill(); // forced full backfill despite the timer
     expect(await repo.sumNetUpTo(ADDR, 9999)).toBe(800);
   });
+
+  it('#343: hardReset() wipes stale rows and rebuilds an exact copy of the ledger', async () => {
+    const clock = 1_700_000_000_000;
+    const svc = new OceanPayoutsService({
+      // First backfill stores A + a stale B; a later fetch no longer has B.
+      oceanClient: rangeAwareClient([[p(1000, 'a', 500), p(2000, 'b', 999)], [p(1000, 'a', 500)]], []),
+      repo,
+      getAddress: () => ADDR,
+      now: () => clock,
+    });
+    await svc.syncOnce();
+    expect(await repo.sumNetUpTo(ADDR, 9999)).toBe(1499); // A + stale B
+
+    await svc.hardReset(); // wipe + rebuild from the fresh fetch (A only)
+    expect(await repo.sumNetUpTo(ADDR, 9999)).toBe(500); // stale B is gone
+    expect(await repo.countForAddress(ADDR)).toBe(1);
+  });
+
+  it('#343: hardReset() is fetch-before-delete: an Ocean outage keeps the data', async () => {
+    const clock = 1_700_000_000_000;
+    // Full backfill succeeds first; the hard-reset fetch returns null.
+    const svc = new OceanPayoutsService({
+      oceanClient: rangeAwareClient([[p(1000, 'a', 500), p(2000, 'b', 999)], null as unknown as OceanPayout[]], []),
+      repo,
+      getAddress: () => ADDR,
+      now: () => clock,
+    });
+    await svc.syncOnce();
+    expect(await repo.sumNetUpTo(ADDR, 9999)).toBe(1499);
+
+    await svc.hardReset(); // Ocean down -> must NOT wipe
+    expect(await repo.sumNetUpTo(ADDR, 9999)).toBe(1499); // data intact
+  });
 });

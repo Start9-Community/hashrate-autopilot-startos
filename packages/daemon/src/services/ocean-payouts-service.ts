@@ -86,6 +86,11 @@ export class OceanPayoutsService {
   // #343: set by requestFullBackfill() (the P&L "rebuild" button) to force
   // the next sync to re-fetch the whole history regardless of the timer.
   private forceFullBackfill = false;
+  // #343: set by hardReset() (the P&L "hard reset" button). Like a full
+  // backfill, but wipes the stored rows first (after a successful fetch)
+  // so the store becomes an exact copy of Ocean's ledger with no stale
+  // rows. Fetch-before-delete: an Ocean failure leaves the data intact.
+  private forceHardReset = false;
 
   constructor(private readonly options: OceanPayoutsServiceOptions) {}
 
@@ -129,7 +134,8 @@ export class OceanPayoutsService {
     // enough since the last one (#343 self-heal). Otherwise the cheap
     // trailing-window refresh.
     const dueForPeriodicFull = nowMs - this.lastFullBackfillMs >= FULL_BACKFILL_INTERVAL_MS;
-    const fullBackfill = stored === 0 || this.forceFullBackfill || dueForPeriodicFull;
+    const fullBackfill =
+      stored === 0 || this.forceFullBackfill || this.forceHardReset || dueForPeriodicFull;
     const startDate = fullBackfill
       ? BACKFILL_START_DATE
       : toDateParam(nowMs - REFRESH_WINDOW_DAYS * DAY_MS);
@@ -157,6 +163,17 @@ export class OceanPayoutsService {
     if (fullBackfill) {
       this.lastFullBackfillMs = nowMs;
       this.forceFullBackfill = false;
+    }
+    // #343 hard reset: the fetch above succeeded, so it's now safe to wipe
+    // the old rows before re-inserting the fresh full history. A delete
+    // failure is non-fatal - the upsert below still fills the store.
+    if (this.forceHardReset) {
+      try {
+        await this.options.repo.deleteForAddress(address);
+      } catch (err) {
+        this.log(`[ocean-payouts] hard-reset delete failed: ${(err as Error).message}`);
+      }
+      this.forceHardReset = false;
     }
 
     const rows: OceanPayoutInsert[] = payouts.map((p) => ({
@@ -217,6 +234,18 @@ export class OceanPayoutsService {
    */
   async requestFullBackfill(): Promise<void> {
     this.forceFullBackfill = true;
+    await this.syncOnce();
+  }
+
+  /**
+   * #343: hard reset - wipe the stored payouts and rebuild them from a
+   * fresh full earnpay fetch, so the store is an exact copy of Ocean's
+   * ledger with no stale rows. The delete only happens after the fetch
+   * succeeds (see doSync), so an Ocean outage leaves the data intact.
+   * Backs the P&L "hard reset" button.
+   */
+  async hardReset(): Promise<void> {
+    this.forceHardReset = true;
     await this.syncOnce();
   }
 

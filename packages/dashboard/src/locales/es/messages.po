@@ -2291,6 +2291,18 @@ msgstr "Vidrio cae y rueda"
 msgid "Hard ceiling. If fillable + overpay would exceed this, the bid is clamped down to this value (and may not fill)."
 msgstr "Tope duro. Si rellenable + sobrepago lo superara, la oferta se limita a este valor (y puede no rellenarse)."
 
+#: src/pages/Status.tsx
+msgid "hard reset"
+msgstr "reinicio total"
+
+#: src/pages/Status.tsx
+msgid "Hard reset the Profit & Loss data? This DELETES the stored Ocean payout history and Braiins spend cache, then rebuilds both from scratch. Safe (no other data touched, and it won't re-notify you), but the collected figure will briefly show 0 while it re-pulls."
+msgstr "¿Reiniciar por completo los datos de Profit & Loss? Esto BORRA el historial de pagos de Ocean almacenado y la caché de gasto de Braiins, y reconstruye ambos desde cero. Seguro (no toca ningún otro dato y no te volverá a notificar), pero la cifra de cobrado mostrará 0 brevemente mientras se recarga."
+
+#: src/pages/Status.tsx
+msgid "Hard reset: delete the stored payout history + spend cache and rebuild both from scratch. Use only if 'rebuild' didn't fix it."
+msgstr "Reinicio total: borra el historial de pagos + la caché de gasto almacenados y reconstruye ambos desde cero. Úsalo solo si 'rebuild' no lo solucionó."
+
 #: src/components/BidEventDrawer.tsx
 #: src/components/PriceChart.tsx
 #: src/pages/Config.tsx
@@ -3845,6 +3857,10 @@ msgstr "rail"
 msgid "range"
 msgstr "rango"
 
+#: src/pages/Status.tsx
+msgid "Re-fetch both sides of the ledger (re-paginate Braiins bids + re-pull the full Ocean payout history) and fill any gaps. Use if 'spent' or 'collected' looks off."
+msgstr "Vuelve a obtener ambos lados del libro (repaginar ofertas de Braiins + recargar el historial completo de pagos de Ocean) y rellena cualquier hueco. Úsalo si 'spent' o 'collected' se ve mal."
+
 #: src/pages/Setup.tsx
 msgid "Re-setup"
 msgstr "Reconfigurar"
@@ -4932,8 +4948,8 @@ msgstr "Ventana sobre la que se calcula el ratio de rechazo."
 #~ msgstr "¿Borrar la caché local de ofertas terminales y volver a paginar cada oferta desde Braiins en el próximo refresco? Es seguro pero más lento que un refresco normal."
 
 #: src/pages/Status.tsx
-msgid "Wipe the local terminal-bid cache and re-paginate every bid from Braiins on the next refresh. Use if the 'spent (whole account)' figure looks wrong."
-msgstr "Borra la caché local de ofertas terminales y vuelve a paginar cada oferta desde Braiins en el próximo refresco. Úsalo si la cifra 'gastado (cuenta completa)' parece incorrecta."
+#~ msgid "Wipe the local terminal-bid cache and re-paginate every bid from Braiins on the next refresh. Use if the 'spent (whole account)' figure looks wrong."
+#~ msgstr "Borra la caché local de ofertas terminales y vuelve a paginar cada oferta desde Braiins en el próximo refresco. Úsalo si la cifra 'gastado (cuenta completa)' parece incorrecta."
 
 #: src/pages/Config.tsx
 #: src/pages/Setup.tsx

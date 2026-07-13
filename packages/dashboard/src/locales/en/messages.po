@@ -2291,6 +2291,18 @@ msgstr "Glass drop & roll"
 msgid "Hard ceiling. If fillable + overpay would exceed this, the bid is clamped down to this value (and may not fill)."
 msgstr "Hard ceiling. If fillable + overpay would exceed this, the bid is clamped down to this value (and may not fill)."
 
+#: src/pages/Status.tsx
+msgid "hard reset"
+msgstr "hard reset"
+
+#: src/pages/Status.tsx
+msgid "Hard reset the Profit & Loss data? This DELETES the stored Ocean payout history and Braiins spend cache, then rebuilds both from scratch. Safe (no other data touched, and it won't re-notify you), but the collected figure will briefly show 0 while it re-pulls."
+msgstr "Hard reset the Profit & Loss data? This DELETES the stored Ocean payout history and Braiins spend cache, then rebuilds both from scratch. Safe (no other data touched, and it won't re-notify you), but the collected figure will briefly show 0 while it re-pulls."
+
+#: src/pages/Status.tsx
+msgid "Hard reset: delete the stored payout history + spend cache and rebuild both from scratch. Use only if 'rebuild' didn't fix it."
+msgstr "Hard reset: delete the stored payout history + spend cache and rebuild both from scratch. Use only if 'rebuild' didn't fix it."
+
 #: src/components/BidEventDrawer.tsx
 #: src/components/PriceChart.tsx
 #: src/pages/Config.tsx
@@ -3845,6 +3857,10 @@ msgstr "rail"
 msgid "range"
 msgstr "range"
 
+#: src/pages/Status.tsx
+msgid "Re-fetch both sides of the ledger (re-paginate Braiins bids + re-pull the full Ocean payout history) and fill any gaps. Use if 'spent' or 'collected' looks off."
+msgstr "Re-fetch both sides of the ledger (re-paginate Braiins bids + re-pull the full Ocean payout history) and fill any gaps. Use if 'spent' or 'collected' looks off."
+
 #: src/pages/Setup.tsx
 msgid "Re-setup"
 msgstr "Re-setup"
@@ -4932,8 +4948,8 @@ msgstr "Window over which the rejection ratio is computed."
 #~ msgstr "Wipe the local terminal-bid cache and re-paginate every bid from Braiins on the next refresh? This is safe but slower than a normal refresh."
 
 #: src/pages/Status.tsx
-msgid "Wipe the local terminal-bid cache and re-paginate every bid from Braiins on the next refresh. Use if the 'spent (whole account)' figure looks wrong."
-msgstr "Wipe the local terminal-bid cache and re-paginate every bid from Braiins on the next refresh. Use if the 'spent (whole account)' figure looks wrong."
+#~ msgid "Wipe the local terminal-bid cache and re-paginate every bid from Braiins on the next refresh. Use if the 'spent (whole account)' figure looks wrong."
+#~ msgstr "Wipe the local terminal-bid cache and re-paginate every bid from Braiins on the next refresh. Use if the 'spent (whole account)' figure looks wrong."
 
 #: src/pages/Config.tsx
 #: src/pages/Setup.tsx

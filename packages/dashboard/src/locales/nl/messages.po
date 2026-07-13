@@ -2291,6 +2291,18 @@ msgstr "Glas valt & rolt"
 msgid "Hard ceiling. If fillable + overpay would exceed this, the bid is clamped down to this value (and may not fill)."
 msgstr "Harde bovengrens. Als vulbaar + toeslag dit zou overschrijden, wordt het bod naar deze waarde teruggebracht (en mogelijk niet gevuld)."
 
+#: src/pages/Status.tsx
+msgid "hard reset"
+msgstr "harde reset"
+
+#: src/pages/Status.tsx
+msgid "Hard reset the Profit & Loss data? This DELETES the stored Ocean payout history and Braiins spend cache, then rebuilds both from scratch. Safe (no other data touched, and it won't re-notify you), but the collected figure will briefly show 0 while it re-pulls."
+msgstr "Profit & Loss-data hard resetten? Dit VERWIJDERT de opgeslagen Ocean-uitbetalingsgeschiedenis en de Braiins-spendcache en bouwt beide opnieuw op vanaf nul. Veilig (geen andere data wordt geraakt en je krijgt geen nieuwe meldingen), maar het geïnd-bedrag toont even 0 terwijl het opnieuw ophaalt."
+
+#: src/pages/Status.tsx
+msgid "Hard reset: delete the stored payout history + spend cache and rebuild both from scratch. Use only if 'rebuild' didn't fix it."
+msgstr "Harde reset: verwijder de opgeslagen uitbetalingsgeschiedenis + spendcache en bouw beide opnieuw op vanaf nul. Gebruik alleen als 'rebuild' het niet oploste."
+
 #: src/components/BidEventDrawer.tsx
 #: src/components/PriceChart.tsx
 #: src/pages/Config.tsx
@@ -3845,6 +3857,10 @@ msgstr "rail"
 msgid "range"
 msgstr "bereik"
 
+#: src/pages/Status.tsx
+msgid "Re-fetch both sides of the ledger (re-paginate Braiins bids + re-pull the full Ocean payout history) and fill any gaps. Use if 'spent' or 'collected' looks off."
+msgstr "Haal beide kanten van het grootboek opnieuw op (Braiins-biedingen herpagineren + volledige Ocean-uitbetalingsgeschiedenis opnieuw ophalen) en vul eventuele gaten. Gebruik als 'spent' of 'collected' er verkeerd uitziet."
+
 #: src/pages/Setup.tsx
 msgid "Re-setup"
 msgstr "Opnieuw instellen"
@@ -4932,8 +4948,8 @@ msgstr "Venster waarover de afwijzingsratio wordt berekend."
 #~ msgstr "De lokale cache van afgesloten biedingen wissen en bij de volgende refresh elk bod opnieuw pagineren vanaf Braiins? Dit is veilig maar trager dan een normale refresh."
 
 #: src/pages/Status.tsx
-msgid "Wipe the local terminal-bid cache and re-paginate every bid from Braiins on the next refresh. Use if the 'spent (whole account)' figure looks wrong."
-msgstr "Wis de lokale cache van afgesloten biedingen en pagineer bij de volgende refresh elk bod opnieuw vanaf Braiins. Gebruik als het 'uitgegeven (hele account)' bedrag verkeerd lijkt."
+#~ msgid "Wipe the local terminal-bid cache and re-paginate every bid from Braiins on the next refresh. Use if the 'spent (whole account)' figure looks wrong."
+#~ msgstr "Wis de lokale cache van afgesloten biedingen en pagineer bij de volgende refresh elk bod opnieuw vanaf Braiins. Gebruik als het 'uitgegeven (hele account)' bedrag verkeerd lijkt."
 
 #: src/pages/Config.tsx
 #: src/pages/Setup.tsx

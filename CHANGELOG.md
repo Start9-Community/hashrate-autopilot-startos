@@ -2,6 +2,10 @@
 
 ## 2026-07-13
 
+### `[Feature]` Profit & Loss "hard reset" button (#343)
+
+Next to "rebuild" on the Profit & Loss panel there's now a "hard reset" - the nuclear option. Where "rebuild" re-fetches and fills gaps, "hard reset" DELETES the stored Ocean payout history and the Braiins spend cache outright and rebuilds both from scratch, so nothing stale can survive. It's safe: the payout wipe is fetch-before-delete (an Ocean outage aborts it and leaves your data intact), re-pulled payouts are marked already-notified so it won't re-alert you about old ones, and no other data references the payout store. The "collected" figure briefly shows 0 while it re-pulls. Use it only if "rebuild" didn't resolve a wrong figure.
+
 ### `[Fix]` Timeline search finds CREATE rows by their bid id (#342)
 
 The new Timeline search returned nothing when you searched a bid id and had the Action filter narrowed to "create" only. A CREATE event is recorded before Braiins echoes back the order id, so its stored id is null and the id shown on the row is forward-filled from the next event. The search matched the raw (null) column instead of that forward-filled id, so creates were unfindable by id. It now matches the effective id, so searching a bid id surfaces its create too.

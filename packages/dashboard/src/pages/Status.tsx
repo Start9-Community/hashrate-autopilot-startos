@@ -3190,6 +3190,7 @@ function FinancePanel({
   const denomination = useDenomination();
   const qc = useQueryClient();
   const [rebuilding, setRebuilding] = useState(false);
+  const [resetting, setResetting] = useState(false);
   const { i18n } = useLingui();
   void i18n;
 
@@ -3207,6 +3208,24 @@ function FinancePanel({
       qc.invalidateQueries({ queryKey: ['finance'] });
     } finally {
       setRebuilding(false);
+    }
+  };
+
+  const handleHardReset = async () => {
+    if (resetting) return;
+    // #343: nuclear option - wipe both datasets and rebuild from scratch,
+    // so nothing stale can survive. The payout wipe is fetch-before-delete
+    // (an Ocean outage leaves the store intact), and re-pulled payouts are
+    // marked already-notified, so it won't re-alert about old payouts.
+    if (!window.confirm(t`Hard reset the Profit & Loss data? This DELETES the stored Ocean payout history and Braiins spend cache, then rebuilds both from scratch. Safe (no other data touched, and it won't re-notify you), but the collected figure will briefly show 0 while it re-pulls.`)) {
+      return;
+    }
+    setResetting(true);
+    try {
+      await api.hardResetFinance();
+      qc.invalidateQueries({ queryKey: ['finance'] });
+    } finally {
+      setResetting(false);
     }
   };
 
@@ -3321,9 +3340,19 @@ function FinancePanel({
           onClick={handleRebuild}
           disabled={rebuilding}
           className="px-1.5 py-0.5 rounded border border-slate-700 text-slate-400 hover:bg-slate-800 disabled:opacity-50"
-          title={t`Wipe the local terminal-bid cache and re-paginate every bid from Braiins on the next refresh. Use if the 'spent (whole account)' figure looks wrong.`}
+          title={t`Re-fetch both sides of the ledger (re-paginate Braiins bids + re-pull the full Ocean payout history) and fill any gaps. Use if 'spent' or 'collected' looks off.`}
         >
           {rebuilding ? '…' : <Trans>rebuild</Trans>}
+        </button>
+      )}
+      {data.spent_scope === 'account' && (
+        <button
+          onClick={handleHardReset}
+          disabled={resetting}
+          className="px-1.5 py-0.5 rounded border border-red-900/60 text-red-300/80 hover:bg-red-950/40 disabled:opacity-50"
+          title={t`Hard reset: delete the stored payout history + spend cache and rebuild both from scratch. Use only if 'rebuild' didn't fix it.`}
+        >
+          {resetting ? '…' : <Trans>hard reset</Trans>}
         </button>
       )}
     </div>

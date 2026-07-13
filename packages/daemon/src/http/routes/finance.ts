@@ -300,6 +300,18 @@ export async function registerFinanceRoute(
     return { ok: true };
   });
 
+  app.post('/api/finance/hard-reset', async () => {
+    // #343: hard reset of the whole P&L dataset - wipe + rebuild the Ocean
+    // payout store from scratch (exact copy of the earnpay ledger, no
+    // stale rows) AND re-paginate the Braiins spend cache. The payout wipe
+    // is fetch-before-delete, so an Ocean outage leaves the store intact.
+    await Promise.all([
+      deps.oceanPayoutsService?.hardReset() ?? Promise.resolve(),
+      deps.accountSpend?.rebuild() ?? Promise.resolve(),
+    ]);
+    return { ok: true };
+  });
+
   app.get('/api/finance', async (): Promise<FinanceResponse> => {
     const config = await deps.configRepo.get();
     const scope = config?.spent_scope ?? 'autopilot';

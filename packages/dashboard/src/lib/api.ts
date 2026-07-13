@@ -1129,6 +1129,11 @@ export const api = {
     request<{ ok: boolean; error?: string }>('/api/finance/payouts/rebuild', {
       method: 'POST',
     }),
+  /** #343: hard reset - wipe + rebuild both the payout store and the spend cache. */
+  hardResetFinance: () =>
+    request<{ ok: boolean; error?: string }>('/api/finance/hard-reset', {
+      method: 'POST',
+    }),
   stats: (range: ChartRange) =>
     request<StatsResponse>(`/api/stats?range=${encodeURIComponent(range)}`),
   statsViewport: (since: number, until: number) =>
