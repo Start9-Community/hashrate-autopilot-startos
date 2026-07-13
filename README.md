@@ -211,15 +211,25 @@ Full design: [`docs/spec.md`](docs/spec.md) · [`docs/architecture.md`](docs/arc
   per-rail split, so a payout that's been spent still counts and Lightning payouts are no longer invisible - #323;
   the lifetime panel also carries a dedicated **return on spend** row showing
   `net / spent` as a percentage so the operator can read the rate of return alongside the absolute net
-  figure - #249), live bid table with full IDs, and a full config editor with live reload.
+  figure - #249). The payout store the "collected" figure reads from self-heals: the daemon re-runs the full
+  earnpay backfill periodically and on every boot, so a partial fetch during an upgrade can no longer leave
+  "collected" permanently short. The lifetime P&L card carries **rebuild** (re-fetch + fill gaps) and
+  **hard reset** (wipe the Ocean payout store + Braiins spend cache and rebuild both from scratch, fetch-before-delete
+  so an Ocean outage can't lose data) controls, and both report their result inline - "N payouts, collected X"
+  - so a wrong figure is recoverable without a shell (#343). A live bid table with full IDs and a full config
+  editor with live reload round out the page.
 - **Timeline page** - dedicated `/history` route (#256 v2; titled "Timeline" in the nav) with a flat filterable
   table of every bid event (CREATE / EDIT_PRICE / EDIT_SPEED / CANCEL) the autopilot or operator emitted,
   replacing the older per-bid collapsible view, interleaved with alert spans, on-chain events, and daemon
-  restarts. Filter chips with action glyphs, full bid ID, denomination-aware `|Δ price| ≥ N` filter
+  restarts. Filter chips with action glyphs, a full-text **Search** box (matches bid id, reason, your personal
+  note, and row identifiers across the whole history server-side - #342), denomination-aware `|Δ price| ≥ N` filter
   (input units track the active TH/PH/EH toggle), locale-aware custom date picker, server-side infinite-scroll
   pagination, per-group and global all/none toggles, and a "follow" live-tail. Columns: when, bid id, action,
   fillable-at-event, price before / after, Δ price (green down / red up), speed - all converted to the active
-  currency + hashrate unit (with the Satoshi glyph for "sat"), including the free-text reason. SQL coalesces
+  currency + hashrate unit (with the Satoshi glyph for "sat"), including the free-text reason. Any row takes a
+  persisted **personal note** that also feeds the search index and the export (#336). An alert-condition row
+  opens a detail drawer breaking the outage into threshold / fired / recovered / alert-duration / total-condition-time
+  (estimated with a footnote for rows predating onset-recording - #341). SQL coalesces
   orphan-CREATE rows whose `braiins_order_id` lands a few ticks later, and carries speed / last-price forward so
   cells aren't blank for an order that demonstrably had values. A streaming **Excel export** writes the current
   filtered feed to a denomination-aware `.xlsx` (frozen header, autofilter, flat memory, no row cap).
@@ -332,19 +342,32 @@ secret (GHSA-x8x9).
 
 ![Timeline page](docs/images/timeline.png)
 
-Toolbar filters: action-kind chips with Lucide glyphs matching the rows, full bid-id substring, From / To
+Toolbar filters: action-kind chips with Lucide glyphs matching the rows, a full-text **Search** box, From / To
 date range via a custom locale-aware date picker (the browser-native `<input type=date>` always rendered
 in the *browser's* locale rather than the dashboard's chosen language; the custom picker formats via
 `Intl.DateTimeFormat` in the active locale and emits a local-midnight ms timestamp), and a denomination-aware
 `|Δ price| ≥ N` filter whose input unit tracks the active TH / PH / EH toggle (converted to sat/EH/day on
-the wire). Per-group and global all/none toggles reset the chip selection quickly, and a **follow** toggle
+the wire). The Search box matches case-insensitively across the bid id, the free-text reason, your personal
+note on the row, and the identifiers a row shows (block height/hash, IP addresses, deposit tx ids,
+config-change values); it searches your whole history server-side (reason + note via the event-notes join),
+so a hit in an old row that hasn't paged in yet still surfaces, and ANDs with the chips and date range (#342).
+Per-group and global all/none toggles reset the chip selection quickly, and a **follow** toggle
 live-tails the feed. Columns: When, Bid (full id, no truncation), Action, Fillable-at-event, Price before,
 Price after, Δ price (green for downward, red for upward), Speed. Every rate/hashrate - columns, the
 click-through detail drawer, the price-chart event tooltip, and the free-text reason - is converted to the
 active currency (sats/BTC/USD) and hashrate unit (TH/PH/EH), with "sat" rendered as the Satoshi glyph.
-Server-side infinite-scroll pagination via a `before_id` cursor. SQL coalesces the bid id forward on
-CREATE_BID rows that land before Braiins echoes the assigned id (1 h window) and carries the bid's speed and
-last-known price forward across events so cells aren't blank for an order that demonstrably had values.
+Any row takes a **personal note** - a free-text annotation persisted daemon-side (keyed to the event) that
+rides along into the Search index and the Excel export, so you can label why a bid moved or flag an outage
+for later (#336). Server-side infinite-scroll pagination via a `before_id` cursor. SQL coalesces the bid id
+forward on CREATE_BID rows that land before Braiins echoes the assigned id (1 h window) and carries the bid's
+speed and last-known price forward across events so cells aren't blank for an order that demonstrably had values.
+
+Clicking an alert-condition row (or its chart band / marker) opens a detail drawer that breaks the condition
+into separate rows - the sustained threshold waited out before the alert fired, when it fired, when it
+recovered, the alert-window duration, and the **total condition time** (onset to recovery, the number that
+answers "how long was I actually down?"). When the firing row recorded the exact onset those are exact;
+older rows estimate the threshold from your current alert settings and mark it with `≈` plus a footnote,
+since historical config isn't stored (#341).
 
 A **streaming Excel export** (toolbar button) writes the current filtered feed to a `.xlsx` - frozen header,
 autofilter, fixed column widths, denomination-aware values and unit-labelled headers - built row-by-row so
@@ -380,7 +403,8 @@ live).
 
 **Pool destination** (pool URL, BTC payout address, worker identity auto-derived from the address, Datum
 stats API URL), **Dynamic DNS** (No-IP / DuckDNS / generic dyndns2 - daemon-managed alternative to your
-router's DDNS client; pushes the current public IP every 5 min and immediately on any config save),
+router's DDNS client; pushes the current public IP every 5 min and immediately on any config save; the
+card's test push sends the daemon's own detected public IP, not the IP the dashboard request came from - #339),
 **On-chain payouts** (payout-source backend: bitcoind RPC or an Electrum server such as electrs, Fulcrum, or ElectrumX, plus an *Include historical Ocean
 payouts* toggle with a **Backfill now** button that walks the address history and folds historical
 coinbase payouts into the lifetime-earnings line, and a *Pre-installation earnings* field for off-chain

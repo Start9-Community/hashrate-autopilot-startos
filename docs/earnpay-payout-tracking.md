@@ -114,14 +114,30 @@ later fetch can fill a previously-missing txid.
 
 ### Fetch cadence
 
-- **Backfill**: on startup when `ocean_payouts` is empty (or a stored
-  schema/version marker indicates first run of this feature), fetch
-  `/2020-01-01/<today+1d>` once and upsert all payouts.
+- **Full backfill**: fetch `/2020-01-01/<today+1d>` and upsert all
+  payouts. Runs on **every boot** and then **periodically** (~24 h), not
+  just once when `ocean_payouts` is empty. This is the #343 self-heal:
+  the original "backfill once when empty" left `collected` permanently
+  short if that single fetch came back partial (a transient Ocean hiccup
+  during an upgrade would do it - one operator's collected stayed ~758k
+  sat low, inflating his loss rate from ~7% to ~32%). A full earnpay
+  fetch returns the complete history and re-storing rows you already have
+  is a no-op (`ON CONFLICT DO NOTHING`), so re-running it is safe and
+  fills any gap. Rows pulled by a backfill are marked already-notified so
+  the re-pull never re-alerts on old payouts.
 - **Steady state**: a daemon-internal refresher (per the
   "daemon drives every metric refresh" rule - never a dashboard poll)
   re-fetches a recent trailing window (e.g. last 60 days) on a slow
   cadence (~5 min). Upsert. This catches new payouts and late-populated
   txids without re-pulling full history each tick.
+- **Manual controls** (P&L lifetime card): **rebuild** forces an
+  immediate full backfill (payout re-fetch + Braiins spend-cache
+  refresh); **hard reset** is the nuclear option - it wipes
+  `ocean_payouts` and the Braiins spend cache and rebuilds both from
+  scratch. Hard reset is fetch-before-delete (an Ocean outage aborts it
+  and leaves the store intact), and `ocean_payouts` is a leaf table with
+  no FKs so nothing else references the wiped rows. Both controls report
+  their result inline ("N payouts, collected X").
 - Transient failure (Ocean down, 429, malformed): **never** destructive.
   Keep the existing store, log, retry next cycle. `collected` degrades
   to last-known, exactly as the on-chain path does today.
