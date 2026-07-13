@@ -51,6 +51,14 @@ const REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 // have had a moment to settle.
 const INITIAL_DELAY_MS = 8 * 1000;
 
+/** #343: result of a rebuild/hard-reset, for the operator-facing confirmation. */
+export interface PayoutSyncSummary {
+  /** Stored payout rows for the address after the sync. */
+  readonly payouts: number;
+  /** Lifetime collected (sum of net_sat) after the sync, in sat. */
+  readonly collected_sat: number;
+}
+
 export interface OceanPayoutsServiceOptions {
   readonly oceanClient: OceanClient;
   readonly repo: OceanPayoutsRepo;
@@ -232,9 +240,21 @@ export class OceanPayoutsService {
    * "rebuild" button. Runs a sync immediately and resolves when it's
    * done, so the caller can report a fresh `collected`.
    */
-  async requestFullBackfill(): Promise<void> {
+  async requestFullBackfill(): Promise<PayoutSyncSummary> {
     this.forceFullBackfill = true;
     await this.syncOnce();
+    return this.summary();
+  }
+
+  /** Post-sync tally for the P&L rebuild/reset confirmation (#343). */
+  private async summary(): Promise<PayoutSyncSummary> {
+    const address = this.options.getAddress();
+    if (!address) return { payouts: 0, collected_sat: 0 };
+    const [payouts, collected_sat] = await Promise.all([
+      this.options.repo.countForAddress(address).catch(() => 0),
+      this.options.repo.sumNetUpTo(address, this.now()).catch(() => 0),
+    ]);
+    return { payouts, collected_sat };
   }
 
   /**
@@ -244,9 +264,10 @@ export class OceanPayoutsService {
    * succeeds (see doSync), so an Ocean outage leaves the data intact.
    * Backs the P&L "hard reset" button.
    */
-  async hardReset(): Promise<void> {
+  async hardReset(): Promise<PayoutSyncSummary> {
     this.forceHardReset = true;
     await this.syncOnce();
+    return this.summary();
   }
 
   start(): void {

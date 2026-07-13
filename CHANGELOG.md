@@ -2,6 +2,10 @@
 
 ## 2026-07-13
 
+### `[UI]` P&L rebuild/hard-reset move to the lifetime card + confirm what they did (#343)
+
+The "rebuild" and "hard reset" controls now live on the Profit & Loss **lifetime** card, where the data they rebuild (collected + spent) actually is, instead of the per-day card. And they now confirm the outcome: after running, a short line reports how many payouts were pulled and the resulting collected total (e.g. "hard reset done · 604 payouts · collected 0,0188 ₿"), so you're not left guessing whether it finished.
+
 ### `[Feature]` Profit & Loss "hard reset" button (#343)
 
 Next to "rebuild" on the Profit & Loss panel there's now a "hard reset" - the nuclear option. Where "rebuild" re-fetches and fills gaps, "hard reset" DELETES the stored Ocean payout history and the Braiins spend cache outright and rebuilds both from scratch, so nothing stale can survive. It's safe: the payout wipe is fetch-before-delete (an Ocean outage aborts it and leaves your data intact), re-pulled payouts are marked already-notified so it won't re-alert you about old ones, and no other data references the payout store. The "collected" figure briefly shows 0 while it re-pulls. Use it only if "rebuild" didn't resolve a wrong figure.

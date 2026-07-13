@@ -3191,8 +3191,18 @@ function FinancePanel({
   const qc = useQueryClient();
   const [rebuilding, setRebuilding] = useState(false);
   const [resetting, setResetting] = useState(false);
+  // #343: last rebuild/reset outcome, shown as a confirmation so the
+  // operator knows it finished and what it pulled. Auto-clears.
+  const [finResult, setFinResult] = useState<
+    { kind: 'rebuild' | 'reset'; payouts: number; collected_sat: number } | null
+  >(null);
   const { i18n } = useLingui();
   void i18n;
+
+  const showFinResult = (r: { kind: 'rebuild' | 'reset'; payouts: number; collected_sat: number }) => {
+    setFinResult(r);
+    window.setTimeout(() => setFinResult(null), 12_000);
+  };
 
   const handleRebuild = async () => {
     if (rebuilding) return;
@@ -3204,8 +3214,9 @@ function FinancePanel({
     }
     setRebuilding(true);
     try {
-      await Promise.all([api.rebuildSpendCache(), api.rebuildPayouts()]);
+      const [, payoutRes] = await Promise.all([api.rebuildSpendCache(), api.rebuildPayouts()]);
       qc.invalidateQueries({ queryKey: ['finance'] });
+      showFinResult({ kind: 'rebuild', payouts: payoutRes.payouts ?? 0, collected_sat: payoutRes.collected_sat ?? 0 });
     } finally {
       setRebuilding(false);
     }
@@ -3222,8 +3233,9 @@ function FinancePanel({
     }
     setResetting(true);
     try {
-      await api.hardResetFinance();
+      const res = await api.hardResetFinance();
       qc.invalidateQueries({ queryKey: ['finance'] });
+      showFinResult({ kind: 'reset', payouts: res.payouts ?? 0, collected_sat: res.collected_sat ?? 0 });
     } finally {
       setResetting(false);
     }
@@ -3370,7 +3382,6 @@ function FinancePanel({
           <div className="text-xs uppercase tracking-wider text-slate-100">
             <Trans>Profit &amp; Loss · per day</Trans>
           </div>
-          {headerControls}
         </div>
         {hasPerDay ? (
           // Per-day values are all projections / estimates (Ocean's
@@ -3500,9 +3511,21 @@ function FinancePanel({
           <div className="text-xs uppercase tracking-wider text-slate-100">
             <Trans>Profit &amp; Loss · lifetime</Trans>
           </div>
-          {/* refresh/rebuild controls live on the per-day card only -
-              they refresh the same data, no point duplicating them */}
+          {/* #343: rebuild / hard-reset live here, on the LIFETIME card -
+              they rebuild the lifetime datasets (collected + spent), so
+              this is where they belong (they used to sit on per-day). */}
+          {headerControls}
         </div>
+        {finResult && (
+          <div className="mb-2 text-[11px] text-emerald-300/90 font-mono">
+            {finResult.kind === 'reset' ? <Trans>hard reset done</Trans> : <Trans>rebuild done</Trans>}
+            {' · '}
+            {/* #343: concrete confirmation - how many payouts + the collected total now. */}
+            <Trans>
+              {finResult.payouts} payouts · collected {denomination.formatSat(finResult.collected_sat, intlLocale)}
+            </Trans>
+          </div>
+        )}
         {/* The panel reads as the arithmetic of the net line: an
             explicit leading sign tells the operator which side of the
             ledger each row sits on. Spent is the only subtraction;

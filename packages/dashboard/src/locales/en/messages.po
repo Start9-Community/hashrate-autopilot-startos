@@ -69,6 +69,12 @@ msgstr "(no push attempted yet)"
 msgid "{0} events landed in the same daemon tick - the line shows their combined effect on the rolling-{windowLabel} window. Pool luck went from {luckBeforeText} to {luckAfterText}."
 msgstr "{0} events landed in the same daemon tick - the line shows their combined effect on the rolling-{windowLabel} window. Pool luck went from {luckBeforeText} to {luckAfterText}."
 
+#. placeholder {0}: finResult.payouts
+#. placeholder {1}: denomination.formatSat(finResult.collected_sat, intlLocale)
+#: src/pages/Status.tsx
+msgid "{0} payouts · collected {1}"
+msgstr "{0} payouts · collected {1}"
+
 #. placeholder {0}: conditionLabel(s.event_class)
 #. placeholder {0}: conditionLabel(span.event_class)
 #: src/components/AlertSpanDrawer.tsx
@@ -2296,6 +2302,10 @@ msgid "hard reset"
 msgstr "hard reset"
 
 #: src/pages/Status.tsx
+msgid "hard reset done"
+msgstr "hard reset done"
+
+#: src/pages/Status.tsx
 msgid "Hard reset the Profit & Loss data? This DELETES the stored Ocean payout history and Braiins spend cache, then rebuilds both from scratch. Safe (no other data touched, and it won't re-notify you), but the collected figure will briefly show 0 while it re-pulls."
 msgstr "Hard reset the Profit & Loss data? This DELETES the stored Ocean payout history and Braiins spend cache, then rebuilds both from scratch. Safe (no other data touched, and it won't re-notify you), but the collected figure will briefly show 0 while it re-pulls."
 
@@ -3896,6 +3906,10 @@ msgstr "reason, id, note, address…"
 #: src/pages/Status.tsx
 msgid "rebuild"
 msgstr "rebuild"
+
+#: src/pages/Status.tsx
+msgid "rebuild done"
+msgstr "rebuild done"
 
 #: src/components/HashrateChart.tsx
 #: src/pages/Config.tsx

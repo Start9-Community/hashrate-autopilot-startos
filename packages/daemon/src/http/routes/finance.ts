@@ -296,8 +296,8 @@ export async function registerFinanceRoute(
     if (!deps.oceanPayoutsService) {
       return { ok: false, error: 'ocean payouts service not configured' };
     }
-    await deps.oceanPayoutsService.requestFullBackfill();
-    return { ok: true };
+    const summary = await deps.oceanPayoutsService.requestFullBackfill();
+    return { ok: true, ...summary };
   });
 
   app.post('/api/finance/hard-reset', async () => {
@@ -305,11 +305,11 @@ export async function registerFinanceRoute(
     // payout store from scratch (exact copy of the earnpay ledger, no
     // stale rows) AND re-paginate the Braiins spend cache. The payout wipe
     // is fetch-before-delete, so an Ocean outage leaves the store intact.
-    await Promise.all([
-      deps.oceanPayoutsService?.hardReset() ?? Promise.resolve(),
+    const [summary] = await Promise.all([
+      deps.oceanPayoutsService?.hardReset() ?? Promise.resolve({ payouts: 0, collected_sat: 0 }),
       deps.accountSpend?.rebuild() ?? Promise.resolve(),
     ]);
-    return { ok: true };
+    return { ok: true, ...summary };
   });
 
   app.get('/api/finance', async (): Promise<FinanceResponse> => {
