@@ -744,8 +744,8 @@ msgid "bid id"
 msgstr "id de oferta"
 
 #: src/pages/History.tsx
-msgid "Bid id contains"
-msgstr "ID de oferta contiene"
+#~ msgid "Bid id contains"
+#~ msgstr "ID de oferta contiene"
 
 #: src/components/PriceChart.tsx
 #: src/pages/Config.tsx
@@ -1833,6 +1833,7 @@ msgstr "Arrastra las tarjetas del panel en el orden que quieras"
 msgid "Drag to reorder"
 msgstr "Arrastra para reordenar"
 
+#: src/components/BidEventDrawer.tsx
 #: src/components/ModeBadge.tsx
 msgid "Dry Run"
 msgstr "Dry Run"
@@ -2633,6 +2634,7 @@ msgstr "PAGO POR LIGHTNING"
 msgid "live"
 msgstr "en vivo"
 
+#: src/components/BidEventDrawer.tsx
 #: src/components/ModeBadge.tsx
 msgid "Live"
 msgstr "Live"
@@ -3486,6 +3488,7 @@ msgstr "Pausar"
 msgid "paused"
 msgstr "pausado"
 
+#: src/components/BidEventDrawer.tsx
 #: src/components/ModeBadge.tsx
 #: src/lib/labels.ts
 msgid "Paused"
@@ -3870,6 +3873,10 @@ msgstr "motivo"
 msgid "Reason"
 msgstr "Motivo"
 
+#: src/pages/History.tsx
+msgid "reason, id, note, address…"
+msgstr "motivo, id, nota, dirección…"
+
 #: src/pages/Status.tsx
 msgid "rebuild"
 msgstr "reconstruir"
@@ -4179,6 +4186,10 @@ msgstr "Escaneando..."
 #: src/pages/Config.tsx
 msgid "Scanning…"
 msgstr "Escaneando…"
+
+#: src/pages/History.tsx
+msgid "Search"
+msgstr "Buscar"
 
 #: src/pages/Config.tsx
 msgid "Search settings..."

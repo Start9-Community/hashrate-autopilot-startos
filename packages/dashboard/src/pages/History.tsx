@@ -353,8 +353,15 @@ function readStoredFilters(): BidHistoryFilters {
         (ACTION_KINDS as readonly string[]).includes(k),
       );
     }
-    if (typeof parsed.orderIdContains === 'string' && parsed.orderIdContains.length > 0) {
-      out.orderIdContains = parsed.orderIdContains;
+    // #342: renamed from orderIdContains; accept the old key so a persisted
+    // filter from before the rename still restores.
+    const legacyOrderId = (parsed as { orderIdContains?: unknown }).orderIdContains;
+    const storedText =
+      (typeof parsed.textContains === 'string' && parsed.textContains) ||
+      (typeof legacyOrderId === 'string' && legacyOrderId) ||
+      '';
+    if (storedText.length > 0) {
+      out.textContains = storedText;
     }
     if (typeof parsed.sinceMs === 'number' && Number.isFinite(parsed.sinceMs)) {
       out.sinceMs = parsed.sinceMs;
@@ -700,6 +707,19 @@ export function History() {
   const txUrlTemplate = configQuery.data?.config?.block_explorer_tx_url_template ?? '';
   const blockUrlTemplate = configQuery.data?.config?.block_explorer_url_template ?? '';
 
+  // #342: notes power the client-side text search over the extra rows
+  // (bid events are searched server-side, notes included). Shares the
+  // ['event-notes'] cache with the note fields + the export handler.
+  const notesQuery = useQuery({ queryKey: ['event-notes'], queryFn: () => api.eventNotes() });
+  const noteMap = notesQuery.data?.notes ?? {};
+  // Lowercased free-text term; empty = no text filter. The client sources
+  // (extras + alert spans) match against their visible summary, their
+  // identifier-bearing key (block hash, deposit txid), and their note.
+  const searchTerm = (filters.textContains ?? '').trim().toLowerCase();
+  const matchesText = (parts: Array<string | null | undefined>): boolean =>
+    searchTerm.length === 0 ||
+    parts.some((p) => p != null && p.toLowerCase().includes(searchTerm));
+
   // Bound alert rows to the loaded bid-event range so an old alert can't
   // float at the bottom of the list below a gap of not-yet-loaded bids.
   // When there are no bid events at all, show everything in the window.
@@ -714,9 +734,11 @@ export function History() {
         (shownAlertClasses.has(s.event_class) &&
           s.start_ms <= alertWindow.until &&
           s.start_ms >= alertWindow.since &&
-          (oldestBidTs === null || s.start_ms >= oldestBidTs)),
+          (oldestBidTs === null || s.start_ms >= oldestBidTs) &&
+          // #342: match the condition body/recovery + the span's note.
+          matchesText([s.body, s.recovery_body, s.title, noteMap[`alertspan:${s.open_id}`]])),
     );
-  }, [alertSpansQuery.data, shownAlertClasses, alertWindow, oldestBidTs, highlightedSpanId]);
+  }, [alertSpansQuery.data, shownAlertClasses, alertWindow, oldestBidTs, highlightedSpanId, searchTerm, noteMap]);
 
   // #317: build the extra log rows (payouts / deposits / our pool blocks /
   // IP changes) from their queries, then bound to the loaded bid range
@@ -855,7 +877,9 @@ export function History() {
         (shownExtraKinds.has(it.kind) &&
           it.ts <= alertWindow.until &&
           it.ts >= alertWindow.since &&
-          (oldestBidTs === null || it.ts >= oldestBidTs)),
+          (oldestBidTs === null || it.ts >= oldestBidTs) &&
+          // #342: summary + identifier-bearing key + personal note.
+          matchesText([it.summary, it.key, noteMap[it.key]])),
     );
   }, [
     payoutEvents,
@@ -865,6 +889,8 @@ export function History() {
     retargetsQuery.data,
     alertsLogQuery.data,
     systemEventsQuery.data,
+    searchTerm,
+    noteMap,
     denomination.hashrateUnit,
     shownExtraKinds,
     alertWindow,
@@ -1153,7 +1179,7 @@ export function History() {
     if (
       filters.kinds !== undefined ||
       filters.minAbsPriceDelta != null ||
-      filters.orderIdContains != null ||
+      filters.textContains != null ||
       filters.sinceMs != null
     ) {
       setFilters({});
@@ -1630,16 +1656,16 @@ function Toolbar({
           the wrapper stacks like the rest of the toolbar. */}
       <div className="w-full flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end sm:gap-x-4 sm:gap-y-2">
         <div className="flex flex-col gap-0.5">
-          <label className="text-[10px] tracking-wider text-slate-500"><Trans>Bid id contains</Trans></label>
+          <label className="text-[10px] tracking-wider text-slate-500"><Trans>Search</Trans></label>
           <input
             type="text"
-            value={filters.orderIdContains ?? ''}
-            onChange={(e) => onChange({ ...filters, orderIdContains: e.target.value || undefined })}
-            placeholder="B866…"
+            value={filters.textContains ?? ''}
+            onChange={(e) => onChange({ ...filters, textContains: e.target.value || undefined })}
+            placeholder={t`reason, id, note, address…`}
             spellCheck={false}
             autoCapitalize="none"
             autoCorrect="off"
-            className="w-full sm:w-32 text-[11px] font-mono bg-slate-950 border border-slate-700 rounded px-1.5 py-0.5 text-slate-200 focus:outline-none focus:border-amber-700"
+            className="w-full sm:w-48 text-[11px] font-mono bg-slate-950 border border-slate-700 rounded px-1.5 py-0.5 text-slate-200 focus:outline-none focus:border-amber-700"
           />
         </div>
         {/* From + To form one logical date-range pair. On mobile they sit

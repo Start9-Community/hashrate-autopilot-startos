@@ -744,8 +744,8 @@ msgid "bid id"
 msgstr "bid id"
 
 #: src/pages/History.tsx
-msgid "Bid id contains"
-msgstr "Bid id contains"
+#~ msgid "Bid id contains"
+#~ msgstr "Bid id contains"
 
 #: src/components/PriceChart.tsx
 #: src/pages/Config.tsx
@@ -1833,6 +1833,7 @@ msgstr "Drag the dashboard cards into the order you want"
 msgid "Drag to reorder"
 msgstr "Drag to reorder"
 
+#: src/components/BidEventDrawer.tsx
 #: src/components/ModeBadge.tsx
 msgid "Dry Run"
 msgstr "Dry Run"
@@ -2633,6 +2634,7 @@ msgstr "LIGHTNING PAYOUT"
 msgid "live"
 msgstr "live"
 
+#: src/components/BidEventDrawer.tsx
 #: src/components/ModeBadge.tsx
 msgid "Live"
 msgstr "Live"
@@ -3486,6 +3488,7 @@ msgstr "Pause"
 msgid "paused"
 msgstr "paused"
 
+#: src/components/BidEventDrawer.tsx
 #: src/components/ModeBadge.tsx
 #: src/lib/labels.ts
 msgid "Paused"
@@ -3870,6 +3873,10 @@ msgstr "reason"
 msgid "Reason"
 msgstr "Reason"
 
+#: src/pages/History.tsx
+msgid "reason, id, note, address…"
+msgstr "reason, id, note, address…"
+
 #: src/pages/Status.tsx
 msgid "rebuild"
 msgstr "rebuild"
@@ -4179,6 +4186,10 @@ msgstr "Scanning..."
 #: src/pages/Config.tsx
 msgid "Scanning…"
 msgstr "Scanning…"
+
+#: src/pages/History.tsx
+msgid "Search"
+msgstr "Search"
 
 #: src/pages/Config.tsx
 msgid "Search settings..."

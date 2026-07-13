@@ -178,7 +178,13 @@ export class BidEventsRepo {
     beforeId?: number;
     kinds?: ReadonlyArray<BidEventKind>;
     source?: BidEventSource;
-    orderIdContains?: string;
+    /**
+     * #342: free-text search, matched case-insensitively against the bid
+     * id, the reason, AND the row's personal note (event_notes keyed
+     * `event:<id>`). Was a bid-id-only substring; widened so the Timeline
+     * search finds a hit in any of the three across the full history.
+     */
+    textSearch?: string;
     sinceMs?: number;
     untilMs?: number;
     /** Absolute |new_price_sat - old_price_sat| in sat/EH/day. EDIT_PRICE only. */
@@ -201,6 +207,12 @@ export class BidEventsRepo {
     >
   > {
     const where: string[] = [];
+    // Bound parameters for the free-text search (#342). Everything else in
+    // this hand-written query interpolates validated numbers/enums; the
+    // free-text term is the one untrusted string, so it goes through
+    // positional `?` binding instead. These are the ONLY placeholders in
+    // the statement, so they bind in push order.
+    const params: unknown[] = [];
     if (args.beforeId !== undefined && Number.isFinite(args.beforeId)) {
       where.push(`e.id < ${Math.floor(args.beforeId)}`);
     }
@@ -219,8 +231,18 @@ export class BidEventsRepo {
     if (args.source) {
       where.push(`e.source = '${args.source}'`);
     }
-    if (args.orderIdContains && /^[A-Za-z0-9._-]+$/.test(args.orderIdContains)) {
-      where.push(`e.braiins_order_id LIKE '%${args.orderIdContains}%'`);
+    const term = args.textSearch?.trim();
+    if (term) {
+      // Escape LIKE wildcards so a literal % / _ / \ in the query matches
+      // itself; bound as a parameter so quotes/arrows/spaces are safe.
+      const pat = `%${term.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+      where.push(
+        `(e.braiins_order_id LIKE ? ESCAPE '\\'` +
+          ` OR e.reason LIKE ? ESCAPE '\\'` +
+          ` OR EXISTS (SELECT 1 FROM event_notes n` +
+          ` WHERE n.event_key = 'event:' || e.id AND n.note LIKE ? ESCAPE '\\'))`,
+      );
+      params.push(pat, pat, pat);
     }
     if (args.sinceMs !== undefined && Number.isFinite(args.sinceMs)) {
       where.push(`e.occurred_at >= ${Math.floor(args.sinceMs)}`);
@@ -319,7 +341,7 @@ export class BidEventsRepo {
     // Kysely raw passthrough.
     const result = await this.db.executeQuery({
       sql: sqlText,
-      parameters: [],
+      parameters: params,
       query: { kind: 'RawNode' as never },
     } as never);
     type Row = BidEventRow & {

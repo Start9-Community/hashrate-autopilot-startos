@@ -243,7 +243,8 @@ export interface BidHistoryPage {
 export interface BidHistoryFilters {
   kinds?: ReadonlyArray<'CREATE_BID' | 'EDIT_PRICE' | 'EDIT_SPEED' | 'CANCEL_BID' | 'MODE_CHANGE' | 'BID_PAUSED' | 'BID_RESUMED'>;
   source?: 'AUTOPILOT' | 'OPERATOR';
-  orderIdContains?: string;
+  /** #342: free-text search across bid id, reason, and note (server-side). */
+  textContains?: string;
   sinceMs?: number;
   untilMs?: number;
   /** In sat/PH/day. EDIT_PRICE events with |Δ| < this are hidden. */
@@ -896,7 +897,7 @@ export const api = {
     // every action" - and omit it only when undefined (no filter).
     if (filters.kinds !== undefined) qs.set('kinds', filters.kinds.join(','));
     if (filters.source) qs.set('source', filters.source);
-    if (filters.orderIdContains) qs.set('order_id', filters.orderIdContains);
+    if (filters.textContains) qs.set('q', filters.textContains);
     if (filters.sinceMs != null) qs.set('since_ms', String(filters.sinceMs));
     if (filters.untilMs != null) qs.set('until_ms', String(filters.untilMs));
     if (filters.minAbsPriceDelta != null && filters.minAbsPriceDelta > 0) {

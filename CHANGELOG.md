@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-07-13
+
+### `[Feature]` Timeline "Bid id" box is now a smart full-text search (#342)
+
+The Timeline's "Bid id contains" filter is now a general "Search" box that matches, case-insensitively, across the bid id, the Reason text, your personal note on the row, and the identifiers a row shows (block height/hash, IP addresses, deposit tx ids, config-change values). It searches your entire history, not just the loaded rows: the daemon matches reason + note (via the event-notes join), so a hit in an old row that hasn't paged in yet still surfaces. The merged extra rows (blocks, payouts, IP changes, difficulty retargets, config changes, alerts) are filtered client-side against their summary + identifiers + note. It ANDs with the type chips and date range as before. The free-text term is now a bound SQL parameter with LIKE-wildcard escaping.
+
 ## 2026-07-12
 
 ### `[Fix]` Alert duration now reflects the true outage window (#341)
