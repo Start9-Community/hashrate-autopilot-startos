@@ -2,6 +2,10 @@
 
 ## 2026-07-13
 
+### `[Fix]` Timeline search finds CREATE rows by their bid id (#342)
+
+The new Timeline search returned nothing when you searched a bid id and had the Action filter narrowed to "create" only. A CREATE event is recorded before Braiins echoes back the order id, so its stored id is null and the id shown on the row is forward-filled from the next event. The search matched the raw (null) column instead of that forward-filled id, so creates were unfindable by id. It now matches the effective id, so searching a bid id surfaces its create too.
+
 ### `[Fix]` Profit & Loss "collected" self-heals when the payout store is incomplete (#343)
 
 The P&L "collected" figure comes from a local store of Ocean's earnpay payout history. That store was full-backfilled exactly once (only when empty), so if that single fetch ever came back partial - a transient Ocean hiccup during the upgrade would do it - collected stayed permanently short, inflating the loss rate (one operator jumped from ~7% to ~32%), with no way to recover. The daemon now re-runs the full backfill periodically (and on every restart), which re-fetches the complete history and fills any gaps - a full earnpay fetch returns everything, and re-storing rows you already have is a no-op, so it's safe. The Profit & Loss "rebuild" button now also forces this payout re-fetch (not just the spend cache), for an instant fix. Unpaid earnings and spend were never affected.

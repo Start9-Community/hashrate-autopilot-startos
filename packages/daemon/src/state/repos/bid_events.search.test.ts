@@ -56,6 +56,22 @@ describe('BidEventsRepo.listEventsForHistory - textSearch (#342)', () => {
     expect(rows).toHaveLength(1);
   });
 
+  it('finds a CREATE row by id even though its raw braiins_order_id is null', async () => {
+    // A CREATE is recorded before Braiins echoes the id, so its raw column
+    // is null; the id is forward-filled from the next event (effective_order_id).
+    // Searching by that id AND filtering to CREATE_BID must still return it -
+    // the combination that returned 0 on the live dashboard.
+    await repo.insert(ev({ kind: 'CREATE_BID', braiins_order_id: null, reason: 'create at 50' }, 5_000));
+    await repo.insert(ev({ kind: 'EDIT_PRICE', braiins_order_id: 'B55501', reason: 'track' }, 5_500));
+    const rows = await repo.listEventsForHistory({
+      limit: 100,
+      kinds: ['CREATE_BID'],
+      textSearch: 'B55501',
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.kind).toBe('CREATE_BID');
+  });
+
   it('matches the row personal note (event_notes join)', async () => {
     // Note keyed by the EDIT_PRICE row's id (event:<id>).
     const all = await repo.listEventsForHistory({ limit: 100 });

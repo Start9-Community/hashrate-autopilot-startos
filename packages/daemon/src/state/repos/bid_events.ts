@@ -236,8 +236,15 @@ export class BidEventsRepo {
       // Escape LIKE wildcards so a literal % / _ / \ in the query matches
       // itself; bound as a parameter so quotes/arrows/spaces are safe.
       const pat = `%${term.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+      // Match the EFFECTIVE order id, not the raw column: a CREATE row is
+      // recorded before Braiins echoes its id back, so `braiins_order_id`
+      // is NULL on creates and the id the operator sees (and searches for)
+      // is the forward-filled `effective_order_id` from the CTE. Matching
+      // the raw column made creates unfindable by id (#342 follow-up).
+      // effective = COALESCE(raw, forward-filled), so this also covers
+      // every row whose raw id is set.
       where.push(
-        `(e.braiins_order_id LIKE ? ESCAPE '\\'` +
+        `(e.effective_order_id LIKE ? ESCAPE '\\'` +
           ` OR e.reason LIKE ? ESCAPE '\\'` +
           ` OR EXISTS (SELECT 1 FROM event_notes n` +
           ` WHERE n.event_key = 'event:' || e.id AND n.note LIKE ? ESCAPE '\\'))`,
