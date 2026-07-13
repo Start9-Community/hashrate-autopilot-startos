@@ -382,9 +382,12 @@ export async function createHttpServer(deps: HttpServerDeps): Promise<HttpServer
         // hashes and perma-breaks the dashboard on rebuild.
         maxAge: '1y',
         immutable: true,
-        setHeaders(res, path) {
+        // @fastify/static v10 hands the setHeaders callback a FastifyReply
+        // (was the raw ServerResponse in v9), so use reply.header(), not
+        // res.setHeader().
+        setHeaders(reply, path) {
           if (path.endsWith('.html')) {
-            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+            reply.header('Cache-Control', 'no-cache, no-store, must-revalidate');
           }
         },
       });

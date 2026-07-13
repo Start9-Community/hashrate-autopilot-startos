@@ -2,6 +2,10 @@
 
 ## 2026-07-13
 
+### `[Infra]` Dependency bumps: @fastify/static v10, @fastify/cors, dev tooling (#344, #345)
+
+Merged the grouped Dependabot updates. `@fastify/static` went from 9 to 10 (major): its `setHeaders` callback now receives a Fastify reply instead of the raw Node response, so the dashboard's HTML no-cache headers were updated to `reply.header(...)`; static asset serving and the immutable-asset/no-cache-HTML behavior are unchanged. Also `@fastify/cors` 11.2 to 11.3, and dev-only bumps (eslint, prettier, tsx, typescript-eslint, vite). No user-visible behavior change.
+
 ### `[UI]` Durations round to the nearest unit instead of truncating (#341)
 
 Duration labels (alert drawer total, chart tooltips, "was open for Xm") rounded down: a 15m56s total showed "15m" even though the recovery text correctly said "was zero for 16m". Durations now round to the nearest displayed unit - 30s and up rounds a minute up - so the numbers match and no longer read a whole minute short.

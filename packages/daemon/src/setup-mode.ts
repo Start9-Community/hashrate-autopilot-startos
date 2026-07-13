@@ -194,9 +194,10 @@ export async function createSetupModeServer(
         prefix: '/',
         maxAge: '1y',
         immutable: true,
-        setHeaders(res, path) {
+        // @fastify/static v10: setHeaders receives a FastifyReply now.
+        setHeaders(reply, path) {
           if (path.endsWith('.html')) {
-            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+            reply.header('Cache-Control', 'no-cache, no-store, must-revalidate');
           }
         },
       });
