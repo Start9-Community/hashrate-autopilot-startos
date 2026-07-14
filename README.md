@@ -498,7 +498,7 @@ Pick whichever matches how the rest of your stack is run.
 
 | Path | Best when | Footprint |
 |---|---|---|
-| **A - Umbrel app store** | You already run Umbrel and want a one-click install. | Community App Store install works today (Path A below). Inclusion in the main Umbrel App Store is pending review of [getumbrel/umbrel-apps#5685](https://github.com/getumbrel/umbrel-apps/pull/5685). |
+| **A - Umbrel app store** | You already run Umbrel and want a one-click install. | Available in the official Umbrel App Store (search "Hashrate Autopilot"), and in the Community App Store (Path A below) which usually gets new versions a little sooner. |
 | **B - Docker on a Linux box** | You have a small always-on Linux machine (NUC, Mini PC, Raspberry Pi, VPS) and don't want to install a Node.js toolchain on it. | One container, one volume, one port. Recommended for a fresh box. |
 | **C - Bare-metal Node install** | You want to run from source, hack on it, or already have Node 22 + pnpm 10 around. | A git checkout + `pnpm install` + `./scripts/start.sh`. Same wizard as Path B. |
 | **D - Power-user CLI with SOPS** | You want secrets at rest in a `sops`-encrypted file (because that's how the rest of your ops is structured), not in `state.db`. | Adds `sops` + `age` to the bare-metal install; runs `pnpm run setup` instead of the web wizard. |
