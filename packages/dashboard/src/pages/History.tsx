@@ -31,6 +31,7 @@ import {
   CONDITION_OPEN_CLASSES,
   CONDITION_RECOVERY_CLASSES,
   conditionSpanClass,
+  TILE_CATALOGUE,
 } from '@hashrate-autopilot/shared';
 import {
   api,
@@ -38,6 +39,8 @@ import {
   type BidHistoryFilters,
   type BidHistoryFlatEvent,
   type BidEventView,
+  type RewardEventView,
+  type SystemEventView,
 } from '../lib/api';
 import {
   useDenomination,
@@ -48,8 +51,16 @@ import {
 } from '../lib/denomination';
 import { useFormatters } from '../lib/locale';
 import { formatNumber, formatDuration } from '../lib/format';
-import { CHART_COLOR_DEFAULTS, type ChartColorKey } from '../lib/chartColors';
-import { formatConfigChange, type HashrateUnit } from '../lib/configFieldFormat';
+import { getChartColor, type ChartColorKey } from '../lib/chartColors';
+import { useChartColorOverrides, type ChartColorOverrides } from '../lib/chartColorOverrides';
+import { formatConfigChange, configFieldLabel, type HashrateUnit } from '../lib/configFieldFormat';
+import {
+  isListField,
+  isColorMapField,
+  parseIdList,
+  diffIdList,
+  diffColorMap,
+} from '../lib/configChangeDiff';
 import { applyExplorerTemplate } from '../lib/blockExplorer';
 import {
   logExtraJumpUrl,
@@ -71,6 +82,7 @@ import { conditionLabel } from '../lib/alertConditions';
 import { DatePicker } from '../components/DatePicker';
 import { BidEventDrawer } from '../components/BidEventDrawer';
 import { AlertSpanDrawer } from '../components/AlertSpanDrawer';
+import { EventNoteField } from '../components/EventNoteField';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 
@@ -126,18 +138,38 @@ const BLOCK_VARIANT_SLOT: Record<BlockVariant, ChartColorKey> = {
   bip110: 'hashrate.pool_block_bip110',
 };
 
-function logExtraColor(kind: LogExtraKind, blockVariant?: BlockVariant, eventClass?: string): string {
+/** #334: bid-event action glyph → its chart color key, so the Timeline
+ *  glyph honors the operator's event-color overrides like the chart does. */
+const ACTION_COLOR_KEY: Record<BidEventView['kind'], ChartColorKey> = {
+  CREATE_BID: 'events.create',
+  EDIT_PRICE: 'events.edit_price',
+  EDIT_SPEED: 'events.edit_speed',
+  CANCEL_BID: 'events.cancel',
+  MODE_CHANGE: 'events.mode_change',
+  BID_PAUSED: 'events.bid_paused',
+  BID_RESUMED: 'events.bid_resumed',
+};
+
+function logExtraColor(
+  kind: LogExtraKind,
+  overrides: ChartColorOverrides,
+  blockVariant?: BlockVariant,
+  eventClass?: string,
+): string {
   if (kind === 'alert') {
     // #318 follow-up: "payout initiated" is good news, not a problem -
     // give it the positive payout-gem green instead of the alert amber.
+    // (No configurable chart-color key for these, so they stay fixed.)
     return eventClass === 'payout_initiated' ? '#10b981' : '#fbbf24';
   }
-  if (kind === 'config') return '#a78bfa'; // violet-400 - config change
-  if (kind === 'boot') return '#34d399'; // emerald-400 - daemon started
+  if (kind === 'config') return '#a78bfa'; // violet-400 - config change (no key)
+  if (kind === 'boot') return '#34d399'; // emerald-400 - daemon started (no key)
+  // #334: resolve through the operator's overrides so a recolored marker
+  // matches the chart everywhere it appears.
   if (kind === 'block') {
-    return CHART_COLOR_DEFAULTS[BLOCK_VARIANT_SLOT[blockVariant ?? 'others']];
+    return getChartColor(BLOCK_VARIANT_SLOT[blockVariant ?? 'others'], overrides);
   }
-  return CHART_COLOR_DEFAULTS[LOG_EXTRA_COLOR_SLOT[kind]];
+  return getChartColor(LOG_EXTRA_COLOR_SLOT[kind], overrides);
 }
 
 function logExtraLabel(kind: LogExtraKind): string {
@@ -173,7 +205,7 @@ function LogExtraGlyph({
   blockVariant?: BlockVariant;
   eventClass?: string;
 }) {
-  const color = logExtraColor(kind, blockVariant, eventClass);
+  const color = logExtraColor(kind, useChartColorOverrides(), blockVariant, eventClass);
   const base = {
     width: 12,
     height: 12,
@@ -318,8 +350,15 @@ function readStoredFilters(): BidHistoryFilters {
         (ACTION_KINDS as readonly string[]).includes(k),
       );
     }
-    if (typeof parsed.orderIdContains === 'string' && parsed.orderIdContains.length > 0) {
-      out.orderIdContains = parsed.orderIdContains;
+    // #342: renamed from orderIdContains; accept the old key so a persisted
+    // filter from before the rename still restores.
+    const legacyOrderId = (parsed as { orderIdContains?: unknown }).orderIdContains;
+    const storedText =
+      (typeof parsed.textContains === 'string' && parsed.textContains) ||
+      (typeof legacyOrderId === 'string' && legacyOrderId) ||
+      '';
+    if (storedText.length > 0) {
+      out.textContains = storedText;
     }
     if (typeof parsed.sinceMs === 'number' && Number.isFinite(parsed.sinceMs)) {
       out.sinceMs = parsed.sinceMs;
@@ -560,11 +599,19 @@ export function History() {
   // #316: alert-condition spans, fetched for the toolbar's date window
   // (default: last year) and merged into the feed as rows. Sparse, so a
   // single fetch covers the whole window.
+  // Without an explicit end-date filter the upper bound tracks the live
+  // edge. `lastFetchAt` (react-query's dataUpdatedAt) ticks on every poll,
+  // so keying the memo on it advances `until` each refetch instead of
+  // freezing it at mount - otherwise every merged extra source (boots,
+  // payouts, blocks, alerts, deposits, retargets) is clipped at page-open
+  // time and events that happen while the page stays open never appear
+  // until reload. This also repairs "following" mode, which clears
+  // untilMs but still saw the frozen bound.
   const alertWindow = useMemo(() => {
-    const until = filters.untilMs ?? Date.now();
+    const until = filters.untilMs ?? Math.max(Date.now(), lastFetchAt);
     const since = filters.sinceMs ?? until - YEAR_MS;
     return { since, until };
-  }, [filters.sinceMs, filters.untilMs]);
+  }, [filters.sinceMs, filters.untilMs, lastFetchAt]);
   // #320 audit follow-up: while following, the merged sources poll at
   // the same 15 s as the bid feed so a fresh payout/block/alert doesn't
   // lag up to a minute behind the rows around it.
@@ -578,21 +625,48 @@ export function History() {
 
   // #317: extra event types folded into the log. Reuse the existing
   // endpoints; these are all sparse so a single fetch each is fine.
+  // Query keys are shared with Status / the block-found sound - a
+  // page-private key (['history-ocean'] etc.) meant the same endpoint
+  // was polled twice concurrently under two cache entries whenever
+  // this page was open. Same key = one shared cache + request dedup;
+  // each observer keeps its own refetchInterval.
+  // #323: payouts come from Ocean's payout ledger (earnpay), the same
+  // source as the Price chart's gems - so a gem's "View in timeline"
+  // key (`payout:<ocean_payouts.id>`) matches the row here, and
+  // Lightning payouts appear in the Timeline too. Shared cache key with
+  // Status.
   const payoutsQuery = useQuery({
-    queryKey: ['history-reward-events'],
-    queryFn: () => api.rewardEvents(),
+    queryKey: ['payout-ledger'],
+    queryFn: () => api.payoutLedger(),
     placeholderData: keepPreviousData,
     refetchInterval: extraRefetchMs,
   });
+  // Map ledger rows into the RewardEventView shape the rest of the page
+  // consumes. Lightning payouts have no txid (empty => no explorer link)
+  // and no block height (earnpay doesn't carry one).
+  const payoutEvents = useMemo<RewardEventView[]>(
+    () =>
+      (payoutsQuery.data?.payouts ?? []).map((p) => ({
+        id: p.id,
+        txid: p.on_chain_txid ?? '',
+        vout: 0,
+        block_height: 0,
+        value_sat: p.net_sat,
+        detected_at: p.ts_ms,
+        reorged: false,
+        rail: p.rail,
+      })),
+    [payoutsQuery.data?.payouts],
+  );
   const depositsQuery = useQuery({
-    queryKey: ['history-deposits'],
+    queryKey: ['deposits'],
     queryFn: () => api.deposits(),
     placeholderData: keepPreviousData,
     refetchInterval: extraRefetchMs,
   });
   const oceanQuery = useQuery({
-    queryKey: ['history-ocean'],
-    queryFn: () => api.ocean(),
+    queryKey: ['ocean'],
+    queryFn: api.ocean,
     placeholderData: keepPreviousData,
     refetchInterval: extraRefetchMs,
   });
@@ -630,6 +704,19 @@ export function History() {
   const txUrlTemplate = configQuery.data?.config?.block_explorer_tx_url_template ?? '';
   const blockUrlTemplate = configQuery.data?.config?.block_explorer_url_template ?? '';
 
+  // #342: notes power the client-side text search over the extra rows
+  // (bid events are searched server-side, notes included). Shares the
+  // ['event-notes'] cache with the note fields + the export handler.
+  const notesQuery = useQuery({ queryKey: ['event-notes'], queryFn: () => api.eventNotes() });
+  const noteMap = notesQuery.data?.notes ?? {};
+  // Lowercased free-text term; empty = no text filter. The client sources
+  // (extras + alert spans) match against their visible summary, their
+  // identifier-bearing key (block hash, deposit txid), and their note.
+  const searchTerm = (filters.textContains ?? '').trim().toLowerCase();
+  const matchesText = (parts: Array<string | null | undefined>): boolean =>
+    searchTerm.length === 0 ||
+    parts.some((p) => p != null && p.toLowerCase().includes(searchTerm));
+
   // Bound alert rows to the loaded bid-event range so an old alert can't
   // float at the bottom of the list below a gap of not-yet-loaded bids.
   // When there are no bid events at all, show everything in the window.
@@ -644,22 +731,23 @@ export function History() {
         (shownAlertClasses.has(s.event_class) &&
           s.start_ms <= alertWindow.until &&
           s.start_ms >= alertWindow.since &&
-          (oldestBidTs === null || s.start_ms >= oldestBidTs)),
+          (oldestBidTs === null || s.start_ms >= oldestBidTs) &&
+          // #342: match the condition body/recovery + the span's note.
+          matchesText([s.body, s.recovery_body, s.title, noteMap[`alertspan:${s.open_id}`]])),
     );
-  }, [alertSpansQuery.data, shownAlertClasses, alertWindow, oldestBidTs, highlightedSpanId]);
+  }, [alertSpansQuery.data, shownAlertClasses, alertWindow, oldestBidTs, highlightedSpanId, searchTerm, noteMap]);
 
   // #317: build the extra log rows (payouts / deposits / our pool blocks /
   // IP changes) from their queries, then bound to the loaded bid range
   // (or force-show a deep-linked row) exactly like the alert rows.
   const visibleExtras: LogExtraItem[] = useMemo(() => {
     const all: LogExtraItem[] = [];
-    for (const e of payoutsQuery.data?.events ?? []) {
-      if (e.reorged) continue;
+    for (const e of payoutEvents) {
       all.push({
         kind: 'payout',
         key: `payout:${e.id}`,
         ts: e.detected_at,
-        summary: `${formatNumber(e.value_sat, {})} sat · block ${e.block_height}`,
+        summary: `${formatNumber(e.value_sat, {})} sat · ${e.rail === 'lightning' ? t`Lightning` : t`on-chain`}`,
         payout: e,
       });
     }
@@ -735,14 +823,39 @@ export function History() {
     for (const s of systemEventsQuery.data?.events ?? []) {
       if (s.kind === 'config_change') {
         const unit = denomination.hashrateUnit as HashrateUnit;
-        const human = s.field
-          ? formatConfigChange(s.field, s.old_value, s.new_value, unit, (n) => formatNumber(n, {}))
-          : { label: t`config change`, change: `${s.old_value ?? '—'} → ${s.new_value ?? '—'}` };
+        let summary: string;
+        // JSON/list fields (dashboard tiles, card order, muted alerts,
+        // chart colors) dump an unreadable raw array; the row gets a
+        // compact "what changed" line, the +/- detail lives in the panel.
+        if (s.field && isColorMapField(s.field)) {
+          const label = configFieldLabel(s.field);
+          const n = diffColorMap(s.old_value, s.new_value).length;
+          summary = n > 0 ? t`${label} changed (${n} recolored)` : t`${label} changed`;
+        } else if (s.field && isListField(s.field)) {
+          const label = configFieldLabel(s.field);
+          const d = diffIdList(
+            parseIdList(s.field, s.old_value),
+            parseIdList(s.field, s.new_value),
+          );
+          const na = d.added.length;
+          const nr = d.removed.length;
+          if (d.unchanged) summary = t`${label} changed`;
+          else if (d.reorderedOnly) summary = t`${label} reordered`;
+          else if (na > 0 && nr > 0 && na === nr) summary = t`${label} changed (${na} replaced)`;
+          else if (na > 0 && nr > 0) summary = t`${label} changed (${na} added, ${nr} removed)`;
+          else if (na > 0) summary = t`${label} changed (${na} added)`;
+          else summary = t`${label} changed (${nr} removed)`;
+        } else {
+          const human = s.field
+            ? formatConfigChange(s.field, s.old_value, s.new_value, unit, (n) => formatNumber(n, {}))
+            : { label: t`config change`, change: `${s.old_value ?? '—'} → ${s.new_value ?? '—'}` };
+          summary = `${human.label}: ${human.change}`;
+        }
         all.push({
           kind: 'config',
           key: `config:${s.id}`,
           ts: s.occurred_at,
-          summary: `${human.label}: ${human.change}`,
+          summary,
           system: s,
         });
       } else if (s.kind === 'daemon_started') {
@@ -761,16 +874,20 @@ export function History() {
         (shownExtraKinds.has(it.kind) &&
           it.ts <= alertWindow.until &&
           it.ts >= alertWindow.since &&
-          (oldestBidTs === null || it.ts >= oldestBidTs)),
+          (oldestBidTs === null || it.ts >= oldestBidTs) &&
+          // #342: summary + identifier-bearing key + personal note.
+          matchesText([it.summary, it.key, noteMap[it.key]])),
     );
   }, [
-    payoutsQuery.data,
+    payoutEvents,
     depositsQuery.data,
     oceanQuery.data,
     ipChangesQuery.data,
     retargetsQuery.data,
     alertsLogQuery.data,
     systemEventsQuery.data,
+    searchTerm,
+    noteMap,
     denomination.hashrateUnit,
     shownExtraKinds,
     alertWindow,
@@ -840,7 +957,9 @@ export function History() {
       // them in memory, sorted newest-first, then MERGE against the
       // paged/streamed bid events so the whole set is never materialized.
       const extras: Array<{ ts: number; row: TimelineExportRow }> = [];
-      const extraRow = (ts: number, type: string, reason: string) =>
+      // #336: fold the operator's per-event notes into the export.
+      const noteMap = (await api.eventNotes()).notes;
+      const extraRow = (ts: number, type: string, reason: string, key: string) =>
         extras.push({
           ts,
           row: {
@@ -854,6 +973,7 @@ export function History() {
             deltaPrice: null,
             speed: null,
             reason,
+            note: noteMap[key] ?? '',
           },
         });
       // Convert canonical values (sat/PH/day rates, PH/s hashrate) into
@@ -893,58 +1013,59 @@ export function History() {
                 hashrate: (n) => denomination.formatHashrate(n),
               })
             : '',
+          note: noteMap[`event:${e.id}`] ?? '',
         };
       };
 
       if (shownExtraKinds.has('payout'))
-        for (const p of payoutsQuery.data?.events ?? []) {
-          if (p.reorged || !inRange(p.detected_at)) continue;
-          extraRow(p.detected_at, logExtraLabel('payout'), `${formatNumber(p.value_sat, {})} sat · block ${p.block_height}`);
+        for (const p of payoutEvents) {
+          if (!inRange(p.detected_at)) continue;
+          extraRow(p.detected_at, logExtraLabel('payout'), `${formatNumber(p.value_sat, {})} sat · ${p.rail === 'lightning' ? t`Lightning` : t`on-chain`}`, `payout:${p.id}`);
         }
       if (shownExtraKinds.has('deposit'))
         for (const d of depositsQuery.data?.deposits ?? []) {
           const ts = d.credited_at_ms ?? d.tx_timestamp_ms ?? d.first_seen_at_ms;
           if (!inRange(ts)) continue;
-          extraRow(ts, logExtraLabel('deposit'), `${formatNumber(d.amount_sat, {})} sat · ${d.tx_id}`);
+          extraRow(ts, logExtraLabel('deposit'), `${formatNumber(d.amount_sat, {})} sat · ${d.tx_id}`, `deposit:${d.tx_id}`);
         }
       if (shownExtraKinds.has('block'))
         for (const b of oceanQuery.data?.our_recent_blocks ?? []) {
           if (!inRange(b.timestamp_ms)) continue;
           const lbl = b.found_by_us ? t`own pool block` : b.signals_bip110 === true ? t`BIP 110 block` : t`pool block`;
-          extraRow(b.timestamp_ms, lbl, `block ${b.height} · ${formatNumber(b.total_reward_sat, {})} sat · ${b.block_hash}`);
+          extraRow(b.timestamp_ms, lbl, `block ${b.height} · ${formatNumber(b.total_reward_sat, {})} sat · ${b.block_hash}`, `block:${b.block_hash}`);
         }
       if (shownExtraKinds.has('ip'))
         for (const c of ipChangesQuery.data?.events ?? []) {
           if (!inRange(c.occurred_at)) continue;
-          extraRow(c.occurred_at, logExtraLabel('ip'), `${c.old_ip ?? '—'} → ${c.new_ip}`);
+          extraRow(c.occurred_at, logExtraLabel('ip'), `${c.old_ip ?? '—'} → ${c.new_ip}`, `ip:${c.id}`);
         }
       if (shownExtraKinds.has('retarget'))
         for (const r of retargetsQuery.data?.retargets ?? []) {
           if (!inRange(r.tick_at)) continue;
           const pct = ((r.difficulty - r.previous) / r.previous) * 100;
-          extraRow(r.tick_at, logExtraLabel('retarget'), `${(r.difficulty / 1e12).toFixed(1)} T · ${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%`);
+          extraRow(r.tick_at, logExtraLabel('retarget'), `${(r.difficulty / 1e12).toFixed(1)} T · ${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%`, `retarget:${r.tick_at}`);
         }
       if (shownExtraKinds.has('alert'))
         for (const a of alertsLogQuery.data?.alerts ?? []) {
           const ec = a.event_class;
           if (!ec || ALERT_COVERED_ELSEWHERE.has(ec) || !inRange(a.created_at)) continue;
-          extraRow(a.created_at, pointAlertLabel(ec), a.body || a.title);
+          extraRow(a.created_at, pointAlertLabel(ec), a.body || a.title, `alert:${a.id}`);
         }
       for (const s of systemEventsQuery.data?.events ?? []) {
         if (!inRange(s.occurred_at)) continue;
         if (s.kind === 'config_change' && shownExtraKinds.has('config'))
-          extraRow(s.occurred_at, logExtraLabel('config'), `${s.field ?? '?'}: ${s.old_value ?? '—'} → ${s.new_value ?? '—'}`);
+          extraRow(s.occurred_at, logExtraLabel('config'), `${s.field ?? '?'}: ${s.old_value ?? '—'} → ${s.new_value ?? '—'}`, `config:${s.id}`);
         else if (s.kind === 'daemon_started' && shownExtraKinds.has('boot'))
-          extraRow(s.occurred_at, logExtraLabel('boot'), s.detail ?? '');
+          extraRow(s.occurred_at, logExtraLabel('boot'), s.detail ?? '', `boot:${s.id}`);
       }
       for (const s of alertSpansQuery.data?.spans ?? []) {
         if (!shownAlertClasses.has(s.event_class)) continue;
         if (inRange(s.start_ms)) {
-          extraRow(s.start_ms, conditionLabel(s.event_class), s.body ?? '');
+          extraRow(s.start_ms, conditionLabel(s.event_class), s.body ?? '', `alertspan:${s.open_id}`);
         }
         // #322: real recoveries export as their own rows too.
         if (s.end_ms !== null && s.recovery_body != null && inRange(s.end_ms)) {
-          extraRow(s.end_ms, t`${conditionLabel(s.event_class)} resolved`, s.recovery_body);
+          extraRow(s.end_ms, t`${conditionLabel(s.event_class)} resolved`, s.recovery_body, `alertspan:${s.open_id}`);
         }
       }
       extras.sort((a, b) => b.ts - a.ts);
@@ -1013,7 +1134,7 @@ export function History() {
     actionLabels,
     shownExtraKinds,
     shownAlertClasses,
-    payoutsQuery.data,
+    payoutEvents,
     depositsQuery.data,
     oceanQuery.data,
     ipChangesQuery.data,
@@ -1055,7 +1176,7 @@ export function History() {
     if (
       filters.kinds !== undefined ||
       filters.minAbsPriceDelta != null ||
-      filters.orderIdContains != null ||
+      filters.textContains != null ||
       filters.sinceMs != null
     ) {
       setFilters({});
@@ -1117,20 +1238,29 @@ export function History() {
     if (highlightedSpanId === null) return;
     let tries = 0;
     let clearTimer: number | null = null;
-    const poll = window.setInterval(() => {
+    let poll: number | null = null;
+    const attempt = (): boolean => {
       tries += 1;
       const el = document.getElementById(`alert-span-row-${highlightedSpanId}`);
       if (el) {
         el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        window.clearInterval(poll);
+        if (poll !== null) window.clearInterval(poll);
         clearTimer = window.setTimeout(() => setHighlightedSpanId(null), 1800);
-      } else if (tries >= 40) {
-        window.clearInterval(poll);
-        setHighlightedSpanId(null);
+        return true;
       }
-    }, 100);
+      if (tries >= 40) {
+        if (poll !== null) window.clearInterval(poll);
+        setHighlightedSpanId(null);
+        return true;
+      }
+      return false;
+    };
+    // Immediate first check - on same-page jumps the row is usually
+    // already rendered, and waiting for the first 100 ms interval
+    // fire added a visible beat before the scroll.
+    if (!attempt()) poll = window.setInterval(() => void attempt(), 100);
     return () => {
-      window.clearInterval(poll);
+      if (poll !== null) window.clearInterval(poll);
       if (clearTimer !== null) window.clearTimeout(clearTimer);
     };
   }, [highlightedSpanId]);
@@ -1169,20 +1299,27 @@ export function History() {
     if (highlightedRowKey === null) return;
     let tries = 0;
     let clearTimer: number | null = null;
-    const poll = window.setInterval(() => {
+    let poll: number | null = null;
+    const attempt = (): boolean => {
       tries += 1;
       const el = document.getElementById(`log-row-${highlightedRowKey}`);
       if (el) {
         el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        window.clearInterval(poll);
+        if (poll !== null) window.clearInterval(poll);
         clearTimer = window.setTimeout(() => setHighlightedRowKey(null), 1800);
-      } else if (tries >= 40) {
-        window.clearInterval(poll);
-        setHighlightedRowKey(null);
+        return true;
       }
-    }, 100);
+      if (tries >= 40) {
+        if (poll !== null) window.clearInterval(poll);
+        setHighlightedRowKey(null);
+        return true;
+      }
+      return false;
+    };
+    // Immediate first check (see the focus_span effect above).
+    if (!attempt()) poll = window.setInterval(() => void attempt(), 100);
     return () => {
-      window.clearInterval(poll);
+      if (poll !== null) window.clearInterval(poll);
       if (clearTimer !== null) window.clearTimeout(clearTimer);
     };
   }, [highlightedRowKey]);
@@ -1338,6 +1475,7 @@ function Toolbar({
   onToggleFollow: () => void;
 }) {
   const { i18n } = useLingui();
+  const chartOverrides = useChartColorOverrides();
   void i18n;
   const denomination = useDenomination();
   // #318: opt-out action filter (matches the Alerts/Events groups). All
@@ -1439,10 +1577,10 @@ function Toolbar({
         <div className="flex flex-wrap gap-1">
           {ALERT_FILTER_CLASSES.map((openClass) => {
             const active = shownAlertClasses.has(openClass);
-            const color =
-              CHART_COLOR_DEFAULTS[
-                (conditionSpanClass(openClass)?.colorSlot ?? 'events.alert_condition') as ChartColorKey
-              ];
+            const color = getChartColor(
+              (conditionSpanClass(openClass)?.colorSlot ?? 'events.alert_condition') as ChartColorKey,
+              chartOverrides,
+            );
             return (
               <button
                 key={openClass}
@@ -1511,16 +1649,16 @@ function Toolbar({
           the wrapper stacks like the rest of the toolbar. */}
       <div className="w-full flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end sm:gap-x-4 sm:gap-y-2">
         <div className="flex flex-col gap-0.5">
-          <label className="text-[10px] tracking-wider text-slate-500"><Trans>Bid id contains</Trans></label>
+          <label className="text-[10px] tracking-wider text-slate-500"><Trans>Search</Trans></label>
           <input
             type="text"
-            value={filters.orderIdContains ?? ''}
-            onChange={(e) => onChange({ ...filters, orderIdContains: e.target.value || undefined })}
-            placeholder="B866…"
+            value={filters.textContains ?? ''}
+            onChange={(e) => onChange({ ...filters, textContains: e.target.value || undefined })}
+            placeholder={t`reason, id, note, address…`}
             spellCheck={false}
             autoCapitalize="none"
             autoCorrect="off"
-            className="w-full sm:w-32 text-[11px] font-mono bg-slate-950 border border-slate-700 rounded px-1.5 py-0.5 text-slate-200 focus:outline-none focus:border-amber-700"
+            className="w-full sm:w-48 text-[11px] font-mono bg-slate-950 border border-slate-700 rounded px-1.5 py-0.5 text-slate-200 focus:outline-none focus:border-amber-700"
           />
         </div>
         {/* From + To form one logical date-range pair. On mobile they sit
@@ -1826,10 +1964,13 @@ function AlertSpanRow({
 }) {
   const { i18n } = useLingui();
   void i18n;
+  const chartOverrides = useChartColorOverrides();
   const cls = conditionSpanClass(span.event_class);
   const color = recovery
     ? '#34d399' // emerald - good news, matching the resolved pill on /alerts
-    : cls ? CHART_COLOR_DEFAULTS[cls.colorSlot as ChartColorKey] : '#fb923c';
+    : cls
+      ? getChartColor(cls.colorSlot as ChartColorKey, chartOverrides)
+      : '#fb923c';
   const ongoing = span.end_ms === null;
   const durationMs = (span.end_ms ?? Date.now()) - span.start_ms;
   const dash = <span className="text-slate-600">—</span>;
@@ -1926,7 +2067,7 @@ function LogExtraRow({
 }) {
   const { i18n } = useLingui();
   void i18n;
-  const color = logExtraColor(extra.kind, extra.blockVariant, extra.eventClass);
+  const color = logExtraColor(extra.kind, useChartColorOverrides(), extra.blockVariant, extra.eventClass);
   const dash = <span className="text-slate-600">—</span>;
   return (
     <tr
@@ -1971,7 +2112,8 @@ function logExtraExplorerUrl(extra: LogExtraItem, txTpl: string, blockTpl: strin
       height: extra.block.height,
     });
   }
-  if (extra.kind === 'payout' && extra.payout && txTpl) {
+  // #323: Lightning payouts have no txid / on-chain tx, so no explorer link.
+  if (extra.kind === 'payout' && extra.payout && extra.payout.txid && txTpl) {
     return applyExplorerTemplate(txTpl, { txid: extra.payout.txid });
   }
   if (extra.kind === 'deposit' && extra.deposit && txTpl) {
@@ -2004,7 +2146,7 @@ function LogExtraDrawer({
   const { i18n } = useLingui();
   void i18n;
   const navigate = useNavigate();
-  const color = logExtraColor(extra.kind, extra.blockVariant, extra.eventClass);
+  const color = logExtraColor(extra.kind, useChartColorOverrides(), extra.blockVariant, extra.eventClass);
   const label = extra.label ?? logExtraLabel(extra.kind);
   const jumpUrl = logExtraJumpUrl(extra);
   // #318 follow-up: on-chain events get a "View in block explorer" button
@@ -2019,7 +2161,7 @@ function LogExtraDrawer({
         aria-hidden="true"
       />
       <aside
-        className="bg-slate-900 border-l border-slate-700 shadow-2xl w-full sm:w-[24rem] max-w-full overflow-y-auto pointer-events-auto flex flex-col"
+        className="bg-slate-900 border-l border-slate-700 shadow-2xl w-full sm:w-[28rem] lg:w-[34rem] xl:w-[40rem] max-w-[92vw] overflow-y-auto pointer-events-auto flex flex-col"
         role="dialog"
         aria-label={t`Event detail`}
       >
@@ -2080,6 +2222,7 @@ function LogExtraDrawer({
           )}
 
           <LogExtraDetail extra={extra} />
+          <EventNoteField eventKey={extra.key} />
         </div>
       </aside>
     </div>
@@ -2089,11 +2232,33 @@ function LogExtraDrawer({
 }
 
 /** Label/value row for the detail drawer (mono, right-aligned value). */
-function DetailRow({ label, value }: { label: ReactNode; value: ReactNode }) {
+function DetailRow({
+  label,
+  value,
+  unit,
+}: {
+  label: ReactNode;
+  value: ReactNode;
+  /** #340: unit rendered muted + small + space-separated (T, %, sat glyph),
+   *  so numbers and units line up the same way across every drawer. */
+  unit?: ReactNode;
+}) {
   return (
     <div className="flex justify-between gap-3 text-xs">
-      <span className="text-slate-500">{label}</span>
-      <span className="text-slate-200 font-mono text-right break-all">{value}</span>
+      <span className="text-slate-500 shrink-0">{label}</span>
+      {/* #340: numbers right-align to a shared column edge, units sit in a
+          fixed-width column to their right - so the sat glyph, %, and T all
+          line up down the drawer regardless of how wide each number is. The
+          unit cell is always reserved (even when empty) so unit-less rows
+          keep the same number edge. */}
+      <span className="flex-1 min-w-0 flex justify-end items-baseline">
+        <span className="text-slate-200 font-mono text-right break-all tabular-nums">
+          {value}
+        </span>
+        <span className="text-slate-500 text-[10px] w-4 shrink-0 text-left pl-1">
+          {unit}
+        </span>
+      </span>
     </div>
   );
 }
@@ -2143,7 +2308,10 @@ function CopyableValue({ value }: { value: string }) {
 function LogExtraDetail({ extra }: { extra: LogExtraItem }) {
   const { i18n } = useLingui();
   void i18n;
-  const sat = (n: number) => `${formatNumber(n, {})} sat`;
+  // #340: the amount is just the number; the Satoshi glyph rides the
+  // DetailRow `unit` slot so it lines up in the unit column with %, T, etc.
+  const sat = (n: number) => formatNumber(n, {});
+  const satUnit = <SatSymbol />;
 
   if (extra.kind === 'block' && extra.block) {
     const b = extra.block;
@@ -2151,16 +2319,21 @@ function LogExtraDetail({ extra }: { extra: LogExtraItem }) {
     return (
       <>
         <section className="space-y-1">
-          <DetailRow label={<Trans>height</Trans>} value={b.height} />
-          <DetailRow label={<Trans>pool reward</Trans>} value={sat(b.total_reward_sat)} />
-          <DetailRow label={<Trans>subsidy</Trans>} value={sat(b.subsidy_sat)} />
-          <DetailRow label={<Trans>fees</Trans>} value={sat(b.fees_sat)} />
+          <DetailRow label={<Trans>height</Trans>} value={formatNumber(b.height, {})} />
+          <DetailRow label={<Trans>pool reward</Trans>} value={sat(b.total_reward_sat)} unit={satUnit} />
+          <DetailRow label={<Trans>subsidy</Trans>} value={sat(b.subsidy_sat)} unit={satUnit} />
+          <DetailRow label={<Trans>fees</Trans>} value={sat(b.fees_sat)} unit={satUnit} />
           {share !== null && share > 0 && (
             <>
-              <DetailRow label={<Trans>share log</Trans>} value={`${share.toFixed(4)}%`} />
+              <DetailRow
+                label={<Trans>share log</Trans>}
+                value={formatNumber(share, { minimumFractionDigits: 4, maximumFractionDigits: 4 })}
+                unit="%"
+              />
               <DetailRow
                 label={<Trans>our earnings (est.)</Trans>}
                 value={sat(Math.round((b.total_reward_sat * share) / 100))}
+                unit={satUnit}
               />
             </>
           )}
@@ -2181,18 +2354,26 @@ function LogExtraDetail({ extra }: { extra: LogExtraItem }) {
   }
   if (extra.kind === 'payout' && extra.payout) {
     const e = extra.payout;
+    const isLightning = e.rail === 'lightning';
     return (
       <>
         <section className="space-y-1">
-          <DetailRow label={<Trans>amount</Trans>} value={sat(e.value_sat)} />
-          <DetailRow label={<Trans>block height</Trans>} value={e.block_height} />
+          <DetailRow label={<Trans>amount</Trans>} value={sat(e.value_sat)} unit={satUnit} />
+          <DetailRow
+            label={<Trans>rail</Trans>}
+            value={isLightning ? <Trans>Lightning (off-chain)</Trans> : <Trans>on-chain</Trans>}
+          />
         </section>
-        <section>
-          <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-1">
-            <Trans>Transaction</Trans>
-          </div>
-          <CopyableValue value={`${e.txid}:${e.vout}`} />
-        </section>
+        {/* #323: only on-chain payouts have a transaction to show; earnpay
+            doesn't carry a block height, so that row is dropped. */}
+        {!isLightning && e.txid && (
+          <section>
+            <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-1">
+              <Trans>Transaction</Trans>
+            </div>
+            <CopyableValue value={e.txid} />
+          </section>
+        )}
       </>
     );
   }
@@ -2201,7 +2382,7 @@ function LogExtraDetail({ extra }: { extra: LogExtraItem }) {
     return (
       <>
         <section className="space-y-1">
-          <DetailRow label={<Trans>amount</Trans>} value={sat(d.amount_sat)} />
+          <DetailRow label={<Trans>amount</Trans>} value={sat(d.amount_sat)} unit={satUnit} />
           {d.address && <DetailRow label={<Trans>address</Trans>} value={d.address} />}
         </section>
         <section>
@@ -2227,16 +2408,34 @@ function LogExtraDetail({ extra }: { extra: LogExtraItem }) {
     const pct = ((r.difficulty - r.previous) / r.previous) * 100;
     return (
       <section className="space-y-1">
-        <DetailRow label={<Trans>difficulty</Trans>} value={`${(r.difficulty / 1e12).toFixed(2)} T`} />
-        <DetailRow label={<Trans>previous</Trans>} value={`${(r.previous / 1e12).toFixed(2)} T`} />
+        <DetailRow
+          label={<Trans>difficulty</Trans>}
+          value={formatNumber(r.difficulty / 1e12, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          unit="T"
+        />
+        <DetailRow
+          label={<Trans>previous</Trans>}
+          value={formatNumber(r.previous / 1e12, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          unit="T"
+        />
         <DetailRow
           label={<Trans>change</Trans>}
-          value={`${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%`}
+          value={`${pct >= 0 ? '+' : ''}${formatNumber(pct, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+          unit="%"
         />
       </section>
     );
   }
-  // alert / config / daemon start: no rich tooltip -> show the summary.
+  // #323 follow-up: layout/list/color config changes get a friendly
+  // semantic diff instead of the raw-JSON summary dump.
+  if (
+    extra.kind === 'config' &&
+    extra.system?.field &&
+    (isListField(extra.system.field) || isColorMapField(extra.system.field))
+  ) {
+    return <ConfigChangeDetail system={extra.system} />;
+  }
+  // alert / config (scalar) / daemon start: no rich tooltip -> show the summary.
   return (
     <section>
       <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-1">
@@ -2245,6 +2444,113 @@ function LogExtraDetail({ extra }: { extra: LogExtraItem }) {
       <p className="text-xs text-slate-200 whitespace-normal leading-snug break-words">
         {extra.summary}
       </p>
+    </section>
+  );
+}
+
+/** Prettify an unknown config id (`avg_cost_vs_hashprice` -> `Avg cost vs hashprice`). */
+function prettifyConfigId(id: string): string {
+  const s = id.replace(/[._]+/g, ' ').trim();
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : id;
+}
+
+/** Small color chip + hex, or a "default" chip when the override was cleared. */
+function ColorSwatch({ hex }: { hex: string | null }) {
+  if (!hex) {
+    return (
+      <span className="text-[10px] text-slate-500 uppercase tracking-wide">
+        <Trans>default</Trans>
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1">
+      <span
+        className="inline-block w-3 h-3 rounded-sm border border-slate-700"
+        style={{ backgroundColor: hex }}
+      />
+      <span className="font-mono text-[10px] text-slate-400">{hex}</span>
+    </span>
+  );
+}
+
+/**
+ * #323 follow-up: readable detail for a config change whose value is a
+ * list (dashboard tiles, card order, muted alerts) or a color map
+ * (chart colors). Shows added/removed items with friendly names, a
+ * "reordered" note when only the order changed, and per-series swatches
+ * for color changes - instead of dumping the raw JSON arrays.
+ */
+function ConfigChangeDetail({ system }: { system: SystemEventView }) {
+  const { i18n } = useLingui();
+  const field = system.field ?? '';
+  const label = configFieldLabel(field);
+
+  const itemLabel = (id: string): string => {
+    if (field === 'dashboard_tiles') {
+      const meta = TILE_CATALOGUE.find((m) => m.id === id);
+      return meta ? i18n._(meta.labelKey) : prettifyConfigId(id);
+    }
+    if (field === 'notification_disabled_event_classes') return conditionLabel(id);
+    return prettifyConfigId(id);
+  };
+
+  const header = (
+    <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-1">{label}</div>
+  );
+
+  if (isColorMapField(field)) {
+    const changes = diffColorMap(system.old_value, system.new_value);
+    return (
+      <section className="space-y-1.5">
+        {header}
+        {changes.length === 0 ? (
+          <p className="text-xs text-slate-400">
+            <Trans>No color changes.</Trans>
+          </p>
+        ) : (
+          changes.map((c) => (
+            <div key={c.key} className="flex items-center gap-2 text-xs text-slate-200">
+              <span className="flex-1 truncate">{prettifyConfigId(c.key)}</span>
+              <ColorSwatch hex={c.from} />
+              <span className="text-slate-500" aria-hidden="true">
+                →
+              </span>
+              <ColorSwatch hex={c.to} />
+            </div>
+          ))
+        )}
+      </section>
+    );
+  }
+
+  const d = diffIdList(
+    parseIdList(field, system.old_value),
+    parseIdList(field, system.new_value),
+  );
+  return (
+    <section className="space-y-1">
+      {header}
+      {d.unchanged && (
+        <p className="text-xs text-slate-400">
+          <Trans>No change.</Trans>
+        </p>
+      )}
+      {d.reorderedOnly && (
+        <p className="text-xs text-slate-300">
+          <Trans>Reordered · {d.count} items, none added or removed</Trans>
+        </p>
+      )}
+      {d.added.map((id) => (
+        <div key={`+${id}`} className="text-xs text-emerald-300 font-mono">
+          + {itemLabel(id)}
+        </div>
+      ))}
+      {d.removed.map((id) => (
+        <div key={`-${id}`} className="text-xs text-red-300 font-mono">
+          − {itemLabel(id)}
+        </div>
+      ))}
     </section>
   );
 }
@@ -2275,6 +2581,9 @@ function labelForKindShort(kind: Kind): string {
 }
 
 function ActionGlyph({ kind }: { kind: BidEventView['kind'] }) {
+  // #334: the glyph color follows the operator's event-color overrides,
+  // matching the chart markers everywhere.
+  const color = getChartColor(ACTION_COLOR_KEY[kind], useChartColorOverrides());
   const base = {
     width: 12,
     height: 12,
@@ -2287,7 +2596,7 @@ function ActionGlyph({ kind }: { kind: BidEventView['kind'] }) {
   };
   if (kind === 'CREATE_BID') {
     return (
-      <svg {...base} stroke="#34d399">
+      <svg {...base} stroke={color}>
         <circle cx="12" cy="12" r="10" />
         <path d="M8 12h8" />
         <path d="M12 8v8" />
@@ -2297,13 +2606,13 @@ function ActionGlyph({ kind }: { kind: BidEventView['kind'] }) {
   if (kind === 'EDIT_PRICE') {
     return (
       <svg width="12" height="12" viewBox="0 0 14 14" className="inline-block align-middle">
-        <circle cx="7" cy="7" r="4.5" fill="#facc15" stroke="#0f172a" strokeWidth="1.5" />
+        <circle cx="7" cy="7" r="4.5" fill={color} stroke="#0f172a" strokeWidth="1.5" />
       </svg>
     );
   }
   if (kind === 'EDIT_SPEED') {
     return (
-      <svg {...base} stroke="#38bdf8">
+      <svg {...base} stroke={color}>
         <path d="m12 14 4-4" />
         <path d="M3.34 19a10 10 0 1 1 17.32 0" />
       </svg>
@@ -2314,7 +2623,7 @@ function ActionGlyph({ kind }: { kind: BidEventView['kind'] }) {
     // PAUSED). Distinct from the `power` glyph, which daemon-started
     // owns; the two used to collide.
     return (
-      <svg {...base} stroke="#c4b5fd">
+      <svg {...base} stroke={color}>
         <path d="M8 3 4 7l4 4" />
         <path d="M4 7h16" />
         <path d="m16 21 4-4-4-4" />
@@ -2325,7 +2634,7 @@ function ActionGlyph({ kind }: { kind: BidEventView['kind'] }) {
   if (kind === 'BID_PAUSED') {
     // Lucide `circle-pause` - Braiins paused the bid.
     return (
-      <svg {...base} stroke="#fbbf24">
+      <svg {...base} stroke={color}>
         <circle cx="12" cy="12" r="10" />
         <line x1="10" x2="10" y1="15" y2="9" />
         <line x1="14" x2="14" y1="15" y2="9" />
@@ -2335,14 +2644,14 @@ function ActionGlyph({ kind }: { kind: BidEventView['kind'] }) {
   if (kind === 'BID_RESUMED') {
     // Lucide `circle-play` - Braiins resumed the bid.
     return (
-      <svg {...base} stroke="#34d399">
+      <svg {...base} stroke={color}>
         <circle cx="12" cy="12" r="10" />
         <polygon points="10 8 16 12 10 16 10 8" />
       </svg>
     );
   }
   return (
-    <svg {...base} stroke="#f87171">
+    <svg {...base} stroke={color}>
       <circle cx="12" cy="12" r="10" />
       <path d="m4.9 4.9 14.2 14.2" />
     </svg>

@@ -11,6 +11,8 @@
  * drawer alike (they inject the operator's locale-aware formatNumber).
  */
 
+import { CONFIG_VALUE_REDACTED } from '@hashrate-autopilot/shared';
+
 export type HashrateUnit = 'TH' | 'PH' | 'EH';
 
 /** Injected locale-aware integer formatter; defaults to en-US grouping. */
@@ -90,6 +92,11 @@ export function formatConfigChange(
   fmtNum: NumFmt = DEFAULT_FMT,
 ): { label: string; change: string } {
   const label = configFieldLabel(field);
+  // GHSA-x8x9: a credential change is stored redacted by the daemon (and
+  // scrubbed for old rows). Show that it changed, never a value.
+  if (oldValue === CONFIG_VALUE_REDACTED || newValue === CONFIG_VALUE_REDACTED) {
+    return { label, change: '••••••' };
+  }
   const o = formatConfigValue(field, oldValue, unit, fmtNum);
   const n = formatConfigValue(field, newValue, unit, fmtNum);
   const suffix = n.suffix || o.suffix;

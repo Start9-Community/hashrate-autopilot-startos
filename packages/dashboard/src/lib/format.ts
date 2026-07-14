@@ -34,6 +34,29 @@ function defaultLocale(): Locale {
   return stored;
 }
 
+/**
+ * Cached Intl.NumberFormat instances. Construction costs ~50-200µs;
+ * axis labels and crosshair readouts format dozens of values per
+ * chart render, which happens at pointer-move frequency. Instances
+ * are immutable, so caching per locale+options is safe. The key
+ * space is bounded by the handful of distinct option sets used in
+ * the UI times the selectable locales.
+ */
+const numberFormatCache = new Map<string, Intl.NumberFormat>();
+
+export function cachedNumberFormat(
+  locale: Locale,
+  opts: Intl.NumberFormatOptions = {},
+): Intl.NumberFormat {
+  const key = `${locale ?? ''}|${JSON.stringify(opts)}`;
+  let fmt = numberFormatCache.get(key);
+  if (!fmt) {
+    fmt = new Intl.NumberFormat(locale, opts);
+    numberFormatCache.set(key, fmt);
+  }
+  return fmt;
+}
+
 function defaultDateLayout(): DateLayout {
   if (typeof window === 'undefined') return 'system';
   const stored = window.localStorage.getItem(DATE_LAYOUT_STORAGE_KEY);
@@ -81,7 +104,7 @@ export function formatNumber(
   opts: Intl.NumberFormatOptions = {},
   locale: Locale = defaultLocale(),
 ): string {
-  return new Intl.NumberFormat(locale, { maximumFractionDigits: 0, ...opts }).format(n);
+  return cachedNumberFormat(locale, { maximumFractionDigits: 0, ...opts }).format(n);
 }
 
 /**
@@ -113,7 +136,7 @@ export function formatCompactNumber(
   if (!Number.isFinite(n)) return '-';
   const abs = Math.abs(n);
   const fmt = (v: number, minDecimals: number, maxDecimals: number): string =>
-    new Intl.NumberFormat(locale, {
+    cachedNumberFormat(locale, {
       minimumFractionDigits: minDecimals,
       maximumFractionDigits: maxDecimals,
     }).format(v);
@@ -206,7 +229,7 @@ export function formatHashratePH(
   locale: Locale = defaultLocale(),
 ): string {
   if (n === null || n === undefined) return '-';
-  return `${new Intl.NumberFormat(locale, {
+  return `${cachedNumberFormat(locale, {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(n)} PH/s`;
@@ -393,28 +416,11 @@ export function formatAge(ms: number | null | undefined, now: number = Date.now(
   return t`${days}d ago`;
 }
 
-/**
- * Format a raw duration (in ms) as "Xs", "Xm", "Xh Ym", "Xd Yh" - the
- * same shape as {@link formatAgeMinutes} but without the trailing
- * "ago", because the value is a duration not an offset-from-now. Used
- * by event cards on the Alerts page ("was open for 6m") where the
- * value is `recovery.created_at - firing.created_at`.
- */
-export function formatDuration(ms: number | null | undefined): string {
-  if (ms === null || ms === undefined || ms < 0) return '-';
-  const totalSec = Math.floor(ms / 1000);
-  if (totalSec < 60) return `${totalSec}s`;
-  const totalMin = Math.floor(totalSec / 60);
-  if (totalMin < 60) return `${totalMin}m`;
-  const totalHr = Math.floor(totalMin / 60);
-  if (totalHr < 24) {
-    const m = totalMin - totalHr * 60;
-    return m > 0 ? `${totalHr}h ${m}m` : `${totalHr}h`;
-  }
-  const totalDay = Math.floor(totalHr / 24);
-  const h = totalHr - totalDay * 24;
-  return h > 0 ? `${totalDay}d ${h}h` : `${totalDay}d`;
-}
+// #341: `formatDuration` lives in its own macro-free module so it can be
+// unit-tested when vitest runs from the repo root (deploy.sh) without the
+// lingui babel cwd this file needs. Re-exported here so callers importing
+// from '../lib/format' are unaffected.
+export { formatDuration } from './formatDuration';
 
 /**
  * Two-unit age at minute resolution - "just now", "5m ago", "18h 22m ago",

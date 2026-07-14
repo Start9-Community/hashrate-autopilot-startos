@@ -35,6 +35,7 @@ describe('streamTimelineXlsx', () => {
       deltaPrice: 100,
       speed: 3,
       reason: 'track fillable 47,100 -> 47,200 <& more>',
+      note: 'my export note',
     },
     {
       whenUtc: '2026-07-01 00:00:00Z',
@@ -47,6 +48,7 @@ describe('streamTimelineXlsx', () => {
       deltaPrice: null,
       speed: null,
       reason: 'block 956000 · 314,000,000 sat',
+      note: '',
     },
   ];
 
@@ -66,7 +68,8 @@ describe('streamTimelineXlsx', () => {
     expect(sheet).toContain('<row r="3">');
     expect(sheet).not.toContain('<row r="4">');
     // autofilter spans header..last data row (10 cols -> J)
-    expect(sheet).toContain('autoFilter ref="A1:J3"');
+    expect(sheet).toContain('autoFilter ref="A1:K3"');
+    expect(sheet).toContain('my export note'); // #336: Note column populated
     // frozen header pane
     expect(sheet).toContain('state="frozen"');
   });

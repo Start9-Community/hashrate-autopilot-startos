@@ -55,3 +55,10 @@ export const v1_16_0_0 = VersionInfo.of({
     'Updates Hashrate Autopilot to upstream v1.16.0. Includes the Timeline release with unified event history, alert recovery rows, bidirectional chart jumps, denomination-aware Excel export, daemon-start markers, duplicate-bid protection, Datum stratum-probe auto-cancel fixes, and migrations 0114-0115.',
   migrations: {},
 });
+
+export const v1_17_1_0 = VersionInfo.of({
+  version: '1.17.1:0',
+  releaseNotes:
+    'Updates Hashrate Autopilot to upstream v1.17.1. Includes encrypted database-stored secrets, write-only credential handling with config-log scrubbing, dashboard password and Braiins token rotation, Ocean payout-ledger P&L with Lightning payouts, current-block-height stats tile, Timeline notes and search, alert-duration fixes, P&L rebuild and hard-reset controls, DDNS test fixes, dependency updates, refreshed screenshots, and migrations 0116-0119.',
+  migrations: {},
+});

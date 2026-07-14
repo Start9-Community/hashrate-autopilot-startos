@@ -5,7 +5,7 @@ daemon and dashboard for the [Braiins Hashpower marketplace](https://hashpower.b
 rented-hashrate bid alive within operator-defined limits and routes delivered hashrate to an Ocean/Datum mining
 setup.
 
-This fork tracks upstream Hashrate Autopilot v1.16.0 and adds the StartOS service wrapper, dependency
+This fork tracks upstream Hashrate Autopilot v1.17.1 and adds the StartOS service wrapper, dependency
 declarations, persistent data volume, backup hooks, web interface wiring, and `.s9pk` build flow. Upstream
 application behavior is intentionally kept close to `rdouma/hashrate-autopilot`; StartOS-specific work lives in
 `startos/`, `instructions.md`, `Makefile`, and `s9pk.mk`.
@@ -18,7 +18,7 @@ application behavior is intentionally kept close to `rdouma/hashrate-autopilot`;
 | --- | --- |
 | Downstream package repo | `mdubore/hashrate9` |
 | Upstream app repo | `rdouma/hashrate-autopilot` |
-| Upstream version tracked | `v1.16.0` |
+| Upstream version tracked | `v1.17.1` |
 | StartOS package id | `hashrate-autopilot-9` |
 | Package architectures | `x86_64`, `aarch64` |
 | Verified sideload target | `x86_64`, `aarch64` StartOS servers |
@@ -141,18 +141,14 @@ Non-goals: SaaS / multi-user, cloud deployment, hands-free wallet funding, gaple
 - State and tick metrics persist to SQLite and survive restarts. Boot mode is configurable: always dry-run
   (default), resume last mode, or always live. Old `tick_metrics` and uneventful `decisions` rows are pruned
   hourly per configurable retention windows.
-- Each tick also polls the **Ocean pool API** (hashprice, pool stats, payout estimate, recent blocks) and - when
-  a `datum_api_url` is configured - **Datum Gateway stats** for a second hashrate reading measured at the
-  gateway. The poller first tries Datum's `/umbrel-api` JSON endpoint when that build exposes it, then falls
-  back to the regular Datum dashboard HTML used by the StartOS package. Both integrations are informational;
-  the control loop never depends on them being reachable.
-- Optionally reads `bitcoind` or an Electrum server (electrs, Fulcrum, and ElectrumX all work) for on-chain payout
-  observation (income tracking, runway calculation). On the Electrum path, lifetime earnings count **every coinbase tx ever credited to your payout address** - including
-  historical Ocean payouts you've already swept to another wallet - so the P&L stays coherent even if you reuse a
-  payout address across before-and-after-installation periods. A `Backfill now` button under Config -> Pool &
-  Payout pulls historical receipts on demand. Operators with fresh-address discipline can disable the backfill via
-  the same panel. There's also a `Pre-installation earnings` field for off-chain income the on-chain observer
-  can't see (Lightning payouts, swept Ocean history) that gets folded into the lifetime chart and the net P&L.
+  a `datum_api_url` is configured - the **Datum Gateway's `/umbrel-api`** for a second hashrate reading measured
+  at the gateway. Both integrations are informational; the control loop never depends on them being reachable.
+- Reads your collected income from **Ocean's own payout ledger** (the earnpay endpoint), which covers **both
+  on-chain and Lightning payouts** - so the Profit & Loss panel counts everything Ocean actually paid you, with an
+  on-chain vs Lightning split, and no Bitcoin node required. Optionally also reads `bitcoind` or an Electrum server
+  (electrs, Fulcrum, and ElectrumX all work) as a corroboration source that adds the on-chain confirmation gems to
+  the chart, but the P&L numbers no longer depend on it. There's also a `Pre-installation earnings` field for
+  income outside Ocean's ledger (e.g. pre-autopilot history at another pool) that gets folded into the net P&L.
 
 Full design: [`docs/spec.md`](docs/spec.md) · [`docs/architecture.md`](docs/architecture.md) ·
 [`docs/research.md`](docs/research.md).
@@ -221,7 +217,7 @@ Full design: [`docs/spec.md`](docs/spec.md) · [`docs/architecture.md`](docs/arc
   Braiins service card is days-of-balance at the current measured spend rate.
 - **Dashboard** - hashrate and price charts with drag-to-pan and click-to-focus scroll-wheel zoom
   (TradingView-style; click a chart to activate zoom, click outside or press Escape to deactivate; blue
-  outline shows the focused chart), time-range presets (3h / 6h / 12h / 24h / 1w / 1m / 1y / all) that
+  outline shows the focused chart) plus pinch-to-zoom on touch devices, time-range presets (3h / 6h / 12h / 24h / 1w / 1m / 1y / all) that
   stay highlighted while panning and soft-snap during zoom, viewport-scoped Y-axis that only scales to
   visible data (out-of-view spikes don't compress the chart), **clickable legend** - tap any legend entry to
   hide that series and tap again to restore it (Chart.js / Bitaxe style); hiding a series also rescales the
@@ -235,9 +231,13 @@ Full design: [`docs/spec.md`](docs/spec.md) · [`docs/architecture.md`](docs/arc
   gaps render as a hatched band, and a boot-time backfill walks the gap inserting synthetic ticks every
   5 min plus one at each detected difficulty retarget so the pool-luck line step-changes through the gap
   and retarget markers land at (close to) canonical time even after long outages, **configurable stats bar** -
-  the operator picks which tiles appear (#266); a catalogue of ~22 tiles covers uptime decomposition (bid coverage
+  the operator picks which tiles appear (#266); a catalogue of ~23 tiles covers uptime decomposition (bid coverage
   vs delivery while bidding), avg-hashrate cards (Braiins / Datum / Ocean), avg cost vs hashprice + overpay
-  intent/settled, hashprice, pool blocks (30d), three pool-luck tiles (24h/7d/30d, window-aware emerald/amber/red
+  intent/settled, hashprice, pool blocks (30d), the current Bitcoin block height (names the pool that found the
+  tip - canonical names from the bundled mempool pool database, e.g. "Foundry USA"; gold crown when you found the
+  block, a BIP 110 / Ocean / grey cube otherwise; a worker line only for Ocean and your own blocks; click to open
+  it in your block explorer; hidden without a node - #335), three pool-luck tiles (24h/7d/30d,
+  window-aware emerald/amber/red
   bands), share log %, share rejection, wallet runway, hashrate target, and Bitaxe fleet tiles (hashrate always
   in TH/s, power in W, J/TH efficiency, best-difficulty record). Picker dropdown on each slot, drag-to-reorder
   inside the bar via hover-revealed grip handles, up to 24 tiles, persists daemon-side so the choice follows
@@ -247,19 +247,30 @@ Full design: [`docs/spec.md`](docs/spec.md) · [`docs/architecture.md`](docs/arc
   press-and-hold on touch then scrub.
   Service panels include a runway forecast AND a Braiins share-rejection ratio on the Braiins card (computed
   server-side from raw `tick_metrics` rows over the selected chart range; also available as a chart right-axis
-  series so the operator can see when the ratio spiked - #243), split P&L panels (period and lifetime - "collected
-  (on-chain)" reads lifetime received from `reward_events`, not current UTXO balance, so a payout that's
-  been spent still counts; the lifetime panel also carries a dedicated **return on spend** row showing
+  series so the operator can see when the ratio spiked - #243), split P&L panels (period and lifetime - "collected"
+  reads lifetime received from Ocean's payout ledger (earnpay), covering on-chain and Lightning payouts with a
+  per-rail split, so a payout that's been spent still counts and Lightning payouts are no longer invisible - #323;
+  the lifetime panel also carries a dedicated **return on spend** row showing
   `net / spent` as a percentage so the operator can read the rate of return alongside the absolute net
-  figure - #249), live bid table with full IDs, and a full config editor with live reload.
+  figure - #249). The payout store the "collected" figure reads from self-heals: the daemon re-runs the full
+  earnpay backfill periodically and on every boot, so a partial fetch during an upgrade can no longer leave
+  "collected" permanently short. The lifetime P&L card carries **rebuild** (re-fetch + fill gaps) and
+  **hard reset** (wipe the Ocean payout store + Braiins spend cache and rebuild both from scratch, fetch-before-delete
+  so an Ocean outage can't lose data) controls, and both report their result inline - "N payouts, collected X"
+  - so a wrong figure is recoverable without a shell (#343). A live bid table with full IDs and a full config
+  editor with live reload round out the page.
 - **Timeline page** - dedicated `/history` route (#256 v2; titled "Timeline" in the nav) with a flat filterable
   table of every bid event (CREATE / EDIT_PRICE / EDIT_SPEED / CANCEL) the autopilot or operator emitted,
   replacing the older per-bid collapsible view, interleaved with alert spans, on-chain events, and daemon
-  restarts. Filter chips with action glyphs, full bid ID, denomination-aware `|Δ price| ≥ N` filter
+  restarts. Filter chips with action glyphs, a full-text **Search** box (matches bid id, reason, your personal
+  note, and row identifiers across the whole history server-side - #342), denomination-aware `|Δ price| ≥ N` filter
   (input units track the active TH/PH/EH toggle), locale-aware custom date picker, server-side infinite-scroll
   pagination, per-group and global all/none toggles, and a "follow" live-tail. Columns: when, bid id, action,
   fillable-at-event, price before / after, Δ price (green down / red up), speed - all converted to the active
-  currency + hashrate unit (with the Satoshi glyph for "sat"), including the free-text reason. SQL coalesces
+  currency + hashrate unit (with the Satoshi glyph for "sat"), including the free-text reason. Any row takes a
+  persisted **personal note** that also feeds the search index and the export (#336). An alert-condition row
+  opens a detail drawer breaking the outage into threshold / fired / recovered / alert-duration / total-condition-time
+  (estimated with a footnote for rows predating onset-recording - #341). SQL coalesces
   orphan-CREATE rows whose `braiins_order_id` lands a few ticks later, and carries speed / last-price forward so
   cells aren't blank for an order that demonstrably had values. A streaming **Excel export** writes the current
   filtered feed to a denomination-aware `.xlsx` (frozen header, autofilter, flat memory, no row cap).
@@ -286,7 +297,7 @@ Full design: [`docs/spec.md`](docs/spec.md) · [`docs/architecture.md`](docs/arc
   default). Detection happens daemon-side via your bitcoind RPC (`getblockheader`) or Electrum server
   (`blockchain.block.header`) - no third-party API. **Public-IP change markers** (sky router icons) appear at the top of the Hashrate chart whenever the daemon's IP poller (60 s cadence to `api.ipify.org`) observes a different public IP; the marker's styled tooltip shows the old → new IP pair and locale-formatted detection time, and the DDNS card on the Pool & Payout tab carries an "IP last changed" timestamp so rejection-rate spikes can be correlated against ISP rotation events. Each pool-luck step-marker tooltip carries a green `FOUND` or red `AGED OUT` badge per contributing block; multiple events landing in the same daemon tick (e.g. one block ages out while another lands) collapse into a single dot with both blocks' detail panels. A separate **BIP 110 scan card** on the Status page
   lets you scan signaling by difficulty epoch (toggle: `Current epoch` for the live MASF window, or `All` for everything since block 938,903 - the first known BIP 110 signaling block, found 2026-03-01). Per-epoch breakdown rows expand to show their signaling blocks inline (Pool / Miner column split - Ocean blocks surface both the pool wrapper and the inner template-author tag; non-Ocean blocks show the pool tag alone). Each row carries a MASF progress bar against the 55% threshold (`ceil(2016 × 0.55) = 1109` signaling blocks). The deployment-status badge has a lifecycle-aware tooltip naming both paths: miner-activated (MASF, 55% in any epoch locks in early) and user-activated (UASF, block height 965,664 enforced unconditionally regardless of signaling); when LOCKED_IN or ACTIVE the wording adapts. The forecasted UASF date is dynamic - `now + (965,664 − tip) × 600s`, matching every block-time calculator (currently early-September 2026 at typical block rate). Block markers and retarget icons are mirrored onto the price chart, so the operator sees these events in
-  context on both charts. **Braiins deposit markers** (purple fuel-pump icons) appear on the Price chart whenever Braiins credits a deposit to your marketplace wallet. The marker is positioned at the Bitcoin transaction timestamp from the Braiins API. When the right-axis series is `total_balance_sat`, a purple dot appears on the balance line at the step-up caused by the deposit, with a dotted connector line back to the fuel icon so the operator can visually trace which deposit caused which balance jump. Hovering either the fuel icon or the dot opens the same tooltip with deposit amount, transaction ID, and timing. **On-chain payout gems** (emerald) appear at the top of the Price chart with a dashed vertical line whenever a payout is detected on-chain; clicking opens a tooltip with block height, date, amount, and a block-explorer deep-link. A purple dot on the unpaid-earnings line marks the earlier moment Ocean debited the balance (payout initiated), bridging the visual gap between the unpaid drop and the on-chain confirmation.
+  context on both charts. **Braiins deposit markers** (purple fuel-pump icons) appear on the Price chart whenever Braiins credits a deposit to your marketplace wallet. The marker is positioned at the Bitcoin transaction timestamp from the Braiins API. When the right-axis series is `total_balance_sat`, a purple dot appears on the balance line at the step-up caused by the deposit, with a dotted connector line back to the fuel icon so the operator can visually trace which deposit caused which balance jump. Hovering either the fuel icon or the dot opens the same tooltip with deposit amount, transaction ID, and timing. **Payout gems** (emerald) appear at the top of the Price chart with a dashed vertical line for every payout in Ocean's payout ledger (earnpay) - both on-chain and Lightning. Clicking opens a tooltip with date and amount; on-chain payouts add a block-explorer deep-link, Lightning payouts are labelled "LIGHTNING PAYOUT" with no link (there's no on-chain transaction to open). A purple dot on the unpaid-earnings line marks the earlier moment Ocean debited the balance (payout initiated), bridging the visual gap between the unpaid drop and the confirmed settlement.
 - **Telegram notifications** - three severity tiers across eighteen event classes. **IMPORTANT** (red, with a
   retry ladder and paired recovery messages): Datum stratum unreachable, hashrate below floor, zero
   hashrate, Braiins API unreachable, unknown bid detected, bid sustained-paused, wallet runway below
@@ -365,23 +376,39 @@ Notifications and every message gets prefixed with `[<label>] ` so you can tell 
 
 Every bid event the autopilot or operator emitted - CREATE / EDIT_PRICE / EDIT_SPEED / CANCEL - lands in
 an append-only log surfaced at `/history` (titled "Timeline" in the nav) as a flat sortable table,
-interleaved with alert spans, on-chain events, difficulty retargets, and daemon restarts.
+interleaved with alert spans, on-chain events, difficulty retargets, config changes, and daemon restarts.
+Config-change rows open a readable semantic diff (field name, before → after) rather than raw JSON, and
+credential values are redacted from that audit trail so a leaked or exported Timeline never carries a
+secret (GHSA-x8x9).
 
 ![Timeline page](docs/images/timeline.png)
 
-Toolbar filters: action-kind chips with Lucide glyphs matching the rows, full bid-id substring, From / To
+Toolbar filters: action-kind chips with Lucide glyphs matching the rows, a full-text **Search** box, From / To
 date range via a custom locale-aware date picker (the browser-native `<input type=date>` always rendered
 in the *browser's* locale rather than the dashboard's chosen language; the custom picker formats via
 `Intl.DateTimeFormat` in the active locale and emits a local-midnight ms timestamp), and a denomination-aware
 `|Δ price| ≥ N` filter whose input unit tracks the active TH / PH / EH toggle (converted to sat/EH/day on
-the wire). Per-group and global all/none toggles reset the chip selection quickly, and a **follow** toggle
+the wire). The Search box matches case-insensitively across the bid id, the free-text reason, your personal
+note on the row, and the identifiers a row shows (block height/hash, IP addresses, deposit tx ids,
+config-change values); it searches your whole history server-side (reason + note via the event-notes join),
+so a hit in an old row that hasn't paged in yet still surfaces, and ANDs with the chips and date range (#342).
+Per-group and global all/none toggles reset the chip selection quickly, and a **follow** toggle
 live-tails the feed. Columns: When, Bid (full id, no truncation), Action, Fillable-at-event, Price before,
 Price after, Δ price (green for downward, red for upward), Speed. Every rate/hashrate - columns, the
 click-through detail drawer, the price-chart event tooltip, and the free-text reason - is converted to the
 active currency (sats/BTC/USD) and hashrate unit (TH/PH/EH), with "sat" rendered as the Satoshi glyph.
-Server-side infinite-scroll pagination via a `before_id` cursor. SQL coalesces the bid id forward on
-CREATE_BID rows that land before Braiins echoes the assigned id (1 h window) and carries the bid's speed and
-last-known price forward across events so cells aren't blank for an order that demonstrably had values.
+Any row takes a **personal note** - a free-text annotation persisted daemon-side (keyed to the event) that
+rides along into the Search index and the Excel export, so you can label why a bid moved or flag an outage
+for later (#336). Server-side infinite-scroll pagination via a `before_id` cursor. SQL coalesces the bid id
+forward on CREATE_BID rows that land before Braiins echoes the assigned id (1 h window) and carries the bid's
+speed and last-known price forward across events so cells aren't blank for an order that demonstrably had values.
+
+Clicking an alert-condition row (or its chart band / marker) opens a detail drawer that breaks the condition
+into separate rows - the sustained threshold waited out before the alert fired, when it fired, when it
+recovered, the alert-window duration, and the **total condition time** (onset to recovery, the number that
+answers "how long was I actually down?"). When the firing row recorded the exact onset those are exact;
+older rows estimate the threshold from your current alert settings and mark it with `≈` plus a footnote,
+since historical config isn't stored (#341).
 
 A **streaming Excel export** (toolbar button) writes the current filtered feed to a `.xlsx` - frozen header,
 autofilter, fixed column widths, denomination-aware values and unit-labelled headers - built row-by-row so
@@ -417,14 +444,18 @@ live).
 
 **Pool destination** (pool URL, BTC payout address, worker identity auto-derived from the address, Datum
 stats API URL), **Dynamic DNS** (No-IP / DuckDNS / generic dyndns2 - daemon-managed alternative to your
-router's DDNS client; pushes the current public IP every 5 min and immediately on any config save),
+router's DDNS client; pushes the current public IP every 5 min and immediately on any config save; the
+card's test push sends the daemon's own detected public IP, not the IP the dashboard request came from - #339),
 **On-chain payouts** (payout-source backend: bitcoind RPC or an Electrum server such as electrs, Fulcrum, or ElectrumX, plus an *Include historical Ocean
 payouts* toggle with a **Backfill now** button that walks the address history and folds historical
 coinbase payouts into the lifetime-earnings line, and a *Pre-installation earnings* field for off-chain
 or pre-autopilot income the on-chain observer can't see - Lightning payouts, swept Ocean history -
 which becomes the starting value of the lifetime chart and folds into the net P&L), **Profit & Loss**
-spend scope (autopilot-tagged bids only vs the whole Braiins account), and **BTC price oracle** (feeds
-the sat ↔ USD header toggle; CoinGecko / Coinbase / Bitstamp / Kraken).
+spend scope (autopilot-tagged bids only vs the whole Braiins account), **BTC price oracle** (feeds
+the sat ↔ USD header toggle; CoinGecko / Coinbase / Bitstamp / Kraken), and **Security & credentials**
+(change the dashboard password and rotate the Braiins owner / read-only tokens in-app, each gated on your
+current password; the only rotation path that needs no shell or SOPS, so it works on Umbrel - #332. On
+env/SOPS installs this section is read-only and points you to where those secrets are defined).
 
 ### Notifications
 
@@ -479,7 +510,15 @@ schema. See [docs/configuration.md](docs/configuration.md) for the full list.
 ## Tech stack
 
 TypeScript monorepo (pnpm workspaces), Node 22+, React dashboard, SQLite (better-sqlite3). Secrets persist
-in `data/state.db` via the first-run wizard by default; SOPS-encrypted file remains supported for power users.
+in `data/state.db` via the first-run wizard by default; a SOPS-encrypted file remains supported for power
+users. Database-stored secrets (Braiins tokens, bitcoind RPC password, Telegram token, DDNS credential) are
+**AES-256-GCM encrypted at rest**, and the dashboard password is stored as a one-way **scrypt** hash, so a
+copied database or a backup no longer exposes them (#331). The encryption key comes from the `BHA_SECRET_KEY`
+environment variable (on Umbrel that's the device-derived `APP_SEED`, kept outside the app's data) or a
+generated key file next to `state.db`; if the key is ever lost the daemon treats the affected secret as unset
+and prompts you to re-enter it rather than crash-looping. The config API is write-only for credential fields:
+it returns them blank and treats a blank value on save as "keep the existing one." See
+[`docs/security-secrets-at-rest.md`](docs/security-secrets-at-rest.md) for the full threat model.
 
 ```
 packages/
@@ -605,14 +644,23 @@ autopilot is doing what you expect.
 Both behaviours are independent of which install path you picked.
 
 **Editing secrets later:** the wizard persists everything (config + secrets) into `data/state.db`
-(or `/app/data/state.db` in the Docker case). Two ways to rotate:
+(or `/app/data/state.db` in the Docker case). Ways to rotate, easiest first:
 
-1. **Re-run the wizard:** stop the daemon, run
-   `sqlite3 data/state.db 'DELETE FROM secrets;'` to force NEEDS_SETUP, restart, and the dashboard
-   redirects to `/setup` with your existing config pre-filled.
+1. **In-app (dashboard/DB installs, including Umbrel):** Config → Pool & Payout → **Security &
+   credentials** lets you change the dashboard password (takes effect immediately, the old one stops
+   working at once) and rotate the Braiins owner and read-only tokens (each test-called against Braiins
+   before it's saved, so a typo can't break bidding; token changes apply on the next daemon restart).
+   Every change asks for your current password first. This is the only rotation path that needs no shell
+   or SOPS, which is why it exists (#332). The Telegram token, bitcoind RPC password, and DDNS credential
+   stay editable in their own Config sections as before.
 2. **`BHA_*` env-var override:** set the env var (e.g. `BHA_BRAIINS_OWNER_TOKEN=…`) in the daemon's
    environment and it takes precedence over the DB value on every boot. On Docker, that's
-   `docker run -e BHA_…`. See [`docs/configuration.md`](docs/configuration.md).
+   `docker run -e BHA_…`. See [`docs/configuration.md`](docs/configuration.md). On env/SOPS installs the
+   in-app Security section is read-only and points you here, since a DB write would be overwritten on the
+   next boot.
+3. **Re-run the wizard:** stop the daemon, run
+   `sqlite3 data/state.db 'DELETE FROM secrets;'` to force NEEDS_SETUP, restart, and the dashboard
+   redirects to `/setup` with your existing config pre-filled.
 
 **Running on a second host (or migrating):** all operator-relevant state lives under `data/`
 (bare-metal) or in the named volume (Docker). Either:

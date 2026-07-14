@@ -10,6 +10,14 @@ body,
   height: 100%;
 }
 
+/* Stop iOS Safari from auto-inflating text ("font boosting"), which
+ * renders numbers larger than the layout measured and can push the
+ * auto-fit hero values past their column. */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
 /* #266 follow-up: styled scrollbar inside the tile-picker dropdown
  * so the panel looks at home with the rest of the dashboard chrome
  * instead of carrying the browser-default 17px-wide grey scroll

@@ -35,8 +35,14 @@ import {
   type ChartColorKey,
 } from '../lib/chartColors';
 import { formatDuration } from '../lib/format';
+import { memo } from 'react';
+import { useCrosshairState, type SharedCrosshair } from '../lib/chartCrosshair';
 
-export function AlertConditionBands({
+// memo: the parent chart re-renders at crosshair/poll frequency; the
+// band layer only needs to when its spans or scales change.
+export const AlertConditionBands = memo(AlertConditionBandsImpl);
+
+function AlertConditionBandsImpl({
   intervals,
   target,
   xScale,
@@ -48,7 +54,7 @@ export function AlertConditionBands({
   idSuffix,
   focusSpanOpenId = null,
   focusSpanEdge = 'start',
-  hoverTickAt = null,
+  crosshair,
   onSpanClick,
 }: {
   intervals: ReadonlyArray<AlertConditionInterval>;
@@ -69,16 +75,17 @@ export function AlertConditionBands({
    *  has no recovery edge in the data). */
   focusSpanEdge?: 'start' | 'end';
   /**
-   * #317: the crosshair's hovered timestamp. The onset/recovery markers
-   * are hidden by default (just the hatch band shows) and fade in only
+   * #317: the shared crosshair store. The onset/recovery markers are
+   * hidden by default (just the hatch band shows) and fade in only
    * near the cursor, so the chart stays clean but the clickable glyphs
-   * surface when you reach for them. Null = not hovering -> markers
-   * hidden (except the focused span).
+   * surface when you reach for them. This layer subscribes itself so
+   * hover re-renders only the bands, not the host chart.
    */
-  hoverTickAt?: number | null;
+  crosshair?: SharedCrosshair;
   /** #316: clicking an onset/recovery marker -> pinned pop-up at (x, y). */
   onSpanClick?: (span: AlertConditionInterval['span'], clientX: number, clientY: number) => void;
 }) {
+  const hoverTickAt = useCrosshairState(crosshair)?.tickAt ?? null;
   // px radius over which a marker fades in around the cursor.
   const REVEAL_PX = 90;
   const hoverX = hoverTickAt != null ? xScale(hoverTickAt) : null;

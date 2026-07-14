@@ -78,11 +78,20 @@ export async function registerDdnsTestRoute(
         }
       }
 
+      // #339: send the daemon's detected public IP explicitly, exactly
+      // like the periodic updater. Omitting it makes the provider record
+      // the SOURCE IP of this update request - which is the box's egress,
+      // NOT necessarily the intended public IP. Testing from (or through)
+      // a VPN'd context then writes the VPN exit IP to the hostname. With
+      // myip/ip set, a test can only ever assert the box's real public IP.
+      const detectedIp = deps.publicIpService.getSnapshot().ip;
+      const myipParam = detectedIp ? `&myip=${encodeURIComponent(detectedIp)}` : '';
+
       const ac = new AbortController();
       const timer = setTimeout(() => ac.abort(), 8_000);
       try {
         if (provider === 'noip') {
-          const url = `${NOIP_UPDATE_URL}?hostname=${encodeURIComponent(hostname)}`;
+          const url = `${NOIP_UPDATE_URL}?hostname=${encodeURIComponent(hostname)}${myipParam}`;
           const auth = Buffer.from(`${username}:${credential}`).toString('base64');
           const resp = await fetch(url, {
             headers: {
@@ -113,7 +122,7 @@ export async function registerDdnsTestRoute(
         }
         if (provider === 'dyndns2') {
           const sep = updateUrl.includes('?') ? '&' : '?';
-          const url = `${updateUrl}${sep}hostname=${encodeURIComponent(hostname)}`;
+          const url = `${updateUrl}${sep}hostname=${encodeURIComponent(hostname)}${myipParam}`;
           const auth = Buffer.from(`${username}:${credential}`).toString('base64');
           const resp = await fetch(url, {
             headers: {
@@ -143,9 +152,11 @@ export async function registerDdnsTestRoute(
           return { ok: false, status, raw, error: raw || `HTTP ${resp.status}` };
         }
         if (provider === 'duckdns') {
-          // DuckDNS expects bare subdomain, no `ip=` (their server uses the source IP).
+          // DuckDNS expects the bare subdomain. Supply ip= explicitly
+          // (#339); without it DuckDNS records the request's source IP.
           const sub = hostname.replace(/\.duckdns\.org$/i, '');
-          const url = `https://www.duckdns.org/update?domains=${encodeURIComponent(sub)}&token=${encodeURIComponent(credential)}`;
+          const ipParam = detectedIp ? `&ip=${encodeURIComponent(detectedIp)}` : '';
+          const url = `https://www.duckdns.org/update?domains=${encodeURIComponent(sub)}&token=${encodeURIComponent(credential)}${ipParam}`;
           const resp = await fetch(url, {
             headers: { 'User-Agent': USER_AGENT },
             signal: ac.signal,

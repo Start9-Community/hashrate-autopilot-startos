@@ -416,12 +416,13 @@ export const AppConfigSchema = z.object({
   //   on-chain transaction (a batched sweep from Ocean's pool wallet,
   //   mined in any block by any pool - NOT a coinbase output, #240)
   //   hasn't hit the chain yet.
-  // - notify_on_payout_confirmed: fires when the on-chain payout
-  //   scanner writes a new row to reward_events (an output paying
-  //   the configured payout address has confirmed - any tx, not
-  //   just a coinbase, #240). Idempotent
-  //   via the in-memory `lastNotifiedRewardEventId` watermark in the
-  //   alert evaluator, same pattern as pool_block_credited.
+  // - notify_on_payout_confirmed: the enriched stage-2 alert. Fires
+  //   once per new settlement Ocean reports in its own payout ledger
+  //   (earnpay -> ocean_payouts), rail-aware so BOTH on-chain and
+  //   Lightning payouts get a message (#323 - the old reward_events
+  //   source was on-chain-only and never confirmed a Lightning
+  //   payout). Idempotent via the per-row `enriched_alert` flag, with a
+  //   silent baseline of the historical backfill on the first tick.
   // Both default off so a fresh install / upgrade doesn't start
   // buzzing the operator's phone unannounced.
   notify_on_payout_initiated: z.boolean().default(false),

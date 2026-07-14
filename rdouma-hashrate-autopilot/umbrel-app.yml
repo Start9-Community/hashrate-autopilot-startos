@@ -12,7 +12,7 @@ manifestVersion: 1
 id: rdouma-hashrate-autopilot
 category: bitcoin
 name: Hashrate Autopilot
-version: "1.16.0"
+version: "1.17.1"
 tagline: Autopilot for renting hashrate to mine on Ocean Mining
 icon: https://raw.githubusercontent.com/rdouma/hashrate-autopilot/main/assets/icon-512.png
 # Umbrel renders description literally - no YAML folding of soft
@@ -58,6 +58,30 @@ defaultPassword: ''
 submitter: Remco Douma
 submission: https://github.com/rdouma/hashrate-autopilot
 releaseNotes: |
+  v1.17.1 - a current-block-height tile, a searchable Timeline with personal notes, and a Profit & Loss self-heal.
+
+  NEW
+  - Current block height tile: a new stats-bar tile shows the latest Bitcoin block, names the pool or miner that found it, crowns your own blocks, marks Ocean and BIP 110 blocks, and links straight to your block explorer.
+  - Search your whole Timeline: the Timeline's bid-id filter is now a full-text search box that matches across the bid id, the reason, your personal notes, and the identifiers on each row (block heights, IPs, deposit tx ids, config values) - across your entire history, not just the rows currently loaded.
+  - Personal notes on Timeline events: attach a note to any Timeline row; it is saved, searchable, and included in the Excel export.
+  - Profit & Loss hard reset: next to rebuild, a button that wipes and rebuilds the Ocean payout store and the Braiins spend cache from scratch when a figure looks wrong. Both controls now report what they did.
+
+  IMPROVED
+  - Profit & Loss collected self-heals: the payout history is re-fetched on every restart and periodically, so a partial fetch during an upgrade can no longer leave your collected total permanently short.
+  - Clearer alert details: an alert detail panel now breaks an outage into the threshold you waited out, when the alert fired, when it recovered, the alert duration, and the total time the condition was open - and durations round to the nearest minute instead of always rounding down.
+  - Dynamic DNS test now pushes the daemon's own detected public IP, not the address the dashboard request came from.
+
+  v1.17.0 - the security release: your secrets are now encrypted at rest, you can change your password and rotate tokens in-app, and Profit & Loss counts Lightning payouts.
+
+  SECURITY
+  - Secrets encrypted at rest: your Braiins tokens, bitcoind RPC password, Telegram token, and DDNS credential are now AES-256-GCM encrypted in the database instead of plaintext, and your dashboard password is stored as a one-way hash. A copied database or a backup no longer hands over your secrets. Existing installs upgrade themselves on first start; nothing for you to do.
+  - No more secrets in the audit trail: the config-change history no longer records credential values, and any that were previously logged are scrubbed on upgrade.
+  - Credentials are write-only in the settings API now: the dashboard shows those fields blank and keeps the saved value if you leave them blank.
+
+  NEW
+  - Change your password and rotate your Braiins tokens from the dashboard: Config > Pool & Payout > Security & credentials. The password change takes effect immediately; a new Braiins token is checked against Braiins before it's saved so a typo can't break bidding. Every change asks for your current password first. This is the first way to rotate these without a shell, so it finally works on Umbrel.
+  - Profit & Loss now counts Lightning payouts: the "collected" figure is read from Ocean's own payout ledger, so both on-chain and Lightning payouts count, split by rail, and a payout that's already been spent still shows up. No Bitcoin node required for the collected number anymore.
+
   v1.16.0 - the Timeline release: one unified event log, alert recoveries, Excel export, and two controller-safety fixes.
 
   NEW

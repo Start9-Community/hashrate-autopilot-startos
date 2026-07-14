@@ -194,6 +194,8 @@ export async function registerBidEventsRoute(
       before_id?: string;
       kinds?: string;
       source?: string;
+      /** #342: free-text search (id + reason + note). Supersedes order_id. */
+      q?: string;
       order_id?: string;
       since_ms?: string;
       until_ms?: string;
@@ -221,7 +223,10 @@ export async function registerBidEventsRoute(
       req.query.source === 'AUTOPILOT' || req.query.source === 'OPERATOR'
         ? (req.query.source as 'AUTOPILOT' | 'OPERATOR')
         : undefined;
-    const orderIdContains = req.query.order_id?.trim() || undefined;
+    // #342: `q` is the general free-text search (id + reason + note).
+    // `order_id` is kept as a fallback for any persisted URL from before
+    // the rename.
+    const textSearch = req.query.q?.trim() || req.query.order_id?.trim() || undefined;
     const sinceMs = req.query.since_ms
       ? Number.parseInt(req.query.since_ms, 10)
       : undefined;
@@ -243,7 +248,7 @@ export async function registerBidEventsRoute(
     if (beforeId && Number.isFinite(beforeId)) args.beforeId = beforeId;
     if (kinds !== undefined) args.kinds = kinds;
     if (source) args.source = source;
-    if (orderIdContains) args.orderIdContains = orderIdContains;
+    if (textSearch) args.textSearch = textSearch;
     if (sinceMs && Number.isFinite(sinceMs)) args.sinceMs = sinceMs;
     if (untilMs && Number.isFinite(untilMs)) args.untilMs = untilMs;
     if (minAbsPriceDeltaSat) args.minAbsPriceDeltaSat = minAbsPriceDeltaSat;

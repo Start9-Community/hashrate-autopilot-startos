@@ -176,11 +176,12 @@ hashrate-autopilot/
 │   │   ├── src/state/
 │   │   │   ├── db.ts               (better-sqlite3 + migrations)
 │   │   │   ├── migrations/
-│   │   │   ├── repos/              (config, secrets, decisions, owned_bids, runtime_state, tick_metrics + braiinsRejectionPctSince, bid_events, ip_change_events, reward_events, braiins_deposits, solo_miners, pool_blocks, closed_bids_cache, alerts, system_events)
+│   │   │   ├── repos/              (config, secrets, decisions, owned_bids, runtime_state, tick_metrics + braiinsRejectionPctSince, bid_events, ip_change_events, reward_events, ocean_payouts, braiins_deposits, solo_miners, pool_blocks, closed_bids_cache, alerts, system_events)
 │   │   │   └── stale-bid-prune.ts  (#295 - marks active ledger bids absent from a confirmed-successful Braiins list as cancelled)
 │   │   ├── src/services/
 │   │   │   ├── braiins-service.ts
-│   │   │   ├── payout-observer.ts  (Electrs-preferred; bitcoind fallback)
+│   │   │   ├── payout-observer.ts  (Electrs-preferred; bitcoind fallback; on-chain corroboration only since #323)
+│   │   │   ├── ocean-payouts-service.ts (#323 - syncs Ocean earnpay payouts into ocean_payouts; source of truth for P&L collected)
 │   │   │   ├── pool-health.ts      (TCP probe of Datum Gateway :23334)
 │   │   │   ├── ocean.ts            (Ocean pool REST client: stats, blocks, earnings)
 │   │   │   ├── datum.ts            (optional Datum stats poller - gateway-measured hashrate + workers)
@@ -218,12 +219,14 @@ hashrate-autopilot/
 │   │   │   └── execute.ts          (calls Braiins API with dry-run/live split)
 │   │   └── src/http/               (Fastify; dashboard API)
 │   │       ├── server.ts
-│   │       └── routes/             (status, config, decisions, actions, metrics [+ /api/retargets +
+│   │       └── routes/             (status, config, security [#332 - /api/security/state,
+│   │                                /api/security/password, /api/security/braiins-token],
+│   │                                decisions, actions, metrics [+ /api/retargets +
 │   │                                /api/system-events], run-mode, finance, stats, storage-estimate,
 │   │                                bid-events [+ /api/bid-history, /api/bid-history/:order_id/events,
 │   │                                /api/bid-history-events - the #256 v2 flat Timeline feed], ocean,
 │   │                                payouts, btc-price, bip110-scan, bitcoind-test, electrs-test,
-│   │                                block-found-sound, build, reward-events, deposits, ip-changes,
+│   │                                block-found-sound, build, reward-events, payout-ledger, deposits, ip-changes,
 │   │                                alerts [+ /api/alert-spans], notifications-test,
 │   │                                notifications-test-event, ddns, ddns-test, datum-test, pool-url-test,
 │   │                                stale-urls, solo-miners, debug-dump, diagnostics [#272 support bundle])
@@ -315,7 +318,7 @@ Core tables, WAL-mode, single file at `data/state.db`. Migration scripts live in
 
 ```sql
 -- Live-editable configuration (single-row pattern)
--- Reflects the current schema after all migrations through 0115.
+-- Reflects the current schema after all migrations through 0117.
 CREATE TABLE config (
   id INTEGER PRIMARY KEY CHECK (id = 1),
   -- Hashrate targets
@@ -593,6 +596,30 @@ CREATE TABLE reward_events (
   reorged INTEGER NOT NULL DEFAULT 0,
   UNIQUE (txid, vout)
 );
+
+-- Ocean payout ledger from the /v1/earnpay endpoint (#323, migration
+-- 0116). Source of truth for P&L "collected" - covers BOTH on-chain
+-- (on_chain_txid set) and Lightning (on_chain_txid null) settlements,
+-- which reward_events (on-chain scanner) structurally cannot. Written
+-- by OceanPayoutsService (full backfill on first run per address, then
+-- a slow trailing-window refresh). dedup_key is the idempotency key:
+-- `<address>|oc:<txid>` for on-chain, `<address>|ln:<ts>:<net_sat>` for
+-- Lightning (a UNIQUE on on_chain_txid can't dedup null-txid Lightning
+-- rows). enriched_alert gates the stage-2 payout_confirmed Telegram.
+CREATE TABLE ocean_payouts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  address TEXT NOT NULL,
+  ts INTEGER NOT NULL,                 -- settlement time, ms epoch
+  on_chain_txid TEXT,                  -- null = Lightning
+  net_sat INTEGER NOT NULL,            -- total_satoshis_net_paid
+  is_generation INTEGER NOT NULL DEFAULT 0,
+  rail TEXT NOT NULL,                  -- 'onchain' | 'lightning'
+  dedup_key TEXT NOT NULL,
+  enriched_alert INTEGER NOT NULL DEFAULT 0,
+  first_seen_at INTEGER NOT NULL
+);
+CREATE UNIQUE INDEX idx_ocean_payouts_dedup ON ocean_payouts (dedup_key);
+CREATE INDEX idx_ocean_payouts_addr_ts ON ocean_payouts (address, ts);
 
 -- Alerts. v1.6 (#100) added external delivery via Telegram; the
 -- columns below cover both the v1.0 audit trail and the channel-
@@ -918,7 +945,7 @@ concern (not by order; the file names are authoritative):
   with NULL on bid-rotation ticks (counter reset → negative
   Δpurchased) and on ticks where Δpurchased ≤ 0.
 
-- **Post-1.14 window (0107-0115):** 0107 (#243) scrubs orphan May 5-6 rows
+- **Post-1.14 window (0107-0117):** 0107 (#243) scrubs orphan May 5-6 rows
   left in the share-counter columns by the reverted #90 migration reusing
   the same names. 0108 (#244) adds the reserved/dormant `dashboard_card_order` column, 0109 (#250) creates `ip_change_events`, 0110 (#266) adds `dashboard_tiles`. 0111
   (#287) rebuilds `bid_events` to widen the kind CHECK constraint for
@@ -927,7 +954,17 @@ concern (not by order; the file names are authoritative):
   reconstruction); 0113 backfills it. 0114 (#318) creates `system_events`
   (config_change + daemon_started rows behind `GET /api/system-events`).
   0115 (2026-07-02 audit) drops `config.handover_window_minutes` - the
-  retired §7.3 manual-override knob nothing read.
+  retired §7.3 manual-override knob nothing read. 0116 (#323) creates the
+  `ocean_payouts` table, synced from Ocean's `/v1/earnpay` endpoint
+  (per-address backfill + trailing-window refresh). It holds both on-chain
+  payouts (has `on_chain_txid`) and Lightning payouts (`on_chain_txid IS
+  NULL`), and is the source of truth for the Profit & Loss "collected"
+  figure and its on-chain/Lightning rail split. 0117 (GHSA-x8x9) scrubs
+  credential values that a v1.16.0 config-change audit-log feature had
+  written in cleartext into `system_events` rows (`telegram_bot_token`,
+  `bitcoind_rpc_user`, `bitcoind_rpc_password`, `ddns_username`,
+  `ddns_credential`); the daemon also redacts these at write time going
+  forward.
 
 - **Gap-backfill + boot-time payout refresh (0104-0105):** 0104 (#241)
   adds `tick_metrics.synthetic INTEGER NOT NULL DEFAULT 0` marking rows
@@ -973,11 +1010,25 @@ Reconciliation pass: periodic full scan to catch anything real-time detection mi
 
 ## 7. Secrets and config
 
-- **sops** with an **age** key. Single-file, no keyring faff, easy to rotate.
-- Decryption happens once at daemon startup. Decrypted values are held in memory, never re-written to disk; pino log
-  redaction on `braiins_owner_token`, `braiins_read_only_token`, `bitcoind_rpc_password`, `dashboard_password`.
-- The age private key lives on the always-on box at a fixed path with chmod 600; operator is responsible for a
-  backup (printed or encrypted USB).
+- **Layered secret resolution** (first available wins): `BHA_*` environment variables > the SOPS-encrypted file
+  (`.env.sops.yaml`) > the encrypted `secrets` table in `state.db` (populated by the first-run web onboarding
+  wizard). Any one source can satisfy a given secret.
+- **Secrets-at-rest (#331).** The database-stored secrets - Braiins owner + read-only tokens, bitcoind RPC
+  password, Telegram bot token, DDNS credential - are AES-256-GCM encrypted at rest. Each value is stored as an
+  envelope `enc:v1:<b64 iv>:<b64 ciphertext+tag>`, with the field name bound in as the AAD. The dashboard password
+  is stored as a one-way scrypt hash (never recoverable, only verifiable).
+- **Encryption key resolution** (first available wins): `BHA_SECRET_KEY` env var (on Umbrel this is the
+  device-derived `APP_SEED`) > `BHA_SECRET_KEY_FILE` > a generated `secret.key` file (mode 0600) written next to
+  `state.db`. The resolved key is run through HKDF-SHA256 to derive the per-field encryption key.
+- A decrypt failure is handled gracefully - the secret is treated as unset rather than crashing the daemon into a
+  restart loop. Legacy plaintext rows (from before #331) are encrypted or hashed in place on the next boot; the
+  migration is idempotent.
+- **Write-only credential API.** The config API is write-only for credential fields (`bitcoind_rpc_password`,
+  `telegram_bot_token`, `ddns_credential`): they are accepted on POST but never echoed back on GET, and a blank
+  value on save keeps the existing secret rather than clearing it.
+- Decrypted values are held in memory only, never re-written to disk in plaintext; pino log redaction covers
+  `braiins_owner_token`, `braiins_read_only_token`, `bitcoind_rpc_password`, `dashboard_password`. See
+  `docs/security-secrets-at-rest.md` for the full threat model and key-management details.
 - Live tunables (non-secret) live in SQLite `config` table, editable via the dashboard and `/config` HTTP route.
   Validation against a Zod schema on every write.
 

@@ -48,10 +48,13 @@ import { type IpChangeMarkerEvent } from './IpChangeMarkers';
 import { applyExplorerTemplate } from '../lib/blockExplorer';
 import {
   clientXToTickAt,
-  CrosshairReadout,
+  CrosshairReadoutLayer,
+  CrosshairSvgLayer,
   nearestTickIndex,
   useCrosshairPointer,
   type CrosshairReadoutRow,
+  type CrosshairState,
+  type CrosshairView,
   type SharedCrosshair,
 } from '../lib/chartCrosshair';
 import { darkenHex, getChartColor, parseOverrides } from '../lib/chartColors';
@@ -60,6 +63,7 @@ import { copyToClipboard } from '../lib/clipboard';
 import { useDenomination } from '../lib/denomination';
 import { ReasonText } from './DenomUnit';
 import {
+  cachedNumberFormat,
   formatAgeMinutes,
   formatCompactNumber,
   formatDuration,
@@ -68,6 +72,7 @@ import {
   formatTimestampUtc,
 } from '../lib/format';
 import { useDateTimeLocale, useFormatters, useLocale } from '../lib/locale';
+import { RateSuffix } from './DenomUnit';
 import { SatSymbol } from './SatSymbol';
 import {
   PoolBlockTooltip,
@@ -220,7 +225,7 @@ function formatSatCompact(
       return Math.max(base, spanDigits + 1);
     };
     const fmt = (decimals: number): string =>
-      new Intl.NumberFormat(locale, {
+      cachedNumberFormat(locale, {
         minimumFractionDigits: 0,
         maximumFractionDigits: decimals,
       }).format(btc);
@@ -504,7 +509,13 @@ export const PriceChart = memo(function PriceChart({
   const dateTimeLocale = useDateTimeLocale();
   const denomination = useDenomination();
 
-  const chartData = useMemo(() => {
+  // #perf: viewport-independent series derivations, split out of
+  // chartData. chartData recomputes on every drag frame (its deps
+  // include viewportSince/Until) and on UI-only keys (chartHeight,
+  // focusEventId); the O(n × window) effective-rate accumulation and
+  // the base series maps below depend only on the fetched points and
+  // the smoothing setting, so they must not re-run per frame.
+  const baseSeries = useMemo(() => {
     const pricePoints: PricePoint[] = points
       .filter((p) => Number.isFinite(p.our_primary_price_sat_per_ph_day))
       .map((p) => ({ t: p.tick_at, v: p.our_primary_price_sat_per_ph_day as number }));
@@ -721,6 +732,11 @@ export const PriceChart = memo(function PriceChart({
         }
       }
     }
+    return { pricePoints, hashpricePoints, fillablePoints, effectivePoints, settledPoints };
+  }, [points, priceSmoothingMinutes]);
+
+  const chartData = useMemo(() => {
+    const { pricePoints, hashpricePoints, fillablePoints, effectivePoints, settledPoints } = baseSeries;
 
     // The line the operator actually cares about: the effective cap
     // that decide() uses each tick, which is the tighter of the fixed
@@ -875,6 +891,11 @@ export const PriceChart = memo(function PriceChart({
       stroke: string;
       axisLabel: string;
       formatTick: (v: number, axisSpan?: number) => string;
+      /** #331 follow-up: true for sat-denominated series (unpaid, paid,
+       *  lifetime, block reward, Braiins balance). The tooltip drops the
+       *  "(sat)" from the label and renders the value with a dimmed
+       *  currency glyph that follows the sats/BTC/USD toggle. */
+      currency?: boolean;
     } | null = (() => {
       switch (rightAxisSeries) {
         case 'none':
@@ -888,7 +909,7 @@ export const PriceChart = memo(function PriceChart({
             stroke: COLOR_RIGHT_AXIS,
             axisLabel: 'effective (sat/PH/day)',
             formatTick: (v) =>
-              new Intl.NumberFormat(intlLocale, {
+              cachedNumberFormat(intlLocale, {
                 maximumFractionDigits: 0,
               }).format(v),
           };
@@ -898,6 +919,7 @@ export const PriceChart = memo(function PriceChart({
             stroke: COLOR_RIGHT_AXIS,
             axisLabel: `block reward (${denomination.mode === 'usd' ? '$' : denomination.mode === 'btc' ? '₿' : 'sat'})`,
             formatTick: (v, span) => formatSatCompact(v, denomination, intlLocale, span),
+            currency: true,
           };
         case 'btc_usd_price':
           return {
@@ -911,7 +933,7 @@ export const PriceChart = memo(function PriceChart({
             formatTick: (v) => {
               const abs = Math.abs(v);
               const fmt = (x: number, d: number): string =>
-                new Intl.NumberFormat(intlLocale, {
+                cachedNumberFormat(intlLocale, {
                   minimumFractionDigits: d,
                   maximumFractionDigits: d,
                 }).format(x);
@@ -926,6 +948,7 @@ export const PriceChart = memo(function PriceChart({
             stroke: COLOR_RIGHT_AXIS,
             axisLabel: `unpaid (${denomination.mode === 'usd' ? '$' : denomination.mode === 'btc' ? '₿' : 'sat'})`,
             formatTick: (v, span) => formatSatCompact(v, denomination, intlLocale, span),
+            currency: true,
           };
         case 'paid_total_sat':
           return {
@@ -937,6 +960,7 @@ export const PriceChart = memo(function PriceChart({
             stroke: COLOR_RIGHT_AXIS,
             axisLabel: `paid total (${denomination.mode === 'usd' ? '$' : denomination.mode === 'btc' ? '₿' : 'sat'})`,
             formatTick: (v, span) => formatSatCompact(v, denomination, intlLocale, span),
+            currency: true,
           };
         case 'total_balance_sat':
           return {
@@ -944,6 +968,7 @@ export const PriceChart = memo(function PriceChart({
             stroke: COLOR_RIGHT_AXIS,
             axisLabel: `Braiins balance (${denomination.mode === 'usd' ? '$' : denomination.mode === 'btc' ? '₿' : 'sat'})`,
             formatTick: (v, span) => formatSatCompact(v, denomination, intlLocale, span),
+            currency: true,
           };
         case 'solo_power_watts': {
           // Nearest-neighbor join with 15s tolerance - see HashrateChart's
@@ -959,7 +984,7 @@ export const PriceChart = memo(function PriceChart({
             // fleets are typically 15-100W where kW scale would round
             // to zero.
             formatTick: (v) =>
-              `${new Intl.NumberFormat(intlLocale, { maximumFractionDigits: 1 }).format(v)} W`,
+              `${cachedNumberFormat(intlLocale, { maximumFractionDigits: 1 }).format(v)} W`,
           };
         }
         case 'lifetime_earnings_sat':
@@ -974,6 +999,7 @@ export const PriceChart = memo(function PriceChart({
             stroke: COLOR_RIGHT_AXIS,
             axisLabel: `lifetime (${denomination.mode === 'usd' ? '$' : denomination.mode === 'btc' ? '₿' : 'sat'})`,
             formatTick: (v, span) => formatSatCompact(v, denomination, intlLocale, span),
+            currency: true,
           };
         case 'avg_overpay_intent':
           return {
@@ -981,7 +1007,7 @@ export const PriceChart = memo(function PriceChart({
             stroke: COLOR_RIGHT_AXIS,
             axisLabel: 'avg overpay intent (sat/PH/day)',
             formatTick: (v) =>
-              new Intl.NumberFormat(intlLocale, {
+              cachedNumberFormat(intlLocale, {
                 maximumFractionDigits: 0,
               }).format(v),
           };
@@ -991,7 +1017,7 @@ export const PriceChart = memo(function PriceChart({
             stroke: COLOR_RIGHT_AXIS,
             axisLabel: 'avg overpay settled (sat/PH/day)',
             formatTick: (v) =>
-              new Intl.NumberFormat(intlLocale, {
+              cachedNumberFormat(intlLocale, {
                 maximumFractionDigits: 0,
               }).format(v),
           };
@@ -1380,7 +1406,7 @@ export const PriceChart = memo(function PriceChart({
     // crosshair readout - the bid row mirrors the smoothed line the
     // chart draws, the cap row mirrors the per-tick effective cap.
     return { pricePoints, xs, smoothedPriceByTick, capByTick, minX, maxX, dataMinX, dataMaxX, hasPrice, priceMin, priceMax, xScale, yScale, pricePath, priceAreaPath, hashpricePath, fillablePath, fillableHasData: fillablePoints.length > 0, effectivePath, effectiveHasData: effectivePoints.length > 0, capPath, capExclusionPolygon, yTicks, xTickInterval, xTicks, visibleEvents, rightAxis, hasRightAxis, rightAxisPath, rightYTicks, rightYScale, padRight, marketplaceEmptyIntervals, braiinsUnreachableIntervals, daemonOfflineIntervals };
-  }, [points, events, showEventKinds, focusEventId, priceSmoothingMinutes, historicalPayoutsOffsetSat, maxOverpayVsHashpriceSatPerPhDay, chartHeight, rightAxisSeries, soloSeries, denomination, intlLocale, viewportSince, viewportUntil, hidden]);
+  }, [baseSeries, points, events, showEventKinds, focusEventId, priceSmoothingMinutes, historicalPayoutsOffsetSat, maxOverpayVsHashpriceSatPerPhDay, chartHeight, rightAxisSeries, soloSeries, denomination, intlLocale, viewportSince, viewportUntil, hidden]);
 
   const eventPriceAt = useCallback((e: BidEventView): number | null => {
     const pricePoints = chartData?.pricePoints ?? [];
@@ -1438,6 +1464,17 @@ export const PriceChart = memo(function PriceChart({
   const onPoolBlockClick = useCallback(
     (block: OurBlockMarker, balance?: PoolBlockTooltipState['balance']) => (e: React.MouseEvent) => {
       e.stopPropagation();
+      setPoolBlockTip({ block, balance, x: e.clientX, y: e.clientY, pinned: true });
+    },
+    [],
+  );
+  // Touch tap = pin directly (see the matching handler in HashrateChart):
+  // iOS suppresses the first-tap click on hover-revealing markers, so
+  // without this the block tooltip opened unpinned - no dismiss button
+  // and no "View in timeline" jump.
+  const onPoolBlockTap = useCallback(
+    (block: OurBlockMarker, balance?: PoolBlockTooltipState['balance']) => (e: React.PointerEvent) => {
+      if (e.pointerType === 'mouse') return;
       setPoolBlockTip({ block, balance, x: e.clientX, y: e.clientY, pinned: true });
     },
     [],
@@ -2047,9 +2084,10 @@ export const PriceChart = memo(function PriceChart({
   // the smoothed series the chart draws; fillable / hashprice come
   // straight off the tick; cap is the per-tick effective cap; the
   // right-axis series formats through its own axis formatter.
-  const crosshairView = useMemo(() => {
-    const cs = crosshair?.state;
-    if (!cs || !chartData || isDragging) return null;
+  // Called by the subscription-backed crosshair layers, so pointer
+  // moves never re-render this chart.
+  const computeCrosshairView = useCallback((cs: CrosshairState): CrosshairView | null => {
+    if (!chartData || isDragging) return null;
     if (cs.tickAt < chartData.minX || cs.tickAt > chartData.maxX) return null;
     const i = nearestTickIndex(chartData.xs, cs.tickAt);
     if (i < 0) return null;
@@ -2057,7 +2095,17 @@ export const PriceChart = memo(function PriceChart({
     const p = points[i]!;
     const rows: CrosshairReadoutRow[] = [];
     const dots: Array<{ cy: number; color: string }> = [];
-    const fmtRate = (v: number) => denomination.formatSatPerPhDay(v, intlLocale);
+    // Value + a dimmed unit suffix (the Satoshi glyph in sats mode, ₿/$ per
+    // the currency toggle), matching the muted "subtitle" unit look on the
+    // stat tiles - the unit reads at lower intensity than the number.
+    const fmtRate = (v: number): React.ReactNode => (
+      <>
+        {denomination.formatSatPerPhDayValue(v, intlLocale)}{' '}
+        <span className="text-slate-500">
+          <RateSuffix suffix={denomination.rateSuffix} />
+        </span>
+      </>
+    );
     const bid = smoothedPriceByTick.get(p.tick_at) ?? null;
     if (bid !== null) {
       rows.push({ color: COLOR_PRICE, label: t`our bid`, value: fmtRate(bid) });
@@ -2083,13 +2131,32 @@ export const PriceChart = memo(function PriceChart({
       const v = rightAxis.values[i];
       if (v !== null && v !== undefined && Number.isFinite(v)) {
         const span = (rightYTicks[rightYTicks.length - 1] ?? 1) - (rightYTicks[0] ?? 0);
-        rows.push({ color: rightAxis.stroke, label: rightAxis.axisLabel, value: rightAxis.formatTick(v, span) });
+        const num = rightAxis.formatTick(v, span);
+        // Currency series (unpaid, paid, lifetime, ...): drop the "(sat)"
+        // from the label and render the value with a dimmed glyph that
+        // follows the toggle. USD already carries a "$" prefix from the
+        // formatter, so it gets no suffix.
+        const label = rightAxis.currency
+          ? rightAxis.axisLabel.replace(/\s*\([^)]*\)\s*$/, '')
+          : rightAxis.axisLabel;
+        const value: React.ReactNode =
+          rightAxis.currency && denomination.mode !== 'usd' ? (
+            <>
+              {num}{' '}
+              <span className="text-slate-500">
+                {denomination.mode === 'btc' ? '₿' : <SatSymbol />}
+              </span>
+            </>
+          ) : (
+            num
+          );
+        rows.push({ color: rightAxis.stroke, label, value });
         dots.push({ cy: rightYScale(v), color: rightAxis.stroke });
       }
     }
     const x = xScale(cs.tickAt);
     return { state: cs, x, lineXFrac: x / WIDTH, rows, dots };
-  }, [crosshair?.state, chartData, isDragging, points, denomination, intlLocale, _colorOverrides]);
+  }, [chartData, isDragging, points, denomination, intlLocale, _colorOverrides]);
 
   // #288: tell Status the focused marker is actually in the rendered
   // set so the beacon's clear countdown starts at render time, not
@@ -2149,7 +2216,7 @@ export const PriceChart = memo(function PriceChart({
       // Adaptive decimals - keep tick labels narrow without losing
       // legibility. Drop trailing zeros so "0,4840" reads as "0,484".
       const fmt = (decimals: number): string =>
-        new Intl.NumberFormat(intlLocale, {
+        cachedNumberFormat(intlLocale, {
           minimumFractionDigits: 0,
           maximumFractionDigits: decimals,
         }).format(btc);
@@ -2196,7 +2263,7 @@ export const PriceChart = memo(function PriceChart({
                 !r.reorged &&
                 r.detected_at >= chartData.minX &&
                 r.detected_at <= chartData.maxX,
-            ) && <Legend color={COLOR_PAYOUT} label={t`on-chain payout`} dashed hidden={isHidden('payout')} onToggle={() => toggle('payout')} />}
+            ) && <Legend color={COLOR_PAYOUT} label={t`payout`} dashed hidden={isHidden('payout')} onToggle={() => toggle('payout')} />}
           {/* #287 follow-up: the three always-visible kinds join the
               legend only when at least one such marker is actually in
               view - they're rare, so the legend stays uncluttered in
@@ -2525,7 +2592,7 @@ export const PriceChart = memo(function PriceChart({
           idSuffix="px"
           focusSpanOpenId={focusSpanOpenId}
           focusSpanEdge={focusSpanEdge}
-          hoverTickAt={crosshair?.state?.tickAt ?? null}
+          crosshair={crosshair}
           onSpanClick={onAlertSpanClick}
         />
         {capExclusionPolygon && !isHidden('maxBid') && (
@@ -2943,6 +3010,7 @@ export const PriceChart = memo(function PriceChart({
               onMouseEnter={onPoolBlockEnter(b, balance ?? undefined)}
               onMouseLeave={onPoolBlockLeave}
               onClick={onPoolBlockClick(b, balance ?? undefined)}
+              onPointerUp={onPoolBlockTap(b, balance ?? undefined)}
               style={{ cursor: 'pointer' }}
             >
               {Math.abs(cx - blockCx) > 2 && (
@@ -2984,6 +3052,7 @@ export const PriceChart = memo(function PriceChart({
                 onMouseEnter={onPoolBlockEnter(b)}
                 onMouseLeave={onPoolBlockLeave}
                 onClick={onPoolBlockClick(b)}
+                onPointerUp={onPoolBlockTap(b)}
                 style={{ cursor: 'pointer' }}
               >
                 <line
@@ -3252,32 +3321,15 @@ export const PriceChart = memo(function PriceChart({
             IP rotation), not with the price-axis content. */}
 
         {/* #257: crosshair marker line + per-series dots. Pinned
-            renders solid; transient hover renders dashed. */}
-        {crosshairView && (
-          <g pointerEvents="none">
-            <line
-              x1={crosshairView.x}
-              x2={crosshairView.x}
-              y1={PADDING.top}
-              y2={chartHeight - PADDING.bottom}
-              stroke="#94a3b8"
-              strokeWidth="1"
-              strokeDasharray={crosshairView.state.pinned ? undefined : '3 3'}
-              opacity={crosshairView.state.pinned ? 0.9 : 0.6}
-            />
-            {crosshairView.dots.map((d, di) => (
-              <circle
-                key={`xh-dot-${di}`}
-                cx={crosshairView.x}
-                cy={d.cy}
-                r="3"
-                fill={d.color}
-                stroke="#0f172a"
-                strokeWidth="1"
-              />
-            ))}
-          </g>
-        )}
+            renders solid; transient hover renders dashed. Subscribes
+            to the crosshair store itself - hover doesn't re-render
+            this chart. */}
+        <CrosshairSvgLayer
+          crosshair={crosshair}
+          computeView={computeCrosshairView}
+          topY={PADDING.top}
+          bottomY={chartHeight - PADDING.bottom}
+        />
         </g>
 
         {hasRightAxis && rightAxis && (
@@ -3298,24 +3350,21 @@ export const PriceChart = memo(function PriceChart({
       {/* #257: per-chart value readout for the crosshair. Suppressed
           while a marker hover-tooltip is open - markers win on direct
           hover (pinned marker tooltips coexist fine). */}
-      {crosshairView && !(
-        (tooltip !== null && !tooltip.pinned) ||
-        (poolBlockTip !== null && !poolBlockTip.pinned) ||
-        (rewardTip !== null && !rewardTip.pinned) ||
-        (depositTip !== null && !depositTip.pinned) ||
-        (retargetTip !== null && !retargetTip.pinned) ||
-        (unpaidDropTip !== null && !unpaidDropTip.pinned) ||
-        (bootTip !== null && !bootTip.pinned)
-      ) && (
-        <CrosshairReadout
-          chartId="price"
-          state={crosshairView.state}
-          svgEl={svgElRef.current}
-          lineXFrac={crosshairView.lineXFrac}
-          rows={crosshairView.rows}
-          onClose={() => crosshair?.clear()}
-        />
-      )}
+      <CrosshairReadoutLayer
+        chartId="price"
+        crosshair={crosshair}
+        computeView={computeCrosshairView}
+        suppressed={
+          (tooltip !== null && !tooltip.pinned) ||
+          (poolBlockTip !== null && !poolBlockTip.pinned) ||
+          (rewardTip !== null && !rewardTip.pinned) ||
+          (depositTip !== null && !depositTip.pinned) ||
+          (retargetTip !== null && !retargetTip.pinned) ||
+          (unpaidDropTip !== null && !unpaidDropTip.pinned) ||
+          (bootTip !== null && !bootTip.pinned)
+        }
+        svgRef={svgElRef}
+      />
 
       {poolBlockTip && (
         <PoolBlockTooltip
@@ -3459,25 +3508,30 @@ function RewardEventTooltip({
     setPos({ left, top, ready: true });
   }, [tip.x, tip.y, reward.id]);
 
-  const url = explorerTemplate
-    ? applyExplorerTemplate(explorerTemplate, {
-        txid: reward.txid,
-        height: reward.block_height,
-      })
-    : '';
+  // #323: Lightning payouts have no txid and never touch the chain, so
+  // there's nothing to open in a block explorer - only on-chain payouts
+  // with a txid get a link.
+  const isLightning = reward.rail === 'lightning';
+  const url =
+    explorerTemplate && !isLightning && reward.txid
+      ? applyExplorerTemplate(explorerTemplate, {
+          txid: reward.txid,
+          height: reward.block_height,
+        })
+      : '';
   const btc = reward.value_sat / 1e8;
   const valueText =
     denomination.mode === 'usd' && denomination.btcPrice !== null
-      ? `$${new Intl.NumberFormat(locale, {
+      ? `$${cachedNumberFormat(locale, {
           minimumFractionDigits: 2,
           maximumFractionDigits: 2,
         }).format(btc * denomination.btcPrice)}`
       : denomination.mode === 'btc'
-        ? `₿ ${new Intl.NumberFormat(locale, {
+        ? `₿ ${cachedNumberFormat(locale, {
             minimumFractionDigits: 8,
             maximumFractionDigits: 8,
           }).format(btc)}`
-        : `${new Intl.NumberFormat(locale, {
+        : `${cachedNumberFormat(locale, {
             minimumFractionDigits: 0,
             maximumFractionDigits: 0,
           }).format(reward.value_sat)} sat`;
@@ -3491,7 +3545,14 @@ function RewardEventTooltip({
     >
       <div className="flex items-start justify-between gap-3">
         <span className="font-semibold uppercase tracking-wider text-emerald-400">
-          <Trans>ON-CHAIN PAYOUT</Trans> · #{reward.block_height.toLocaleString(locale)}
+          {isLightning ? (
+            <Trans>LIGHTNING PAYOUT</Trans>
+          ) : (
+            <>
+              <Trans>ON-CHAIN PAYOUT</Trans>
+              {reward.block_height > 0 && ` · #${reward.block_height.toLocaleString(locale)}`}
+            </>
+          )}
         </span>
         {pinned && (
           <button
@@ -3661,16 +3722,16 @@ function DepositTooltip({
   const btc = deposit.amount_sat / 1e8;
   const valueText =
     denomination.mode === 'usd' && denomination.btcPrice !== null
-      ? `$${new Intl.NumberFormat(locale, {
+      ? `$${cachedNumberFormat(locale, {
           minimumFractionDigits: 2,
           maximumFractionDigits: 2,
         }).format(btc * denomination.btcPrice)}`
       : denomination.mode === 'btc'
-        ? `₿ ${new Intl.NumberFormat(locale, {
+        ? `₿ ${cachedNumberFormat(locale, {
             minimumFractionDigits: 8,
             maximumFractionDigits: 8,
           }).format(btc)}`
-        : `${new Intl.NumberFormat(locale, {
+        : `${cachedNumberFormat(locale, {
             minimumFractionDigits: 0,
             maximumFractionDigits: 0,
           }).format(deposit.amount_sat)} sat`;
@@ -4370,12 +4431,12 @@ function UnpaidDropTooltip({
   const formatVal = (sat: number) => {
     const btc = sat / 1e8;
     if (denomination.mode === 'usd' && denomination.btcPrice !== null) {
-      return `$${new Intl.NumberFormat(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(btc * denomination.btcPrice)}`;
+      return `$${cachedNumberFormat(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(btc * denomination.btcPrice)}`;
     }
     if (denomination.mode === 'btc') {
-      return `₿ ${new Intl.NumberFormat(locale, { minimumFractionDigits: 8, maximumFractionDigits: 8 }).format(btc)}`;
+      return `₿ ${cachedNumberFormat(locale, { minimumFractionDigits: 8, maximumFractionDigits: 8 }).format(btc)}`;
     }
-    return `${new Intl.NumberFormat(locale, { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(sat)} sat`;
+    return `${cachedNumberFormat(locale, { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(sat)} sat`;
   };
 
   return (

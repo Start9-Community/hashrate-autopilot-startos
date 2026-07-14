@@ -40,7 +40,8 @@ import { useFormatters } from '../lib/locale';
 import { formatAgeMinutes, formatTimestampUtc } from '../lib/format';
 import { copyToClipboard } from '../lib/clipboard';
 import { useDenomination } from '../lib/denomination';
-import { RateSuffix, ReasonText } from './DenomUnit';
+import { RateSuffix, ReasonText, SatSuffix } from './DenomUnit';
+import { EventNoteField } from './EventNoteField';
 
 export interface BidEventDrawerProps {
   readonly event: BidHistoryFlatEvent;
@@ -61,6 +62,10 @@ export function BidEventDrawer({ event, onClose }: BidEventDrawerProps): React.J
   const rate = (satPerPhDay: number | null): string =>
     denomination.formatSatPerPhDayValue(satPerPhDay);
   const rateUnit = <RateSuffix suffix={denomination.rateSuffix} />;
+  // Shared muted-unit nodes so budget (sat/₿) and speed (PH/s) match the
+  // rate rows instead of baking a full-intensity unit into the value.
+  const satUnit = <SatSuffix suffix={denomination.satSuffix} />;
+  const hashrateUnit = denomination.hashrateSuffix;
 
   // Esc closes. Bind on the document while the drawer is mounted so
   // the table underneath keeps its own keyboard shortcuts free.
@@ -154,6 +159,16 @@ export function BidEventDrawer({ event, onClose }: BidEventDrawerProps): React.J
   const newPrice = event.new_price_sat_per_ph_day;
   const delta = oldPrice !== null && newPrice !== null ? newPrice - oldPrice : null;
 
+  // #6: the daemon writes MODE_CHANGE reasons with raw run-mode enum keys
+  // ("DRY_RUN → LIVE"). Swap them for localized labels so the drawer reads
+  // "Dry run → Live" (and translates for NL/ES).
+  const runModeLabel = (key: string): string =>
+    key === 'DRY_RUN' ? t`Dry Run` : key === 'LIVE' ? t`Live` : key === 'PAUSED' ? t`Paused` : key;
+  const displayReason =
+    event.reason && event.kind === 'MODE_CHANGE'
+      ? event.reason.replace(/\b(DRY_RUN|LIVE|PAUSED)\b/g, (m) => runModeLabel(m))
+      : event.reason;
+
   const copyJson = async () => {
     const payload = {
       event,
@@ -195,7 +210,7 @@ export function BidEventDrawer({ event, onClose }: BidEventDrawerProps): React.J
       />
       {/* Panel. Full-screen on mobile, fixed-width on >= sm. */}
       <aside
-        className="bg-slate-900 border-l border-slate-700 shadow-2xl w-full sm:w-[24rem] max-w-full overflow-y-auto pointer-events-auto flex flex-col"
+        className="bg-slate-900 border-l border-slate-700 shadow-2xl w-full sm:w-[28rem] lg:w-[34rem] xl:w-[40rem] max-w-[92vw] overflow-y-auto pointer-events-auto flex flex-col"
         role="dialog"
         aria-label={t`Bid event detail`}
       >
@@ -221,11 +236,11 @@ export function BidEventDrawer({ event, onClose }: BidEventDrawerProps): React.J
         </div>
 
         <div className="flex-1 px-4 py-3 space-y-3">
-          {event.reason && (
+          {displayReason && (
             <section>
               <SectionHeader label={t`reason`} />
               <p className="text-xs text-slate-200 italic whitespace-normal leading-snug">
-                <ReasonText reason={event.reason} denomination={denomination} />
+                <ReasonText reason={displayReason} denomination={denomination} />
               </p>
             </section>
           )}
@@ -244,8 +259,8 @@ export function BidEventDrawer({ event, onClose }: BidEventDrawerProps): React.J
             <section>
               <SectionHeader label={t`create`} />
               <Row label={t`price`} value={rate(newPrice)} unit={rateUnit} />
-              <Row label={t`speed`} value={denomination.formatHashrate(event.speed_limit_ph)} />
-              <Row label={t`budget`} value={denomination.formatSat(event.amount_sat ?? null)} />
+              <Row label={t`speed`} value={denomination.formatHashrateValue(event.speed_limit_ph)} unit={hashrateUnit} />
+              <Row label={t`budget`} value={denomination.formatSatValue(event.amount_sat ?? null)} unit={satUnit} />
             </section>
           )}
           {event.kind === 'EDIT_PRICE' && (
@@ -261,6 +276,11 @@ export function BidEventDrawer({ event, onClose }: BidEventDrawerProps): React.J
                   label={t`delta`}
                   value={`${delta > 0 ? '+' : ''}${rate(delta)}`}
                   unit={rateUnit}
+                  // Negative delta = the bid dropped = you pay less = green;
+                  // positive = you pay more = red. Matches the rest of the app.
+                  valueClass={
+                    delta < 0 ? 'text-emerald-300' : delta > 0 ? 'text-red-300' : undefined
+                  }
                 />
               )}
             </section>
@@ -268,7 +288,7 @@ export function BidEventDrawer({ event, onClose }: BidEventDrawerProps): React.J
           {event.kind === 'EDIT_SPEED' && (
             <section>
               <SectionHeader label={t`edit speed`} />
-              <Row label={t`new speed`} value={denomination.formatHashrate(event.speed_limit_ph)} />
+              <Row label={t`new speed`} value={denomination.formatHashrateValue(event.speed_limit_ph)} unit={hashrateUnit} />
             </section>
           )}
           {event.kind === 'CANCEL_BID' && (
@@ -324,6 +344,7 @@ export function BidEventDrawer({ event, onClose }: BidEventDrawerProps): React.J
               </p>
             </section>
           )}
+          <EventNoteField eventKey={`event:${event.id}`} />
         </div>
 
         <div className="border-t border-slate-800 px-4 py-3 sticky bottom-0 bg-slate-900 flex items-center gap-3">
@@ -350,16 +371,26 @@ function SectionHeader({ label }: { label: string }) {
   );
 }
 
-function Row({ label, value, unit }: { label: string; value: string; unit?: React.ReactNode }) {
-  // Rate rows pass the bare value plus the active-denomination unit
-  // (e.g. "sat/EH/day", "BTC/EH/day"); the unit reads small + muted
-  // beside the number, matching the rest of the dashboard's idiom.
-  // Other rows (budget, speed) carry their own suffix in `value`.
+function Row({
+  label,
+  value,
+  unit,
+  valueClass,
+}: {
+  label: string;
+  value: string;
+  unit?: React.ReactNode;
+  /** Optional colour for the number (e.g. sign-based green/red on a delta). */
+  valueClass?: string;
+}) {
+  // Every row passes the bare value plus the active-denomination unit;
+  // the unit always reads small + muted beside the number, matching the
+  // rest of the dashboard's idiom (sat rows carry the Satoshi glyph).
   return (
     <div className="flex justify-between gap-3 text-xs text-slate-300">
       <span className="text-slate-500">{label}</span>
       <span className="font-mono tabular-nums">
-        {value}
+        <span className={valueClass}>{value}</span>
         {unit && <span className="text-slate-500 text-[10px] ml-1">{unit}</span>}
       </span>
     </div>

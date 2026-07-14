@@ -380,33 +380,38 @@ describe('AlertEvaluator - payout_initiated (#226)', () => {
   });
 });
 
-// #226: payout_confirmed detection. The trigger is a new
-// `reward_events` row (id > the in-memory watermark, reorged = 0).
-// Silent-baseline contract on first tick after construction.
-describe('AlertEvaluator - payout_confirmed (#226)', () => {
-  type RewardRow = {
+// #323: payout_confirmed is now the stage-2 (enriched) alert sourced
+// from the Ocean earnpay payout store. It's rail-aware (on-chain AND
+// Lightning) and silently baselines every stored payout on the first
+// eligible tick so the historical backfill doesn't flood Telegram;
+// thereafter it fires once per new (enriched_alert = 0) settlement.
+describe('AlertEvaluator - payout_confirmed (#323)', () => {
+  const ADDR = 'bc1qux2aehp5ny89l9spguf052x84zm8h9uyfqvgdg';
+
+  type PayoutRow = {
     id: number;
-    txid: string;
-    vout: number;
-    block_height: number;
-    confirmations: number;
-    value_sat: number;
-    detected_at: number;
-    reorged: number;
+    address: string;
+    ts: number;
+    net_sat: number;
+    rail: 'onchain' | 'lightning';
+    enriched_alert: 0 | 1;
   };
 
-  function fakeRewardEventsRepo(initial: RewardRow[] = []) {
-    const rows = [...initial];
+  function fakeOceanPayoutsRepo(initial: PayoutRow[] = []) {
+    const rows: PayoutRow[] = initial.map((r) => ({ ...r }));
     return {
       rows,
-      async maxId() {
-        return rows.length === 0 ? null : Math.max(...rows.map((r) => r.id));
+      async markAllEnriched(address: string) {
+        for (const r of rows) if (r.address === address) r.enriched_alert = 1;
       },
-      async sinceId(sinceId: number) {
-        return rows.filter((r) => r.id > sinceId && r.reorged === 0);
+      async listUnenriched(address: string) {
+        return rows
+          .filter((r) => r.address === address && r.enriched_alert === 0)
+          .sort((a, b) => a.ts - b.ts);
       },
-      async listSince() { return [] as RewardRow[]; },
-      async sumPaidUpTo() { return 0; },
+      async markEnriched(ids: readonly number[]) {
+        for (const r of rows) if (ids.includes(r.id)) r.enriched_alert = 1;
+      },
     };
   }
 
@@ -416,81 +421,78 @@ describe('AlertEvaluator - payout_confirmed (#226)', () => {
       config: {
         ...(makeState({}).config),
         notify_on_payout_confirmed: true,
+        btc_payout_address: ADDR,
       } as State['config'],
     });
   }
 
+  const onchain = (id: number, net = 1_062_144): PayoutRow => ({
+    id, address: ADDR, ts: id * 1000, net_sat: net, rail: 'onchain', enriched_alert: 0,
+  });
+
   it('does nothing while the toggle is off', async () => {
     const mgr = makeManager();
-    const repo = fakeRewardEventsRepo([
-      { id: 1, txid: 'abc', vout: 0, block_height: 100, confirmations: 6, value_sat: 1_062_144, detected_at: 0, reorged: 0 },
-    ]);
-    const ev = new AlertEvaluator({ alertManager: mgr, rewardEventsRepo: repo as never });
+    const repo = fakeOceanPayoutsRepo([onchain(1)]);
+    const ev = new AlertEvaluator({ alertManager: mgr, oceanPayoutsRepo: repo as never });
     await ev.evaluate(makeState({ ocean_unpaid_sat: null } as Partial<State>));
     expect(mgr.recordAlert).not.toHaveBeenCalled();
   });
 
-  it('silently baselines on first tick after construction (no fire for existing rows)', async () => {
+  it('silently baselines on first tick (no fire for the historical backfill)', async () => {
     const mgr = makeManager();
-    const repo = fakeRewardEventsRepo([
-      { id: 1, txid: 'abc', vout: 0, block_height: 100, confirmations: 6, value_sat: 1_062_144, detected_at: 0, reorged: 0 },
-      { id: 2, txid: 'def', vout: 0, block_height: 200, confirmations: 6, value_sat: 1_070_000, detected_at: 100, reorged: 0 },
-    ]);
-    const ev = new AlertEvaluator({ alertManager: mgr, rewardEventsRepo: repo as never });
+    const repo = fakeOceanPayoutsRepo([onchain(1), onchain(2, 1_070_000)]);
+    const ev = new AlertEvaluator({ alertManager: mgr, oceanPayoutsRepo: repo as never });
     await ev.evaluate(payoutConfirmedState());
     expect(mgr.recordAlert).not.toHaveBeenCalled();
+    // All existing rows are now marked enriched.
+    expect(repo.rows.every((r) => r.enriched_alert === 1)).toBe(true);
   });
 
-  it('fires once for the first new row after baseline', async () => {
+  it('fires once for the first new settlement after baseline', async () => {
     const mgr = makeManager();
-    const repo = fakeRewardEventsRepo([
-      { id: 1, txid: 'abc', vout: 0, block_height: 100, confirmations: 6, value_sat: 1_062_144, detected_at: 0, reorged: 0 },
-    ]);
-    const ev = new AlertEvaluator({ alertManager: mgr, rewardEventsRepo: repo as never });
+    const repo = fakeOceanPayoutsRepo([onchain(1)]);
+    const ev = new AlertEvaluator({ alertManager: mgr, oceanPayoutsRepo: repo as never });
     await ev.evaluate(payoutConfirmedState()); // baseline
-    // Scanner inserts a new row, then next tick fires.
-    repo.rows.push({ id: 2, txid: 'def', vout: 0, block_height: 200, confirmations: 6, value_sat: 1_070_000, detected_at: 100, reorged: 0 });
+    // Incremental refresh inserts a new (enriched=0) settlement.
+    repo.rows.push(onchain(2, 1_070_000));
     await ev.evaluate(payoutConfirmedState());
     expect(mgr.recordAlert).toHaveBeenCalledTimes(1);
     expect(mgr.recorded[0]!.event_class).toBe('payout_confirmed');
     expect(mgr.recorded[0]!.severity).toBe('INFO');
+    expect(mgr.recorded[0]!.body).toContain('on-chain');
   });
 
-  it('does not refire on subsequent ticks for the same row', async () => {
+  it('does not refire on subsequent ticks for the same settlement', async () => {
     const mgr = makeManager();
-    const repo = fakeRewardEventsRepo();
-    const ev = new AlertEvaluator({ alertManager: mgr, rewardEventsRepo: repo as never });
-    await ev.evaluate(payoutConfirmedState()); // baseline at -1
-    repo.rows.push({ id: 1, txid: 'abc', vout: 0, block_height: 100, confirmations: 6, value_sat: 1_062_144, detected_at: 0, reorged: 0 });
-    await ev.evaluate(payoutConfirmedState()); // fires
-    await ev.evaluate(payoutConfirmedState()); // no new rows
-    await ev.evaluate(payoutConfirmedState()); // still no new rows
+    const repo = fakeOceanPayoutsRepo();
+    const ev = new AlertEvaluator({ alertManager: mgr, oceanPayoutsRepo: repo as never });
+    await ev.evaluate(payoutConfirmedState()); // baseline (empty)
+    repo.rows.push(onchain(1));
+    await ev.evaluate(payoutConfirmedState()); // fires + marks enriched
+    await ev.evaluate(payoutConfirmedState()); // nothing unenriched
+    await ev.evaluate(payoutConfirmedState());
     expect(mgr.recordAlert).toHaveBeenCalledTimes(1);
   });
 
-  it('fires once per new row when multiple land between ticks', async () => {
+  it('fires once per new settlement when multiple land between ticks', async () => {
     const mgr = makeManager();
-    const repo = fakeRewardEventsRepo();
-    const ev = new AlertEvaluator({ alertManager: mgr, rewardEventsRepo: repo as never });
-    await ev.evaluate(payoutConfirmedState()); // baseline at -1
-    repo.rows.push(
-      { id: 1, txid: 'abc', vout: 0, block_height: 100, confirmations: 6, value_sat: 1_062_144, detected_at: 0, reorged: 0 },
-      { id: 2, txid: 'def', vout: 0, block_height: 200, confirmations: 6, value_sat: 1_070_000, detected_at: 100, reorged: 0 },
-    );
+    const repo = fakeOceanPayoutsRepo();
+    const ev = new AlertEvaluator({ alertManager: mgr, oceanPayoutsRepo: repo as never });
+    await ev.evaluate(payoutConfirmedState()); // baseline
+    repo.rows.push(onchain(1), onchain(2, 1_070_000));
     await ev.evaluate(payoutConfirmedState());
     expect(mgr.recordAlert).toHaveBeenCalledTimes(2);
   });
 
-  it('skips reorged rows', async () => {
+  it('fires for a Lightning payout with off-chain wording (the #323 fix)', async () => {
     const mgr = makeManager();
-    const repo = fakeRewardEventsRepo();
-    const ev = new AlertEvaluator({ alertManager: mgr, rewardEventsRepo: repo as never });
+    const repo = fakeOceanPayoutsRepo();
+    const ev = new AlertEvaluator({ alertManager: mgr, oceanPayoutsRepo: repo as never });
     await ev.evaluate(payoutConfirmedState()); // baseline
-    repo.rows.push(
-      { id: 1, txid: 'abc', vout: 0, block_height: 100, confirmations: 6, value_sat: 1_062_144, detected_at: 0, reorged: 1 },
-    );
+    repo.rows.push({ id: 1, address: ADDR, ts: 1000, net_sat: 65_536, rail: 'lightning', enriched_alert: 0 });
     await ev.evaluate(payoutConfirmedState());
-    expect(mgr.recordAlert).not.toHaveBeenCalled();
+    expect(mgr.recordAlert).toHaveBeenCalledTimes(1);
+    expect(mgr.recorded[0]!.body).toContain('Lightning');
   });
 
   it('short-circuits when no repo wired', async () => {

@@ -19,6 +19,8 @@ import { useNavigate } from 'react-router-dom';
 
 import type { AlertConditionSpanView } from '../lib/api';
 import { conditionColor, conditionLabel } from '../lib/alertConditions';
+import { EventNoteField } from './EventNoteField';
+import { useChartColorOverrides } from '../lib/chartColorOverrides';
 import { formatDuration } from '../lib/format';
 import { useFormatters } from '../lib/locale';
 
@@ -36,9 +38,35 @@ export function AlertSpanDrawer({
   void i18n;
   const fmt = useFormatters();
   const navigate = useNavigate();
-  const color = recovery ? '#34d399' : conditionColor(span.event_class);
+  const color = recovery ? '#34d399' : conditionColor(span.event_class, useChartColorOverrides());
   const ongoing = span.end_ms === null;
-  const durationMs = (span.end_ms ?? Date.now()) - span.start_ms;
+  const endForCalc = span.end_ms ?? Date.now();
+
+  // #341: break the span into its two halves. The alert *duration* is the
+  // time from the loud alert firing to recovery (what the drawer used to
+  // call "Duration" - the small number the operator found misleading). The
+  // *threshold* is the sustained wait before firing; the *total* is the
+  // real outage (onset -> recovery), which is what the operator actually
+  // cares about ("how long did I have zero hashrate?").
+  //
+  // When the firing row recorded condition-onset (onset_known) both the
+  // threshold and total are EXACT. Otherwise (pre-0119 rows) we estimate
+  // the threshold from current config and footnote it as a best guess.
+  const alertDurationMs = endForCalc - span.fired_at;
+  const thresholdMs = span.onset_known
+    ? span.fired_at - span.start_ms
+    : span.threshold_minutes !== null
+      ? span.threshold_minutes * 60_000
+      : null;
+  const totalMs = span.onset_known
+    ? endForCalc - span.start_ms
+    : thresholdMs !== null
+      ? thresholdMs + alertDurationMs
+      : alertDurationMs;
+  // Estimated (rather than exact) only when we had to lean on current
+  // config because the onset was never recorded.
+  const isEstimate = !span.onset_known && thresholdMs !== null;
+  const approx = (s: string) => (isEstimate ? `≈ ${s}` : s);
 
   const goToChart = () => {
     // Recovery rows jump to the band's closing edge (and beacon it);
@@ -58,7 +86,7 @@ export function AlertSpanDrawer({
         aria-hidden="true"
       />
       <aside
-        className="bg-slate-900 border-l border-slate-700 shadow-2xl w-full sm:w-[24rem] max-w-full overflow-y-auto pointer-events-auto flex flex-col"
+        className="bg-slate-900 border-l border-slate-700 shadow-2xl w-full sm:w-[28rem] lg:w-[34rem] xl:w-[40rem] max-w-[92vw] overflow-y-auto pointer-events-auto flex flex-col"
         role="dialog"
         aria-label={t`Alert condition detail`}
       >
@@ -72,7 +100,7 @@ export function AlertSpanDrawer({
               {!recovery && <span className="text-slate-500">· {span.severity}</span>}
             </div>
             <div className="text-xs text-slate-300 mt-1 whitespace-nowrap">
-              {ongoing ? <Trans>ongoing</Trans> : formatDuration(durationMs)}
+              {ongoing ? <Trans>ongoing</Trans> : approx(formatDuration(totalMs))}
             </div>
           </div>
           <button
@@ -96,10 +124,19 @@ export function AlertSpanDrawer({
             <span aria-hidden="true">→</span>
           </button>
 
+          {/* #341: the condition broken into threshold -> fired -> recovered,
+              then the two durations (alert window vs. the real total outage)
+              so "Duration 56s" no longer reads as the whole story. */}
           <section className="space-y-1">
+            {thresholdMs !== null && (
+              <div className="flex justify-between gap-3 text-xs">
+                <span className="text-slate-500"><Trans>Threshold before firing</Trans></span>
+                <span className="text-slate-200 font-mono text-right">{approx(formatDuration(thresholdMs))}</span>
+              </div>
+            )}
             <div className="flex justify-between gap-3 text-xs">
-              <span className="text-slate-500"><Trans>Started</Trans></span>
-              <span className="text-slate-200 font-mono text-right">{fmt.timestamp(span.start_ms)}</span>
+              <span className="text-slate-500"><Trans>Alert fired</Trans></span>
+              <span className="text-slate-200 font-mono text-right">{fmt.timestamp(span.fired_at)}</span>
             </div>
             <div className="flex justify-between gap-3 text-xs">
               <span className="text-slate-500"><Trans>Recovered</Trans></span>
@@ -108,12 +145,28 @@ export function AlertSpanDrawer({
               </span>
             </div>
             <div className="flex justify-between gap-3 text-xs">
-              <span className="text-slate-500"><Trans>Duration</Trans></span>
+              <span className="text-slate-500"><Trans>Alert duration</Trans></span>
               <span className="text-slate-200 font-mono text-right">
-                {ongoing ? <Trans>ongoing</Trans> : formatDuration(durationMs)}
+                {ongoing ? <Trans>ongoing</Trans> : formatDuration(alertDurationMs)}
+              </span>
+            </div>
+            <div className="flex justify-between gap-3 text-xs border-t border-slate-800 pt-1 mt-1">
+              <span className="text-slate-400"><Trans>Total condition time</Trans></span>
+              <span className="text-slate-100 font-mono text-right font-semibold">
+                {ongoing ? <Trans>ongoing</Trans> : approx(formatDuration(totalMs))}
               </span>
             </div>
           </section>
+
+          {isEstimate && (
+            <p className="text-[11px] text-slate-500 leading-snug">
+              <Trans>
+                Threshold and total are estimated from your current alert
+                settings. Historical config changes aren't stored, so this is
+                a best guess (≈), not an exact record.
+              </Trans>
+            </p>
+          )}
 
           <section>
             <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-1">
@@ -123,6 +176,7 @@ export function AlertSpanDrawer({
               {recovery ? span.recovery_body ?? span.body : span.body}
             </p>
           </section>
+          <EventNoteField eventKey={`alertspan:${span.open_id}`} />
         </div>
       </aside>
     </div>

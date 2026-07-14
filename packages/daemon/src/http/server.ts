@@ -11,6 +11,9 @@
  */
 
 import fastifyBasicAuth from '@fastify/basic-auth';
+
+import { verifyPassword } from '../config/password-hash.js';
+import fastifyCompress from '@fastify/compress';
 import fastifyCors from '@fastify/cors';
 import fastifyStatic from '@fastify/static';
 import Fastify, { type FastifyInstance } from 'fastify';
@@ -26,6 +29,7 @@ import type { AlertsRepo } from '../state/repos/alerts.js';
 import type { BidEventsRepo } from '../state/repos/bid_events.js';
 import type { IpChangeEventsRepo } from '../state/repos/ip_change_events.js';
 import type { SystemEventsRepo } from '../state/repos/system_events.js';
+import type { EventNotesRepo } from '../state/repos/event_notes.js';
 import type { ConfigRepo } from '../state/repos/config.js';
 import type { DecisionsRepo } from '../state/repos/decisions.js';
 import type { OwnedBidsRepo } from '../state/repos/owned_bids.js';
@@ -41,6 +45,7 @@ import type { PayoutObserver } from '../services/payout-observer.js';
 import { registerActionRoutes } from './routes/actions.js';
 import { registerAlertsRoutes } from './routes/alerts.js';
 import { registerBidEventsRoute } from './routes/bid-events.js';
+import { registerEventNotesRoutes } from './routes/event-notes.js';
 import { registerIpChangesRoute } from './routes/ip-changes.js';
 import { registerBuildRoute } from './routes/build.js';
 import { registerBip110ScanRoute } from './routes/bip110-scan.js';
@@ -50,6 +55,7 @@ import { registerBlockFoundSoundRoute } from './routes/block-found-sound.js';
 import { registerBtcPriceRoute } from './routes/btc-price.js';
 import { registerDiagnosticsRoute } from './routes/diagnostics.js';
 import { registerConfigRoutes } from './routes/config.js';
+import { registerSecurityRoutes } from './routes/security.js';
 import { registerDecisionsRoutes } from './routes/decisions.js';
 import { registerDepositsRoute } from './routes/deposits.js';
 import { registerFinanceRoute } from './routes/finance.js';
@@ -58,6 +64,7 @@ import { registerNotificationsTestRoute } from './routes/notifications-test.js';
 import { registerNotificationsTestEventRoute } from './routes/notifications-test-event.js';
 import { registerOceanRoute } from './routes/ocean.js';
 import { registerPayoutsRoute } from './routes/payouts.js';
+import { registerPayoutLedgerRoute } from './routes/payout-ledger.js';
 import { registerRewardEventsRoute } from './routes/reward-events.js';
 import { registerRunModeRoute } from './routes/run-mode.js';
 import { registerStatsRoute } from './routes/stats.js';
@@ -90,12 +97,15 @@ export interface HttpServerDeps {
   /** #250: public-IP change events for the DDNS card + chart markers. */
   readonly ipChangeEventsRepo: IpChangeEventsRepo;
   readonly systemEventsRepo: SystemEventsRepo;
+  readonly eventNotesRepo: EventNotesRepo;
   readonly alertsRepo: AlertsRepo;
   readonly payoutObserver: PayoutObserver | null;
   readonly oceanClient: OceanClient | null;
   readonly accountSpend: AccountSpendService | null;
   readonly btcPriceService: BtcPriceService;
   readonly hashpriceCache: HashpriceCache;
+  /** #335: chain-tip poller for the "block height" tile. Null when no bitcoind RPC is configured (the tile hides). */
+  readonly chainTipPoller: import('../services/chain-tip-poller.js').ChainTipPoller | null;
   /** #94: block-header version lookup for the BIP-110 crown marker. Optional - chart degrades to standard markers when absent. */
   readonly blockVersionService: BlockVersionService | null;
   /** #95: bitcoind RPC client for the BIP 110 scanner endpoint. Null when bitcoind RPC creds are not configured (scanner returns rpc_available: false). */
@@ -108,6 +118,10 @@ export interface HttpServerDeps {
   readonly soloMinersRepo: SoloMinersRepo;
   /** #179: reward_events repo for the debug dump endpoint. */
   readonly rewardEventsRepo: RewardEventsRepo;
+  /** #323: Ocean earnpay payout store - source of truth for lifetime collected. */
+  readonly oceanPayoutsRepo: import('../state/repos/ocean_payouts.js').OceanPayoutsRepo;
+  /** #323: earnpay sync service - provides the collected status for the P&L panel. */
+  readonly oceanPayoutsService: import('../services/ocean-payouts-service.js').OceanPayoutsService;
   /** #149: AxeOS poller - exposes the in-memory live snapshot used by the Solo miners card. */
   readonly axeOSPoller: AxeOSPoller;
   /** #260 follow-up: Braiins deposit history for the debug-dump endpoint. */
@@ -133,6 +147,10 @@ export interface HttpServerDeps {
   };
   readonly db: Kysely<Database>;
   readonly password: string;
+  /** #331: the SecretsRepo (with crypto) - used by the #332 rotation routes. */
+  readonly secretsRepo: import('../state/repos/secrets.js').SecretsRepo;
+  /** #332: where the running secrets came from; credential edits are only allowed for 'db'. */
+  readonly secretSource: 'env' | 'sops' | 'db';
   readonly tickIntervalMs: number;
   readonly secretsPath: string;
   readonly ageKeyPath: string;
@@ -156,9 +174,42 @@ export async function createHttpServer(deps: HttpServerDeps): Promise<HttpServer
     credentials: true,
   });
 
+  // Response compression. /api/metrics returns up to multi-MB JSON
+  // bodies re-polled every minute; on a remote/Umbrel link the
+  // transfer dominates chart latency. JSON compresses ~10x. Small
+  // bodies skip compression (threshold) so cheap endpoints don't pay
+  // CPU for nothing.
+  await app.register(fastifyCompress, {
+    global: true,
+    threshold: 2048,
+    encodings: ['gzip', 'deflate'],
+  });
+
+  // #331: `deps.password` may be a scrypt hash (DB-sourced) or plaintext
+  // (env / SOPS). verifyPassword handles both. scrypt is deliberately
+  // slow, so cache the verdict per presented credential - only one value
+  // is ever valid, so the cache stays tiny.
+  const authCache = new Map<string, boolean>();
+  // #332: the dashboard password can be changed live via /api/security.
+  // Keep it in a mutable holder so a change takes effect on the next
+  // request (and the old one stops immediately). Clearing the cache is
+  // what boots any session still presenting the old password.
+  let currentPassword = deps.password;
+  const setDashboardPassword = (hashedOrPlain: string): void => {
+    currentPassword = hashedOrPlain;
+    authCache.clear();
+  };
   await app.register(fastifyBasicAuth, {
     validate: async (_username, password) => {
-      if (password !== deps.password) {
+      let ok = authCache.get(password);
+      if (ok === undefined) {
+        ok = verifyPassword(password, currentPassword);
+        // Bound the cache defensively against a brute-force flood that
+        // slips past the rate limiter.
+        if (authCache.size > 64) authCache.clear();
+        authCache.set(password, ok);
+      }
+      if (!ok) {
         throw new Error('unauthorised');
       }
     },
@@ -216,10 +267,19 @@ export async function createHttpServer(deps: HttpServerDeps): Promise<HttpServer
   await registerStatusRoute(app, deps);
   await registerDecisionsRoutes(app, deps);
   await registerConfigRoutes(app, deps);
+  // #332: in-app credential rotation (password + Braiins tokens).
+  await registerSecurityRoutes(app, {
+    secretsRepo: deps.secretsRepo,
+    secretSource: deps.secretSource,
+    getCurrentPassword: () => currentPassword,
+    setDashboardPassword,
+    ...(deps.log ? { log: deps.log } : {}),
+  });
   await registerRunModeRoute(app, deps);
   await registerActionRoutes(app, deps);
   await registerMetricsRoute(app, deps);
   await registerBidEventsRoute(app, deps);
+  await registerEventNotesRoutes(app, deps);
   await registerIpChangesRoute(app, deps);
   await registerBip110ScanRoute(app, { configRepo: deps.configRepo, secrets: deps.secrets });
   await registerBitcoindTestRoute(app);
@@ -234,6 +294,11 @@ export async function createHttpServer(deps: HttpServerDeps): Promise<HttpServer
   await registerStatsRoute(app, { db: deps.db, bidEventsDb: deps.db });
   await registerStorageEstimateRoute(app, { db: deps.db });
   await registerRewardEventsRoute(app, { db: deps.db });
+  // #323: earnpay-sourced payout gems for the Price chart (on-chain + Lightning).
+  await registerPayoutLedgerRoute(app, {
+    oceanPayoutsRepo: deps.oceanPayoutsRepo,
+    configRepo: deps.configRepo,
+  });
   await registerDepositsRoute(app, { db: deps.db });
   await registerBlockFoundSoundRoute(app, { db: deps.db });
   await registerOceanRoute(app, {
@@ -251,7 +316,8 @@ export async function createHttpServer(deps: HttpServerDeps): Promise<HttpServer
     accountSpend: deps.accountSpend,
     hashpriceCache: deps.hashpriceCache,
     tickMetricsRepo: deps.tickMetricsRepo,
-    rewardEventsRepo: deps.rewardEventsRepo,
+    oceanPayoutsRepo: deps.oceanPayoutsRepo,
+    oceanPayoutsService: deps.oceanPayoutsService,
   });
   await registerBtcPriceRoute(app, {
     btcPriceService: deps.btcPriceService,
@@ -316,9 +382,12 @@ export async function createHttpServer(deps: HttpServerDeps): Promise<HttpServer
         // hashes and perma-breaks the dashboard on rebuild.
         maxAge: '1y',
         immutable: true,
-        setHeaders(res, path) {
+        // @fastify/static v10 hands the setHeaders callback a FastifyReply
+        // (was the raw ServerResponse in v9), so use reply.header(), not
+        // res.setHeader().
+        setHeaders(reply, path) {
           if (path.endsWith('.html')) {
-            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+            reply.header('Cache-Control', 'no-cache, no-store, must-revalidate');
           }
         },
       });

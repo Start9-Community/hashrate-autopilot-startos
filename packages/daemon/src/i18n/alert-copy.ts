@@ -108,19 +108,19 @@ export interface AlertCopy {
     unpaid: string;
   }): string;
 
-  // #226 - Ocean payout lifecycle. payout_initiated fires when the
-  // daemon observes Ocean debiting ocean_unpaid_sat (a payout is on
-  // its way). payout_confirmed fires when a new on-chain receipt
-  // hits the operator's payout address. Deliberately doesn't claim
-  // anything about WHICH block the payout will ride in: empirically
-  // operators see payouts confirm in non-Ocean blocks too
-  // (#226 follow-up, operator observation 2026-05-30). The body
-  // sticks to what we can prove: the balance dropped, the
-  // transaction will land, you'll get a second message.
+  // #226/#323 - Ocean payout lifecycle, two stages. payout_initiated
+  // fires the instant the daemon observes Ocean debiting
+  // ocean_unpaid_sat (approximate amount, rail unknown - a payout is
+  // on its way). payout_confirmed is the enriched follow-up once
+  // Ocean's own payout ledger (earnpay) reports the settlement with
+  // its authoritative amount and rail; it fires for BOTH on-chain and
+  // Lightning payouts (the old reward_events source was on-chain-only,
+  // so Lightning never confirmed - #323).
   //
   // Tx id is intentionally omitted from the confirmed body (privacy
   // posture - the operator's payout-tx history is sensitive and
-  // shouldn't broadcast through Telegram by default).
+  // shouldn't broadcast through Telegram by default; the chart gem
+  // deep-links it instead).
   payout_initiated_title(args: { payout_btc: string }): string;
   payout_initiated_body(args: {
     payout_sat: string;
@@ -132,7 +132,8 @@ export interface AlertCopy {
   payout_confirmed_body(args: {
     payout_sat: string;
     payout_btc: string;
-    height: string;
+    /** #323: true = settled over Lightning (off-chain), false = on-chain. */
+    is_lightning: boolean;
   }): string;
 
   // #130 - Braiins deposit lifecycle.
@@ -259,11 +260,13 @@ const EN: AlertCopy = {
   payout_initiated_title: ({ payout_btc }) =>
     `Payout initiated - ${payout_btc} BTC`,
   payout_initiated_body: ({ payout_sat, payout_btc, pre_drop_unpaid, residual_unpaid }) =>
-    `Ocean has debited your unpaid balance: ${pre_drop_unpaid} → ${residual_unpaid}. A payout of ~${payout_sat} sat (${payout_btc} BTC) has been initiated. On-chain confirmation follows; you'll get a second message when the transaction lands.`,
+    `Ocean has debited your unpaid balance: ${pre_drop_unpaid} → ${residual_unpaid}. A payout of ~${payout_sat} sat (${payout_btc} BTC) has been initiated. This reflects Ocean's own report of the debit; it doesn't distinguish an on-chain from a Lightning payout.`,
   payout_confirmed_title: ({ payout_btc }) =>
-    `Payout confirmed on-chain - ${payout_btc} BTC`,
-  payout_confirmed_body: ({ payout_sat, payout_btc, height }) =>
-    `Payout of ${payout_sat} sat (${payout_btc} BTC) confirmed on-chain in block #${height}.`,
+    `Payout confirmed - ${payout_btc} BTC`,
+  payout_confirmed_body: ({ payout_sat, payout_btc, is_lightning }) =>
+    is_lightning
+      ? `Payout of ${payout_sat} sat (${payout_btc} BTC) settled over Lightning (off-chain), per Ocean's payout ledger.`
+      : `Payout of ${payout_sat} sat (${payout_btc} BTC) settled on-chain, per Ocean's payout ledger.`,
 
   braiins_deposit_detected_title: () => 'Braiins deposit detected',
   braiins_deposit_detected_body: ({ amount, address_short }) =>
@@ -387,11 +390,13 @@ const NL: AlertCopy = {
   payout_initiated_title: ({ payout_btc }) =>
     `Uitbetaling gestart - ${payout_btc} BTC`,
   payout_initiated_body: ({ payout_sat, payout_btc, pre_drop_unpaid, residual_unpaid }) =>
-    `Ocean heeft je unpaid-saldo gedebiteerd: ${pre_drop_unpaid} → ${residual_unpaid}. Een uitbetaling van ~${payout_sat} sat (${payout_btc} BTC) is gestart. On-chain bevestiging volgt; je krijgt een tweede bericht zodra de transactie landt.`,
+    `Ocean heeft je unpaid-saldo gedebiteerd: ${pre_drop_unpaid} → ${residual_unpaid}. Een uitbetaling van ~${payout_sat} sat (${payout_btc} BTC) is gestart. Dit is Ocean's eigen melding van de debitering; het maakt geen onderscheid tussen een on-chain- en een Lightning-uitbetaling.`,
   payout_confirmed_title: ({ payout_btc }) =>
-    `Uitbetaling bevestigd on-chain - ${payout_btc} BTC`,
-  payout_confirmed_body: ({ payout_sat, payout_btc, height }) =>
-    `Uitbetaling van ${payout_sat} sat (${payout_btc} BTC) bevestigd on-chain in blok #${height}.`,
+    `Uitbetaling bevestigd - ${payout_btc} BTC`,
+  payout_confirmed_body: ({ payout_sat, payout_btc, is_lightning }) =>
+    is_lightning
+      ? `Uitbetaling van ${payout_sat} sat (${payout_btc} BTC) afgewikkeld via Lightning (off-chain), volgens Ocean's uitbetalingsgrootboek.`
+      : `Uitbetaling van ${payout_sat} sat (${payout_btc} BTC) afgewikkeld on-chain, volgens Ocean's uitbetalingsgrootboek.`,
 
   braiins_deposit_detected_title: () => 'Braiins deposit gedetecteerd',
   braiins_deposit_detected_body: ({ amount, address_short }) =>
@@ -516,11 +521,13 @@ const ES: AlertCopy = {
   payout_initiated_title: ({ payout_btc }) =>
     `Pago iniciado - ${payout_btc} BTC`,
   payout_initiated_body: ({ payout_sat, payout_btc, pre_drop_unpaid, residual_unpaid }) =>
-    `Ocean ha debitado tu saldo no pagado: ${pre_drop_unpaid} → ${residual_unpaid}. Un pago de ~${payout_sat} sat (${payout_btc} BTC) se ha iniciado. La confirmación en cadena seguirá; recibirás un segundo mensaje cuando la transacción aterrice.`,
+    `Ocean ha debitado tu saldo no pagado: ${pre_drop_unpaid} → ${residual_unpaid}. Un pago de ~${payout_sat} sat (${payout_btc} BTC) se ha iniciado. Esto refleja el propio informe de Ocean de la debitación; no distingue entre un pago on-chain y uno por Lightning.`,
   payout_confirmed_title: ({ payout_btc }) =>
-    `Pago confirmado on-chain - ${payout_btc} BTC`,
-  payout_confirmed_body: ({ payout_sat, payout_btc, height }) =>
-    `Pago de ${payout_sat} sat (${payout_btc} BTC) confirmado on-chain en el bloque #${height}.`,
+    `Pago confirmado - ${payout_btc} BTC`,
+  payout_confirmed_body: ({ payout_sat, payout_btc, is_lightning }) =>
+    is_lightning
+      ? `Pago de ${payout_sat} sat (${payout_btc} BTC) liquidado por Lightning (fuera de la cadena), según el libro de pagos de Ocean.`
+      : `Pago de ${payout_sat} sat (${payout_btc} BTC) liquidado on-chain, según el libro de pagos de Ocean.`,
 
   braiins_deposit_detected_title: () => 'Depósito en Braiins detectado',
   braiins_deposit_detected_body: ({ amount, address_short }) =>

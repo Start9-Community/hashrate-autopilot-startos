@@ -74,8 +74,10 @@ two paths:
 ## Step 3: paste both into Config → Notifications
 
 1. Open the dashboard and go to **Config → Notifications**.
-2. Paste the bot token into the **Telegram bot token** field
-   (password-masked).
+2. Paste the bot token into the **Telegram bot token** field. This
+   field shows blank on load rather than the old value masked; type a
+   new token to change it, or leave it blank to keep the currently
+   saved token.
 3. Paste the chat id into the **Chat ID** field.
 4. Click **Test connection**. The notifier sends:
 
@@ -166,7 +168,11 @@ Bitcoin Knots RPC password pattern: the encrypted-at-rest secrets
 file (`.env.sops.yaml`) is consulted as a fallback when the config
 column is empty, so installs that bootstrapped via the SOPS path
 keep working without a config edit. New installs and live edits
-write to the config table.
+write to the config table. The config `telegram_bot_token` field is
+write-only and shows blank on read because the stored value is
+encrypted at rest (AES-256-GCM, key from `BHA_SECRET_KEY` or a keyfile
+beside `state.db`); saving a blank submission preserves the existing
+token.
 
 ## What if Telegram itself is down?
 

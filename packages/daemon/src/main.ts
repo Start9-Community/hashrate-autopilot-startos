@@ -12,9 +12,11 @@
 
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { resolve } from 'node:path';
+import { resolve, dirname } from 'node:path';
 
 import { createBitcoindClient } from '@hashrate-autopilot/bitcoind-client';
+
+import { ChainTipPoller } from './services/chain-tip-poller.js';
 import { BlockVersionService } from './services/block-version.js';
 import { BUILD } from './http/routes/build.js';
 import { createBraiinsClient } from '@hashrate-autopilot/braiins-client';
@@ -22,6 +24,8 @@ import { createBraiinsClient } from '@hashrate-autopilot/braiins-client';
 import { applyEnvOverridesToConfig } from './config/env-overrides.js';
 import type { AppConfig, Secrets } from './config/schema.js';
 import { loadSecretsAnySource } from './config/secret-sources.js';
+import { resolveSecretKey } from './config/secret-key.js';
+import { SecretCrypto } from './config/secret-crypto.js';
 import { createSetupModeServer, type SetupModeServer } from './setup-mode.js';
 import { SecretsRepo } from './state/repos/secrets.js';
 import { createHttpServer } from './http/server.js';
@@ -34,6 +38,7 @@ import { DatumPoller } from './services/datum.js';
 import { HashpriceCache } from './services/hashprice-cache.js';
 import { HashpriceRefresher } from './services/hashprice-refresher.js';
 import { createOceanClient } from './services/ocean.js';
+import { OceanPayoutsService } from './services/ocean-payouts-service.js';
 import { PayoutObserver } from './services/payout-observer.js';
 import { PoolHealthTracker } from './services/pool-health.js';
 import { PublicIpService } from './services/public-ip.js';
@@ -43,6 +48,7 @@ import { AlertsRepo } from './state/repos/alerts.js';
 import { BidEventsRepo } from './state/repos/bid_events.js';
 import { IpChangeEventsRepo } from './state/repos/ip_change_events.js';
 import { SystemEventsRepo } from './state/repos/system_events.js';
+import { EventNotesRepo } from './state/repos/event_notes.js';
 import { BraiinsDepositsRepo } from './state/repos/braiins_deposits.js';
 import { SoloMinersRepo } from './state/repos/solo_miners.js';
 import { AxeOSPoller } from './services/axeos-poller.js';
@@ -50,6 +56,7 @@ import { ClosedBidsCacheRepo } from './state/repos/closed_bids_cache.js';
 import { ConfigRepo } from './state/repos/config.js';
 import { PoolBlocksRepo } from './state/repos/pool_blocks.js';
 import { RewardEventsRepo } from './state/repos/reward_events.js';
+import { OceanPayoutsRepo } from './state/repos/ocean_payouts.js';
 import { DecisionsRepo } from './state/repos/decisions.js';
 import { OwnedBidsRepo } from './state/repos/owned_bids.js';
 import { RuntimeStateRepo } from './state/repos/runtime_state.js';
@@ -94,9 +101,11 @@ interface BootDeps {
   readonly bidEventsRepo: BidEventsRepo;
   readonly ipChangeEventsRepo: IpChangeEventsRepo;
   readonly systemEventsRepo: SystemEventsRepo;
+  readonly eventNotesRepo: EventNotesRepo;
   readonly alertsRepo: AlertsRepo;
   readonly poolBlocksRepo: PoolBlocksRepo;
   readonly rewardEventsRepo: RewardEventsRepo;
+  readonly oceanPayoutsRepo: OceanPayoutsRepo;
   readonly closedBidsCacheRepo: ClosedBidsCacheRepo;
   readonly secretsRepo: SecretsRepo;
   readonly secretsPath: string;
@@ -166,6 +175,23 @@ async function main(): Promise<void> {
   // boot paths (the wizard writes config + secrets through repos
   // backed by the same handle).
   const handle = await openDatabase({ path: dbPath });
+
+  // #331: resolve the at-rest encryption key before constructing the
+  // repos, so secret columns are encrypted on write and decrypted on
+  // read. Key source: BHA_SECRET_KEY env (Umbrel sets it to APP_SEED) >
+  // BHA_SECRET_KEY_FILE > a generated keyfile beside state.db. Never
+  // fatal - the keyfile fallback always yields a key.
+  const secretCrypto = (() => {
+    try {
+      const resolved = resolveSecretKey({ dataDir: dirname(dbPath), env: process.env, log });
+      log(`  secretkey: ${resolved.source}`);
+      return new SecretCrypto(resolved.key, log);
+    } catch (err) {
+      log(`  secretkey: resolution failed, secrets stay plaintext: ${(err as Error).message}`);
+      return undefined;
+    }
+  })();
+
   if (handle.migrations.reconciled.length > 0) {
     // Migrations whose schema effect was already present on the DB
     // (e.g., a half-applied state from a crashed prior run) but
@@ -177,7 +203,7 @@ async function main(): Promise<void> {
   }
   const deps: BootDeps = {
     handle,
-    configRepo: new ConfigRepo(handle.db),
+    configRepo: new ConfigRepo(handle.db, secretCrypto),
     runtimeRepo: new RuntimeStateRepo(handle.db),
     ownedBidsRepo: new OwnedBidsRepo(handle.db),
     decisionsRepo: new DecisionsRepo(handle.db),
@@ -185,11 +211,13 @@ async function main(): Promise<void> {
     bidEventsRepo: new BidEventsRepo(handle.db),
     ipChangeEventsRepo: new IpChangeEventsRepo(handle.db),
     systemEventsRepo: new SystemEventsRepo(handle.db),
+    eventNotesRepo: new EventNotesRepo(handle.db),
     alertsRepo: new AlertsRepo(handle.db),
     poolBlocksRepo: new PoolBlocksRepo(handle.db),
     rewardEventsRepo: new RewardEventsRepo(handle.db),
+    oceanPayoutsRepo: new OceanPayoutsRepo(handle.db),
     closedBidsCacheRepo: new ClosedBidsCacheRepo(handle.db),
-    secretsRepo: new SecretsRepo(handle.db),
+    secretsRepo: new SecretsRepo(handle.db, secretCrypto),
     secretsPath,
     ageKeyPath,
   };
@@ -272,7 +300,7 @@ async function main(): Promise<void> {
         process.exit(1);
       }
       log(`setup: reloaded secrets from ${reloaded.source}`);
-      await bootOperational(deps, reloaded.secrets, reloadedCfg);
+      await bootOperational(deps, reloaded.secrets, reloadedCfg, reloaded.source);
     };
 
     setupServer = await createSetupModeServer({
@@ -297,13 +325,42 @@ async function main(): Promise<void> {
   }
 
   log(`secrets:  loaded from ${secretsResult.source}`);
-  await bootOperational(deps, secretsResult.secrets, dbCfg);
+
+  // #331: one-time upgrade - hash a plaintext dashboard password stored
+  // in the DB by a pre-hashing version. Only touches the db source; env /
+  // SOPS plaintext is never persisted and verifies fine as plaintext.
+  if (secretsResult.source === 'db') {
+    try {
+      if (await deps.secretsRepo.ensurePasswordHashed()) {
+        log('secrets:  hashed the stored dashboard password (one-time upgrade)');
+      }
+    } catch (err) {
+      log(`secrets:  password-hash upgrade failed (non-fatal): ${(err as Error).message}`);
+    }
+  }
+
+  // #331: one-time upgrade - encrypt any plaintext secret columns in the
+  // DB under the current key. secrets-table only matters for db-sourced
+  // installs; config-table secrets (telegram/rpc/ddns) are always in the
+  // DB regardless of the secret source. Non-fatal.
+  try {
+    const encSecrets = await deps.secretsRepo.ensureEncrypted();
+    const encConfig = await deps.configRepo.ensureEncrypted();
+    if (encSecrets + encConfig > 0) {
+      log(`secrets:  encrypted ${encSecrets + encConfig} plaintext secret column(s) at rest (one-time upgrade)`);
+    }
+  } catch (err) {
+    log(`secrets:  at-rest encryption upgrade failed (non-fatal): ${(err as Error).message}`);
+  }
+
+  await bootOperational(deps, secretsResult.secrets, dbCfg, secretsResult.source);
 }
 
 async function bootOperational(
   deps: BootDeps,
   secrets: Secrets,
   dbCfgIn: AppConfig,
+  secretSource: 'env' | 'sops' | 'db' = 'db',
 ): Promise<void> {
   const {
     handle,
@@ -315,9 +372,11 @@ async function bootOperational(
     bidEventsRepo,
     ipChangeEventsRepo,
     systemEventsRepo,
+    eventNotesRepo,
     alertsRepo,
     poolBlocksRepo,
     rewardEventsRepo,
+    oceanPayoutsRepo,
     closedBidsCacheRepo,
     secretsPath,
     ageKeyPath,
@@ -558,6 +617,19 @@ async function bootOperational(
   // route. The internal 60 s cache means both callers share one
   // underlying HTTP round-trip per tick instead of firing two.
   const oceanClient = createOceanClient();
+
+  // #323: earnpay-based payout tracking. Keeps `ocean_payouts` in sync
+  // with Ocean's authoritative settlement list (on-chain + Lightning),
+  // the source of truth for lifetime "collected" in the P&L panel.
+  // Live-reads the address via cfgRefHolder so a dashboard address
+  // change re-backfills the new address on the next sync (its store is
+  // empty -> full backfill). Started below with the other services.
+  const oceanPayoutsService = new OceanPayoutsService({
+    oceanClient,
+    repo: oceanPayoutsRepo,
+    getAddress: () => cfgRefHolder.value.btc_payout_address,
+    log: (m) => log(m),
+  });
 
   // BTC/USD oracle is constructed early so observe() can capture
   // the latest reading per tick into tick_metrics (#89). The HTTP
@@ -848,8 +920,9 @@ async function bootOperational(
     axeOSPoller,
     tickMetricsRepo,
     poolBlocksRepo,
-    // #226: enables payout_confirmed firing once per new reward_events row.
-    rewardEventsRepo,
+    // #323: stage-2 payout_confirmed fires (rail-aware) once per new
+    // settlement Ocean reports in earnpay - Lightning included.
+    oceanPayoutsRepo,
     log: (m) => log(m),
   });
   // Rebuild in-memory event state from the alerts table so a daemon
@@ -952,6 +1025,14 @@ async function bootOperational(
   );
   hashpriceRefresher.start();
 
+  // #335: poll the Bitcoin chain tip for the "block height" tile (height
+  // + Ocean-found + BIP-110 signal). Only when bitcoind RPC is configured;
+  // without a node the tile hides, so there's nothing to poll.
+  const chainTipPoller = bitcoindClient
+    ? new ChainTipPoller(bitcoindClient, { log: (m) => log(m) })
+    : null;
+  chainTipPoller?.start();
+
   // Same shape as the hashprice refresher above, for the BTC/USD
   // oracle. Without it, the BtcPriceService cache was driven entirely
   // by dashboard activity (the `/api/btc-price` route was the only
@@ -1043,6 +1124,9 @@ async function bootOperational(
   });
   braiinsDepositWatcher.start();
 
+  // #323: start the earnpay payout sync (boot backfill + slow refresh).
+  oceanPayoutsService.start();
+
   // HTTP server (dashboard API + static).
   const httpServer = await createHttpServer({
     controller,
@@ -1054,14 +1138,18 @@ async function bootOperational(
     bidEventsRepo,
     ipChangeEventsRepo,
     systemEventsRepo,
+    eventNotesRepo,
     alertsRepo,
     poolBlocksRepo,
     rewardEventsRepo,
+    oceanPayoutsRepo,
+    oceanPayoutsService,
     payoutObserver,
     oceanClient,
     accountSpend,
     btcPriceService,
     hashpriceCache,
+    chainTipPoller,
     blockVersionService,
     bitcoindClient,
     publicIpService,
@@ -1077,6 +1165,8 @@ async function bootOperational(
     },
     db: handle.db,
     password: secrets.dashboard_password,
+    secretsRepo: deps.secretsRepo,
+    secretSource,
     tickIntervalMs: DEFAULT_TICK_INTERVAL_MS,
     secretsPath,
     ageKeyPath,
@@ -1194,8 +1284,10 @@ async function bootOperational(
     // would have produced anyway.
     forceExitAfter(8_000);
     payoutObserver?.stop();
+    void oceanPayoutsService.stop();
     retentionService.stop();
     hashpriceRefresher.stop();
+    chainTipPoller?.stop();
     btcPriceRefresher.stop();
     publicIpService.stop();
     ddnsUpdater.stop();

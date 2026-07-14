@@ -82,6 +82,22 @@ export interface DenominationContextValue {
    */
   formatSat: (sat: number | null, locale?: string) => string;
   /**
+   * Like {@link formatSat} but WITHOUT the unit/currency token, so the
+   * caller can render the unit muted+small beside the number (matching
+   * the rate-row idiom). Pair with {@link satSuffix}. Returns "--" for null.
+   */
+  formatSatValue: (sat: number | null, locale?: string) => string;
+  /**
+   * Just the amount-unit token, e.g. "sat" (rendered as the Satoshi
+   * glyph via <SatSuffix>), "₿", or "$". Trails the number.
+   */
+  satSuffix: string;
+  /**
+   * Like {@link formatHashrate} but WITHOUT the unit suffix, so the unit
+   * can render muted beside it. Pair with {@link hashrateSuffix}.
+   */
+  formatHashrateValue: (ph: number | null, locale?: string) => string;
+  /**
    * Format a sat-per-PH-per-day rate in the current currency AND
    * hashrate unit. Examples (input = 47,928 sat/PH/day):
    *   sats + PH:  "47,928 sat/PH/day"
@@ -162,6 +178,9 @@ const defaultContext: DenominationContextValue = {
   hashrateUnit: 'PH',
   setHashrateUnit: () => undefined,
   formatSat: () => '-',
+  formatSatValue: () => '-',
+  satSuffix: 'sat',
+  formatHashrateValue: () => '-',
   formatSatPerPhDay: () => '-',
   formatSatPerPhDayValue: () => '-',
   formatHashrate: () => '-',
@@ -242,6 +261,13 @@ export function DenominationProvider({ children }: { children: ReactNode }) {
     const nfUsd = new Intl.NumberFormat(defaultLocale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const nfBtc8 = new Intl.NumberFormat(defaultLocale, { minimumFractionDigits: 8, maximumFractionDigits: 8 });
     const nfBtc4 = new Intl.NumberFormat(defaultLocale, { minimumFractionDigits: 4, maximumFractionDigits: 4 });
+    // BTC-denominated *rates* (₿/PH/day etc.): show satoshi-level
+    // precision when the value needs it (0,00000049) but strip the
+    // trailing zeros that padded short values to 8 decimals
+    // (0,48108000 -> 0,48108), which read as noise and widened the
+    // hero / tiles. Keep at least 2 decimals so a round rate still
+    // looks like a fraction (0,50 not 0,5).
+    const nfBtcRate = new Intl.NumberFormat(defaultLocale, { minimumFractionDigits: 2, maximumFractionDigits: 8 });
     const rateDigits = hashrateUnit === 'TH' ? 3 : 0;
     const nfRate = new Intl.NumberFormat(defaultLocale, { minimumFractionDigits: rateDigits, maximumFractionDigits: rateDigits });
     const hrDigits = hashrateUnit === 'TH' ? 1 : hashrateUnit === 'EH' ? 5 : 2;
@@ -270,6 +296,34 @@ export function DenominationProvider({ children }: { children: ReactNode }) {
       return `${(pickNf(nfInt, locale) ?? new Intl.NumberFormat(locale, { maximumFractionDigits: 0 })).format(sat)} sat`;
     };
 
+    // Value-only counterpart to formatSat: bare number so the caller can
+    // render the unit muted (Satoshi glyph / ₿) beside it. USD keeps its
+    // "$" prefix in the value and reports an empty satSuffix (a trailing
+    // bare "$" would read oddly), so only sat/₿ get the muted-suffix idiom.
+    const formatSatValue = (sat: number | null, locale: string | undefined = defaultLocale): string => {
+      if (sat === null) return '-';
+      if (effectiveMode === 'usd' && btcPrice !== null) {
+        const n = (pickNf(nfUsd, locale) ?? new Intl.NumberFormat(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })).format(satToUsd(sat, btcPrice));
+        return `$${n}`;
+      }
+      if (effectiveMode === 'btc') {
+        const btc = sat / SAT_PER_BTC;
+        const fmt = Math.abs(btc) < 1
+          ? (pickNf(nfBtc8, locale) ?? new Intl.NumberFormat(locale, { minimumFractionDigits: 8, maximumFractionDigits: 8 }))
+          : (pickNf(nfBtc4, locale) ?? new Intl.NumberFormat(locale, { minimumFractionDigits: 4, maximumFractionDigits: 4 }));
+        return fmt.format(btc);
+      }
+      return (pickNf(nfInt, locale) ?? new Intl.NumberFormat(locale, { maximumFractionDigits: 0 })).format(sat);
+    };
+    const satSuffix =
+      effectiveMode === 'usd' && btcPrice !== null ? '' : effectiveMode === 'btc' ? '₿' : 'sat';
+
+    const formatHashrateValue = (ph: number | null, locale: string | undefined = defaultLocale): string => {
+      if (ph === null) return '-';
+      const scaled = ph * hashrateMultiplier;
+      return (pickNf(nfHr, locale) ?? new Intl.NumberFormat(locale, { minimumFractionDigits: hrDigits, maximumFractionDigits: hrDigits })).format(scaled);
+    };
+
     const formatSatPerPhDay = (
       satPerPhDay: number | null,
       locale: string | undefined = defaultLocale,
@@ -281,7 +335,7 @@ export function DenominationProvider({ children }: { children: ReactNode }) {
       }
       if (effectiveMode === 'btc') {
         const btcRate = scaled / SAT_PER_BTC;
-        return `${(pickNf(nfBtc8, locale) ?? new Intl.NumberFormat(locale, { minimumFractionDigits: 8, maximumFractionDigits: 8 })).format(btcRate)} ₿/${hashrateUnit}/day`;
+        return `${(pickNf(nfBtcRate, locale) ?? new Intl.NumberFormat(locale, { minimumFractionDigits: 2, maximumFractionDigits: 8 })).format(btcRate)} ₿/${hashrateUnit}/day`;
       }
       return `${(pickNf(nfRate, locale) ?? new Intl.NumberFormat(locale, { minimumFractionDigits: rateDigits, maximumFractionDigits: rateDigits })).format(scaled)} sat/${hashrateUnit}/day`;
     };
@@ -296,7 +350,7 @@ export function DenominationProvider({ children }: { children: ReactNode }) {
         return (pickNf(nfUsd, locale) ?? new Intl.NumberFormat(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })).format(satToUsd(scaled, btcPrice));
       }
       if (effectiveMode === 'btc') {
-        return (pickNf(nfBtc8, locale) ?? new Intl.NumberFormat(locale, { minimumFractionDigits: 8, maximumFractionDigits: 8 })).format(scaled / SAT_PER_BTC);
+        return (pickNf(nfBtcRate, locale) ?? new Intl.NumberFormat(locale, { minimumFractionDigits: 2, maximumFractionDigits: 8 })).format(scaled / SAT_PER_BTC);
       }
       return (pickNf(nfRate, locale) ?? new Intl.NumberFormat(locale, { minimumFractionDigits: rateDigits, maximumFractionDigits: rateDigits })).format(scaled);
     };
@@ -325,6 +379,9 @@ export function DenominationProvider({ children }: { children: ReactNode }) {
       hashrateUnit,
       setHashrateUnit,
       formatSat,
+      formatSatValue,
+      satSuffix,
+      formatHashrateValue,
       formatSatPerPhDay,
       formatSatPerPhDayValue,
       formatHashrate,

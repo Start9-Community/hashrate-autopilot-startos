@@ -88,6 +88,22 @@ export interface OceanStats {
   readonly fetched_at_ms: number;
 }
 
+/**
+ * #323: a single settlement from Ocean's `/v1/earnpay` `payouts[]`.
+ * This is the authoritative record of money that actually left Ocean
+ * for the operator - covering both on-chain and Lightning rails.
+ */
+export interface OceanPayout {
+  /** Settlement time, ms epoch (parsed from Ocean's ISO `ts`). */
+  readonly ts_ms: number;
+  /** On-chain txid, or null for a Lightning (off-chain) payout. */
+  readonly on_chain_txid: string | null;
+  /** Net satoshis that reached the operator (`total_satoshis_net_paid`). */
+  readonly net_sat: number;
+  /** `is_generation_txn`: true = coinbase-direct, false = batched sweep. */
+  readonly is_generation: boolean;
+}
+
 export interface OceanClient {
   fetchStats(address: string): Promise<OceanStats | null>;
   /**
@@ -97,6 +113,19 @@ export interface OceanClient {
    * first (Ocean's native order).
    */
   fetchBlocksPage(page: number, pageSize: number): Promise<OceanBlock[]>;
+  /**
+   * #323: historical payouts in a date range via `/v1/earnpay`. Both
+   * date bounds are `YYYY-MM-DD`. Without a wide range Ocean defaults
+   * to roughly the last 30 days, so the payout backfill passes
+   * `2020-01-01`..`today+1d` to get the full settlement history.
+   * Returns null on network/parse failure so callers can degrade to
+   * last-known state rather than wiping the store.
+   */
+  fetchPayouts(
+    address: string,
+    startDate: string,
+    endDate: string,
+  ): Promise<OceanPayout[] | null>;
 }
 
 export interface OceanClientOptions {
@@ -136,8 +165,58 @@ export function createOceanClient(opts: OceanClientOptions = {}): OceanClient {
     }
   }
 
+  // #323: earnpay payouts cache, keyed by address + date range. TTL
+  // matches the stats cache; the refresher already self-paces on a
+  // slow cadence, so this only guards against accidental double-fetch.
+  const payoutsCache = new Map<string, { fetched_at_ms: number; payouts: OceanPayout[] }>();
+
+  async function fetchPayouts(
+    address: string,
+    startDate: string,
+    endDate: string,
+  ): Promise<OceanPayout[] | null> {
+    const key = `${address}|${startDate}|${endDate}`;
+    const cached = payoutsCache.get(key);
+    if (cached && now() - cached.fetched_at_ms < ttl) return cached.payouts;
+
+    try {
+      const resp = await getJson(
+        fetchImpl,
+        `${OCEAN_API_BASE}/earnpay/${address}/${startDate}/${endDate}`,
+      );
+      const rawPayouts = (resp?.result as Record<string, unknown>)?.payouts;
+      if (!Array.isArray(rawPayouts)) return [];
+      const payouts: OceanPayout[] = (rawPayouts as Record<string, unknown>[])
+        .map((p) => {
+          const rawTxid = p.on_chain_txid;
+          const on_chain_txid =
+            typeof rawTxid === 'string' && rawTxid.length > 0 ? rawTxid : null;
+          return {
+            ts_ms: parseOceanTs(p.ts),
+            on_chain_txid,
+            // `total_satoshis_net_paid` is already in sats (name says so);
+            // no BTC conversion. Round defensively in case Ocean returns
+            // a float string.
+            net_sat: Math.round(Number(p.total_satoshis_net_paid ?? 0)),
+            is_generation: p.is_generation_txn === true,
+          };
+        })
+        // Drop malformed rows: an unparseable ts (0) or non-positive
+        // amount can't be a real settlement and would corrupt the sum.
+        .filter((p) => p.ts_ms > 0 && p.net_sat > 0);
+      payoutsCache.set(key, { fetched_at_ms: now(), payouts });
+      return payouts;
+    } catch (err) {
+      console.warn(
+        `[ocean] fetchPayouts(${address}) failed: ${(err as Error).message}`,
+      );
+      return null;
+    }
+  }
+
   return {
     fetchBlocksPage,
+    fetchPayouts,
     async fetchStats(address: string): Promise<OceanStats | null> {
       const cached = cache.get(address);
       if (cached && now() - cached.fetched_at_ms < ttl) return cached;

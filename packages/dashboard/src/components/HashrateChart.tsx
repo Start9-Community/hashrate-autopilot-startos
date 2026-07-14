@@ -30,10 +30,13 @@ import { AlertConditionBands } from './AlertConditionBands';
 import { MarkerBeacon } from './MarkerBeacon';
 import {
   clientXToTickAt,
-  CrosshairReadout,
+  CrosshairReadoutLayer,
+  CrosshairSvgLayer,
   nearestTickIndex,
   useCrosshairPointer,
   type CrosshairReadoutRow,
+  type CrosshairState,
+  type CrosshairView,
   type SharedCrosshair,
 } from '../lib/chartCrosshair';
 import {
@@ -51,6 +54,7 @@ import {
 import { darkenHex, getChartColor, parseOverrides } from '../lib/chartColors';
 import { useSeriesVisibility } from '../lib/seriesVisibility';
 import {
+  cachedNumberFormat,
   formatAgeMinutes,
   formatCompactNumber,
   formatDuration,
@@ -62,6 +66,22 @@ import { applyExplorerTemplate } from '../lib/blockExplorer';
 
 const WIDTH = 880;
 const HEIGHT = 200;
+
+/** Binary search: first index whose tick_at >= t, or -1 when every
+ *  point precedes t. Points are time-sorted by contract. */
+function firstIdxAtOrAfter(
+  points: ReadonlyArray<{ readonly tick_at: number }>,
+  t: number,
+): number {
+  let lo = 0;
+  let hi = points.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (points[mid]!.tick_at >= t) hi = mid;
+    else lo = mid + 1;
+  }
+  return lo < points.length ? lo : -1;
+}
 // #280: stable empty array so a hidden speed-marker series doesn't
 // allocate a new array each render and thrash SpeedEditMarkers' memo.
 const EMPTY_SPEED_EVENTS: ReadonlyArray<SpeedEditMarkerEvent> = [];
@@ -300,6 +320,36 @@ export function projectSoloSeries(
   return out;
 }
 
+/**
+ * Split a formatted readout value into its number and trailing unit and
+ * render the unit in muted grey, so the unit reads at lower intensity
+ * than the number - matching the Price tooltip and the stat tiles.
+ * Handles space-separated units ("3,08 PH/s", "45 °C", "52 W") and the
+ * attached ×/% symbols ("0,33×", "0,0120%"); leaves magnitude-suffixed
+ * ("1.2M") and unitless values untouched.
+ */
+function withDimUnit(text: string): React.ReactNode {
+  const spaced = /^(.+ )([^\d\s].*)$/.exec(text);
+  if (spaced) {
+    return (
+      <>
+        {spaced[1]}
+        <span className="text-slate-500">{spaced[2]}</span>
+      </>
+    );
+  }
+  const symbol = /^(.+?)([×%])$/.exec(text);
+  if (symbol) {
+    return (
+      <>
+        {symbol[1]}
+        <span className="text-slate-500">{symbol[2]}</span>
+      </>
+    );
+  }
+  return text;
+}
+
 interface RightAxisSpec {
   /** Per-point values pulled off MetricPoint. */
   values: (number | null)[];
@@ -522,6 +572,22 @@ export const HashrateChart = memo(function HashrateChart({
   const onBlockClick = useCallback(
     (block: OurBlockMarker) => (e: React.MouseEvent) => {
       e.stopPropagation();
+      setBlockTip({ block, x: e.clientX, y: e.clientY, pinned: true });
+    },
+    [],
+  );
+  // Touch tap = pin directly. iOS Safari suppresses the click on the
+  // first tap of a hover-revealing element (it treats it as the hover),
+  // so onClick never fired on touch and the tooltip stayed unpinned -
+  // no dismiss button, no "View in timeline" jump (both pinned-only),
+  // and pointer-events-none made the explorer link untappable too. Pin
+  // on pointerup for non-mouse pointers so a single tap gives the full
+  // interactive tooltip. Propagation is left intact so the chart's own
+  // viewport/crosshair pointerup still cleans up (a tap never crosses
+  // the drag threshold, so no pan and no crosshair pin result).
+  const onBlockTap = useCallback(
+    (block: OurBlockMarker) => (e: React.PointerEvent) => {
+      if (e.pointerType === 'mouse') return;
       setBlockTip({ block, x: e.clientX, y: e.clientY, pinned: true });
     },
     [],
@@ -795,7 +861,7 @@ export const HashrateChart = memo(function HashrateChart({
           return {
             values: points.map((p) => p.share_log_pct),
             formatTick: (v) =>
-              `${new Intl.NumberFormat(intlLocale, {
+              `${cachedNumberFormat(intlLocale, {
                 minimumFractionDigits: 4,
                 maximumFractionDigits: 4,
               }).format(v)}%`,
@@ -910,7 +976,7 @@ export const HashrateChart = memo(function HashrateChart({
           return {
             values: points.map((p) => p[key]),
             formatTick: (v) =>
-              `${new Intl.NumberFormat(intlLocale, {
+              `${cachedNumberFormat(intlLocale, {
                 minimumFractionDigits: 2,
                 maximumFractionDigits: 2,
               }).format(v)}×`,
@@ -1002,7 +1068,7 @@ export const HashrateChart = memo(function HashrateChart({
           return {
             values,
             formatTick: (v) =>
-              `${new Intl.NumberFormat(intlLocale, {
+              `${cachedNumberFormat(intlLocale, {
                 minimumFractionDigits: 2,
                 maximumFractionDigits: 2,
               }).format(v)}%`,
@@ -1417,13 +1483,10 @@ export const HashrateChart = memo(function HashrateChart({
         const t =
           kind === 'in' ? block.timestamp_ms : block.timestamp_ms + windowMs;
         if (t < dataMinX || t > dataMaxX) continue;
-        let afterIdx = -1;
-        for (let i = 0; i < points.length; i++) {
-          if (points[i]!.tick_at >= t) {
-            afterIdx = i;
-            break;
-          }
-        }
+        // points are time-sorted; a linear scan from 0 here was
+        // O(blocks × points) (~1.8M iterations at 360 blocks × 5k
+        // points) per recompute.
+        const afterIdx = firstIdxAtOrAfter(points, t);
         if (afterIdx < 0) continue;
         staged.push({ kind, t, block, afterIdx });
       }
@@ -1471,9 +1534,10 @@ export const HashrateChart = memo(function HashrateChart({
     // the next event so adjacent events don't pollute each other.
     const SCAN_WINDOW_TICKS = 60;
     const groupAfterIdxs = [...byTick.keys()].sort((a, b) => a - b);
+    const groupPosByIdx = new Map(groupAfterIdxs.map((v, i) => [v, i] as const));
     const out: typeof empty = [];
     for (const [afterIdx, events] of byTick) {
-      const groupPos = groupAfterIdxs.indexOf(afterIdx);
+      const groupPos = groupPosByIdx.get(afterIdx)!;
       const nextGroupAfterIdx =
         groupPos < groupAfterIdxs.length - 1
           ? groupAfterIdxs[groupPos + 1]!
@@ -1555,17 +1619,17 @@ export const HashrateChart = memo(function HashrateChart({
   // Marker line position + readout rows at the snapped tick. Values
   // mirror what the chart draws: smoothed delivered, null-gapped
   // datum/ocean, and the active right-axis series via its own
-  // formatter. Hidden while panning.
-  const crosshairView = useMemo(() => {
-    const cs = crosshair?.state;
-    if (!cs || !chartData || isDragging) return null;
+  // formatter. Hidden while panning. Called by the subscription-backed
+  // crosshair layers, so pointer moves never re-render this chart.
+  const computeCrosshairView = useCallback((cs: CrosshairState): CrosshairView | null => {
+    if (!chartData || isDragging) return null;
     if (cs.tickAt < chartData.minX || cs.tickAt > chartData.maxX) return null;
     const i = nearestTickIndex(chartData.xs, cs.tickAt);
     if (i < 0) return null;
     const { xScale, yScale, shareLogYScale, ys, datumYs, oceanYs, targets, floors, hasDatum, hasOcean, hasShareLog, rightAxis } = chartData;
     const rows: CrosshairReadoutRow[] = [];
     const dots: Array<{ cy: number; color: string }> = [];
-    const fmtHr = (v: number) => denomination.formatHashrate(v, intlLocale);
+    const fmtHr = (v: number): React.ReactNode => withDimUnit(denomination.formatHashrate(v, intlLocale));
     const delivered = ys[i];
     if (delivered !== undefined) {
       rows.push({ color: COLOR_DELIVERED, label: t`delivered (Braiins)`, value: fmtHr(delivered) });
@@ -1592,13 +1656,13 @@ export const HashrateChart = memo(function HashrateChart({
     if (hasShareLog && rightAxis) {
       const v = rightAxis.values[i];
       if (v !== null && v !== undefined && Number.isFinite(v)) {
-        rows.push({ color: rightAxis.stroke, label: rightAxis.axisLabel, value: rightAxis.formatTick(v) });
+        rows.push({ color: rightAxis.stroke, label: rightAxis.axisLabel, value: withDimUnit(rightAxis.formatTick(v)) });
         dots.push({ cy: shareLogYScale(v), color: rightAxis.stroke });
       }
     }
     const x = xScale(cs.tickAt);
     return { state: cs, x, lineXFrac: x / WIDTH, rows, dots };
-  }, [crosshair?.state, chartData, isDragging, denomination, intlLocale, _colorOverrides]);
+  }, [chartData, isDragging, denomination, intlLocale, _colorOverrides]);
 
   if (!chartData) {
     return (
@@ -1941,7 +2005,7 @@ export const HashrateChart = memo(function HashrateChart({
           idSuffix="hr"
           focusSpanOpenId={focusSpanOpenId}
           focusSpanEdge={focusSpanEdge}
-          hoverTickAt={crosshair?.state?.tickAt ?? null}
+          crosshair={crosshair}
           onSpanClick={onAlertSpanClick}
         />
         {/* #280: each series render is gated on its legend toggle. */}
@@ -2082,6 +2146,7 @@ export const HashrateChart = memo(function HashrateChart({
                   onMouseEnter={onBlockEnter(b)}
                   onMouseLeave={onBlockLeave}
                   onClick={onBlockClick(b)}
+                  onPointerUp={onBlockTap(b)}
                   style={{ cursor: 'pointer' }}
                 >
                   <line
@@ -2262,32 +2327,15 @@ export const HashrateChart = memo(function HashrateChart({
         </defs>
 
         {/* #257: crosshair marker line + per-series dots. Pinned
-            renders solid; transient hover renders dashed. */}
-        {crosshairView && (
-          <g pointerEvents="none">
-            <line
-              x1={crosshairView.x}
-              x2={crosshairView.x}
-              y1={PADDING.top}
-              y2={chartHeight - PADDING.bottom}
-              stroke="#94a3b8"
-              strokeWidth="1"
-              strokeDasharray={crosshairView.state.pinned ? undefined : '3 3'}
-              opacity={crosshairView.state.pinned ? 0.9 : 0.6}
-            />
-            {crosshairView.dots.map((d, di) => (
-              <circle
-                key={`xh-dot-${di}`}
-                cx={crosshairView.x}
-                cy={d.cy}
-                r="3"
-                fill={d.color}
-                stroke="#0f172a"
-                strokeWidth="1"
-              />
-            ))}
-          </g>
-        )}
+            renders solid; transient hover renders dashed. Subscribes
+            to the crosshair store itself - hover doesn't re-render
+            this chart. */}
+        <CrosshairSvgLayer
+          crosshair={crosshair}
+          computeView={computeCrosshairView}
+          topY={PADDING.top}
+          bottomY={chartHeight - PADDING.bottom}
+        />
         </g>
 
         <line
@@ -2395,21 +2443,18 @@ export const HashrateChart = memo(function HashrateChart({
       {/* #257: per-chart value readout for the crosshair. Suppressed
           while a marker hover-tooltip is open - markers win on direct
           hover (pinned marker tooltips coexist fine). */}
-      {crosshairView && !(
-        (blockTip !== null && !blockTip.pinned) ||
-        (retargetTip !== null && !retargetTip.pinned) ||
-        (stepTip !== null && !stepTip.pinned) ||
-        (ipChangeTip !== null && !ipChangeTip.pinned)
-      ) && (
-        <CrosshairReadout
-          chartId="hashrate"
-          state={crosshairView.state}
-          svgEl={svgElRef.current}
-          lineXFrac={crosshairView.lineXFrac}
-          rows={crosshairView.rows}
-          onClose={() => crosshair?.clear()}
-        />
-      )}
+      <CrosshairReadoutLayer
+        chartId="hashrate"
+        crosshair={crosshair}
+        computeView={computeCrosshairView}
+        suppressed={
+          (blockTip !== null && !blockTip.pinned) ||
+          (retargetTip !== null && !retargetTip.pinned) ||
+          (stepTip !== null && !stepTip.pinned) ||
+          (ipChangeTip !== null && !ipChangeTip.pinned)
+        }
+        svgRef={svgElRef}
+      />
       {blockTip && (
         <PoolBlockTooltip
           tip={blockTip}
@@ -2579,7 +2624,7 @@ export function PoolBlockTooltip({
       )}
 
       {tip.balance && (() => {
-        const nf = new Intl.NumberFormat(locale, { maximumFractionDigits: 0 });
+        const nf = cachedNumberFormat(locale, { maximumFractionDigits: 0 });
         const delta = tip.balance.after_sat - tip.balance.before_sat;
         return (
           <div className="mt-2 pt-2 border-t border-slate-800 space-y-0.5 text-slate-300">
@@ -2627,7 +2672,7 @@ export function PoolBlockTooltip({
             <div className="flex justify-between gap-3">
               <span className="text-slate-500"><Trans>share log</Trans></span>
               <span className="font-mono tabular-nums">
-                {new Intl.NumberFormat(locale, {
+                {cachedNumberFormat(locale, {
                   minimumFractionDigits: 4,
                   maximumFractionDigits: 4,
                 }).format(effective)}%
@@ -2714,7 +2759,7 @@ export function RetargetTooltip({
   }, [tip.x, tip.y, event.tick_at]);
 
   const pct = ((event.difficulty - event.previous) / event.previous) * 100;
-  const pctText = `${pct >= 0 ? '+' : ''}${new Intl.NumberFormat(locale, {
+  const pctText = `${pct >= 0 ? '+' : ''}${cachedNumberFormat(locale, {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(pct)}%`;
@@ -2729,7 +2774,7 @@ export function RetargetTooltip({
   });
   const hasLuck = event.luckBefore != null && event.luckAfter != null;
   const fmtLuck = (v: number) =>
-    new Intl.NumberFormat(locale, {
+    cachedNumberFormat(locale, {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     }).format(v);
@@ -2750,13 +2795,13 @@ export function RetargetTooltip({
   // gives H/s. Bitcoin's network is in the high-hundreds-of-EH range
   // at retarget time so always render EH/s with one decimal.
   const hashrateEHs = event.difficulty * 2 ** 32 / 600 / 1e18;
-  const hashrateText = new Intl.NumberFormat(locale, {
+  const hashrateText = cachedNumberFormat(locale, {
     minimumFractionDigits: 1,
     maximumFractionDigits: 1,
   }).format(hashrateEHs);
 
   const heightText = event.block_height !== null && event.block_height !== undefined
-    ? new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(event.block_height)
+    ? cachedNumberFormat(locale, { maximumFractionDigits: 0 }).format(event.block_height)
     : null;
 
   // #229: pool blocks Ocean found in the prior epoch. Hidden when
@@ -2767,7 +2812,7 @@ export function RetargetTooltip({
   const poolBlocksText = event.pool_blocks_prior_epoch !== null
       && event.pool_blocks_prior_epoch !== undefined
       && event.pool_blocks_prior_epoch > 0
-    ? new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(event.pool_blocks_prior_epoch)
+    ? cachedNumberFormat(locale, { maximumFractionDigits: 0 }).format(event.pool_blocks_prior_epoch)
     : null;
 
   return (
@@ -2875,7 +2920,7 @@ function BtcRow({
   locale: string | undefined;
   muted?: boolean;
 }) {
-  const text = new Intl.NumberFormat(locale, {
+  const text = cachedNumberFormat(locale, {
     minimumFractionDigits: 8,
     maximumFractionDigits: 8,
   }).format(btc);

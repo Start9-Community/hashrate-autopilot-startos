@@ -7,11 +7,20 @@
 
 import type { Kysely } from 'kysely';
 
+import { CONFIG_WRITE_ONLY_FIELDS } from '@hashrate-autopilot/shared';
+
 import { AppConfigInvariantsSchema, type AppConfig } from '../../config/schema.js';
+import type { SecretCrypto } from '../../config/secret-crypto.js';
 import type { Database } from '../types.js';
 
+// #331: the config-table columns encrypted at rest - the true secrets.
+const ENCRYPTED_CONFIG_FIELDS = [...CONFIG_WRITE_ONLY_FIELDS];
+
 export class ConfigRepo {
-  constructor(private readonly db: Kysely<Database>) {}
+  constructor(
+    private readonly db: Kysely<Database>,
+    private readonly crypto?: SecretCrypto,
+  ) {}
 
   /**
    * Return the single config row, or null if it hasn't been seeded yet.
@@ -77,7 +86,26 @@ export class ConfigRepo {
       include_historical_payouts: rest.include_historical_payouts === 1,
       // #179: debug API toggle stored as 0/1, surfaced as boolean.
       debug_api_enabled: rest.debug_api_enabled === 1,
+      // #331: decrypt the secret config columns. A decrypt failure
+      // (wrong/lost key) surfaces as "" so the operator re-enters it via
+      // Config rather than the daemon booting with a broken credential.
+      ...this.decryptConfigSecrets(rest as Record<string, unknown>),
     };
+  }
+
+  private decryptConfigSecrets(rest: Record<string, unknown>): Record<string, string> {
+    const out: Record<string, string> = {};
+    for (const f of ENCRYPTED_CONFIG_FIELDS) {
+      const v = rest[f];
+      if (typeof v !== 'string' || v === '') {
+        out[f] = typeof v === 'string' ? v : '';
+      } else if (this.crypto) {
+        out[f] = this.crypto.decrypt(f, v) ?? '';
+      } else {
+        out[f] = v;
+      }
+    }
+    return out;
   }
 
   /**
@@ -121,10 +149,49 @@ export class ConfigRepo {
       below_floor_emergency_cap_after_minutes: 9999,
       hibernate_on_expensive_market: 0 as 0 | 1,
     };
+    // #331: encrypt the secret config columns at rest (no-op without crypto).
+    if (this.crypto) {
+      for (const f of ENCRYPTED_CONFIG_FIELDS) {
+        const v = (row as Record<string, unknown>)[f];
+        if (typeof v === 'string' && v !== '') {
+          (row as Record<string, unknown>)[f] = this.crypto.encrypt(f, v);
+        }
+      }
+    }
     await this.db
       .insertInto('config')
       .values({ id: 1, ...row, updated_at: now })
       .onConflict((oc) => oc.column('id').doUpdateSet({ ...row, updated_at: now }))
       .execute();
+  }
+
+  /**
+   * #331: one-time upgrade - encrypt any plaintext secret config columns
+   * in place. Idempotent. Returns how many it encrypted. No-op without
+   * crypto.
+   */
+  async ensureEncrypted(now: number = Date.now()): Promise<number> {
+    if (!this.crypto) return 0;
+    const row = await this.db
+      .selectFrom('config')
+      .selectAll()
+      .where('id', '=', 1)
+      .executeTakeFirst();
+    if (!row) return 0;
+    const patch: Record<string, string> = {};
+    for (const f of ENCRYPTED_CONFIG_FIELDS) {
+      const v = (row as Record<string, unknown>)[f];
+      if (typeof v === 'string' && v.length > 0 && !this.crypto.isEncrypted(v)) {
+        patch[f] = this.crypto.encrypt(f, v);
+      }
+    }
+    const cols = Object.keys(patch);
+    if (cols.length === 0) return 0;
+    await this.db
+      .updateTable('config')
+      .set({ ...patch, updated_at: now })
+      .where('id', '=', 1)
+      .execute();
+    return cols.length;
   }
 }

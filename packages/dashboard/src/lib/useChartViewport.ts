@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   type ChartRange,
@@ -122,6 +122,18 @@ export function useChartViewport(): UseChartViewportReturn {
   const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dragStart = useRef<DragState | null>(null);
   const dataStartRef = useRef<number | null>(null);
+  // Active touch/pen pointers (id -> client coords) for pinch-to-zoom.
+  // Mouse pointers are never tracked here. When two are down we switch
+  // from pan to a pinch gesture.
+  const activePointers = useRef<Map<number, { x: number; y: number }>>(new Map());
+  const pinch = useRef<{
+    startDist: number;
+    /** Anchor fraction across the plot area (0..1) at pinch start. */
+    fraction: number;
+    /** The data-space time under the anchor; held fixed while zooming. */
+    anchorTime: number;
+    startDuration: number;
+  } | null>(null);
 
   const allViewport = useCallback((): ViewportState => {
     const now = Date.now();
@@ -148,9 +160,21 @@ export function useChartViewport(): UseChartViewportReturn {
   const scheduleSettle = useCallback((vp: ViewportState) => {
     if (settleTimer.current) clearTimeout(settleTimer.current);
     settleTimer.current = setTimeout(() => {
+      // Quantize the settled bounds to ~1% of the visible span (min
+      // 5s). The settled viewport only drives fetch keys and marker
+      // windows - the chart draws from the raw viewport, and the
+      // fetch pads ±100% on each side, so a sub-1% snap never shows.
+      // At the old fixed 5s step, every pan settle on any span above
+      // a few minutes produced a brand-new since/until pair, i.e. a
+      // guaranteed query-cache miss on five client queries plus the
+      // daemon's viewport stats cache. With a span-relative step,
+      // small back-and-forth pans land on the same key and re-use
+      // the cache.
+      const span = vp.until_ms - vp.since_ms;
+      const step = Math.max(5000, Math.floor(span / 100));
       const q: ViewportState = {
-        since_ms: quantize(vp.since_ms, 5000),
-        until_ms: quantize(vp.until_ms, 5000),
+        since_ms: quantize(vp.since_ms, step),
+        until_ms: quantize(vp.until_ms, step),
         activePreset: vp.activePreset,
         liveEdge: vp.liveEdge,
       };
@@ -346,26 +370,92 @@ export function useChartViewport(): UseChartViewportReturn {
     return svgWidth * (rightFrac - leftFrac);
   }, []);
 
+  // Pointer handlers read viewport/updateViewport through refs (same
+  // pattern as the wheel handler above) so their identities - and the
+  // memoized `handlers` object below - stay stable across renders.
+  // Both charts are React.memo'd; a fresh handlers object per render
+  // would defeat that memo on every poll tick and crosshair move.
   const onPointerDown = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
     svgRef.current = e.currentTarget;
+    // Track touch/pen pointers so a second finger starts a pinch. The
+    // SVG already sets `touch-action: none`, so both fingers deliver
+    // pointer events instead of the browser hijacking them for a page
+    // zoom.
+    if (e.pointerType !== 'mouse') {
+      activePointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (activePointers.current.size >= 2) {
+        // Enter pinch: cancel any in-progress pan and snapshot the
+        // gesture (finger distance + the time anchored under the
+        // midpoint, held fixed while the window scales).
+        dragStart.current = null;
+        setIsDragging(false);
+        const pts = [...activePointers.current.values()];
+        const a = pts[0]!;
+        const b = pts[1]!;
+        const startDist = Math.hypot(a.x - b.x, a.y - b.y) || 1;
+        const midClientX = (a.x + b.x) / 2;
+        const vp = viewportRef.current;
+        const ds = dataStartRef.current;
+        let effSince = vp.since_ms;
+        if (ds !== null && effSince < ds && vp.until_ms > ds) {
+          const span = vp.until_ms - ds;
+          effSince = Math.max(0, ds - span * 0.02);
+        }
+        const effDuration = vp.until_ms - effSince;
+        const rect = e.currentTarget.getBoundingClientRect();
+        const pxLeft = rect.width * (80 / SVG_VIEWBOX_WIDTH);
+        const pxRight = rect.width * ((SVG_VIEWBOX_WIDTH - 80) / SVG_VIEWBOX_WIDTH);
+        const fraction = Math.max(0, Math.min(1, (midClientX - rect.left - pxLeft) / (pxRight - pxLeft)));
+        pinch.current = {
+          startDist,
+          fraction,
+          anchorTime: effSince + fraction * effDuration,
+          startDuration: effDuration,
+        };
+        return;
+      }
+    }
     if (e.button !== 0) return;
+    const vp = viewportRef.current;
     const ds = dataStartRef.current;
-    let effSince = viewport.since_ms;
+    let effSince = vp.since_ms;
     if (ds !== null && effSince < ds) {
-      const span = viewport.until_ms - ds;
+      const span = vp.until_ms - ds;
       effSince = Math.max(0, ds - span * 0.02);
     }
     dragStart.current = {
       clientX: e.clientX,
-      viewport,
+      viewport: vp,
       pointerId: e.pointerId,
       captured: false,
       dataWidthPx: computeDataWidthPx(e.currentTarget),
-      effectiveDuration: viewport.until_ms - effSince,
+      effectiveDuration: vp.until_ms - effSince,
     };
-  }, [viewport, computeDataWidthPx]);
+  }, [computeDataWidthPx]);
 
   const onPointerMove = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
+    if (pinch.current) {
+      if (e.pointerType !== 'mouse' && activePointers.current.has(e.pointerId)) {
+        activePointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      }
+      const p = pinch.current;
+      const pts = [...activePointers.current.values()];
+      if (pts.length < 2) return;
+      const a = pts[0]!;
+      const b = pts[1]!;
+      const dist = Math.hypot(a.x - b.x, a.y - b.y) || 1;
+      // Fingers apart (dist grows) => shorter window => zoom in.
+      const YEAR_MS = CHART_RANGE_SPECS['1y'].windowMs!;
+      let newDuration = p.startDuration * (p.startDist / dist);
+      newDuration = Math.max(MIN_DURATION_MS, Math.min(YEAR_MS, newDuration));
+      const raw: ChartViewport = {
+        since_ms: p.anchorTime - p.fraction * newDuration,
+        until_ms: p.anchorTime + (1 - p.fraction) * newDuration,
+      };
+      const clamped = clampViewport(raw);
+      setViewport({ ...clamped, activePreset: viewportToNearestPreset(clamped), liveEdge: isAtLiveEdge(clamped) });
+      return;
+    }
     if (!dragStart.current) return;
     if (dragStart.current.viewport.activePreset === 'all') return;
     const deltaPx = e.clientX - dragStart.current.clientX;
@@ -387,25 +477,41 @@ export function useChartViewport(): UseChartViewportReturn {
   }, []);
 
   const onPointerUp = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
+    if (e.pointerType !== 'mouse') activePointers.current.delete(e.pointerId);
+    if (pinch.current) {
+      // Lifting either finger ends the pinch; settle the final window
+      // (persist + refetch). The remaining finger, if any, does not
+      // resume panning until it too lifts - avoids a jump.
+      if (activePointers.current.size < 2) {
+        pinch.current = null;
+        dragStart.current = null;
+        setIsDragging(false);
+        updateViewportRef.current(viewportRef.current);
+      }
+      return;
+    }
     if (!dragStart.current) return;
     const wasDrag = dragStart.current.captured;
     if (wasDrag) {
       e.currentTarget.releasePointerCapture(e.pointerId);
       const startVp = dragStart.current.viewport;
-      const live = isAtLiveEdge(viewport);
-      const vp: ViewportState = { ...viewport, activePreset: startVp.activePreset, liveEdge: live };
-      updateViewport(vp);
+      const current = viewportRef.current;
+      const live = isAtLiveEdge(current);
+      const vp: ViewportState = { ...current, activePreset: startVp.activePreset, liveEdge: live };
+      updateViewportRef.current(vp);
     } else if (!focusedRef.current) {
       focusedRef.current = true;
       setIsFocused(true);
     }
     dragStart.current = null;
     setIsDragging(false);
-  }, [viewport, updateViewport]);
+  }, []);
 
+  const goLiveRef = useRef(goLive);
+  goLiveRef.current = goLive;
   const onDoubleClick = useCallback(() => {
-    goLive();
-  }, [goLive]);
+    goLiveRef.current();
+  }, []);
 
   useEffect(() => {
     const blur = () => {
@@ -418,13 +524,37 @@ export function useChartViewport(): UseChartViewportReturn {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') blur();
     };
+    // Document-level pointer cleanup so a lifted or cancelled touch is
+    // always removed from the pinch set, even when the gesture ends
+    // with a pointercancel (which the SVG's React handlers don't see)
+    // or off the element. Without this a leaked pointer makes the next
+    // single touch look like a 2+-finger pinch and pan stops working.
+    const endPointer = (e: PointerEvent) => {
+      if (e.pointerType === 'mouse') return;
+      if (!activePointers.current.delete(e.pointerId)) return;
+      if (pinch.current && activePointers.current.size < 2) {
+        pinch.current = null;
+        dragStart.current = null;
+        setIsDragging(false);
+        updateViewportRef.current(viewportRef.current);
+      }
+    };
     document.addEventListener('pointerdown', handlePointerDown);
     document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('pointerup', endPointer);
+    document.addEventListener('pointercancel', endPointer);
     return () => {
       document.removeEventListener('pointerdown', handlePointerDown);
       document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('pointerup', endPointer);
+      document.removeEventListener('pointercancel', endPointer);
     };
   }, []);
+
+  const handlers = useMemo(
+    () => ({ onPointerDown, onPointerMove, onPointerUp, onDoubleClick }),
+    [onPointerDown, onPointerMove, onPointerUp, onDoubleClick],
+  );
 
   return {
     viewport,
@@ -435,7 +565,7 @@ export function useChartViewport(): UseChartViewportReturn {
     setDataStart,
     jumpToWindow,
     wheelRef,
-    handlers: { onPointerDown, onPointerMove, onPointerUp, onDoubleClick },
+    handlers,
     isDragging,
     isLiveEdge: viewport.liveEdge,
     isFocused,

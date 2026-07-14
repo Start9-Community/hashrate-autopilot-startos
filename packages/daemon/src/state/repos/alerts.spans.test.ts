@@ -80,6 +80,46 @@ describe('AlertsRepo.conditionSpansSince (#316)', () => {
     });
   });
 
+  it('#341: span start_ms is the condition-onset when the opener recorded it', async () => {
+    // Opener FIRED at t=16_000 (after a threshold delay) but the condition
+    // went bad at t=1_000. The span must start at 1_000 so Started/Duration
+    // match the recovery body ("was zero for 15m"), not the 1s fire window.
+    const openId = await repo.insert({
+      created_at: 16_000,
+      condition_started_at: 1_000,
+      severity: 'IMPORTANT',
+      title: 'open',
+      body: 'b',
+      status: 'BUFFERED',
+      event_class: 'zero_hashrate',
+      delivery_status: 'sent',
+      delivery_attempts: 1,
+      next_retry_at_ms: null,
+      paired_alert_id: null,
+    });
+    await insertRecovery('zero_hashrate_recovery', 16_500, openId);
+    const spans = await repo.conditionSpansSince(0, Number.MAX_SAFE_INTEGER, 2e12);
+    expect(spans[0]).toMatchObject({ open_id: openId, start_ms: 1_000, end_ms: 16_500 });
+    // #341: onset was recorded, so the drawer can compute the threshold
+    // (fired_at - start_ms = 15s here) and total exactly, no estimate.
+    expect(spans[0]).toMatchObject({ fired_at: 16_000, onset_known: true });
+  });
+
+  it('#341: fired_at falls back to created_at and onset_known is false pre-0119', async () => {
+    // No condition_started_at on the opener -> the drawer can't know the
+    // real onset, so it must flag the span for a config-based estimate.
+    await insertOpener('zero_hashrate', 20_000);
+    const spans = await repo.conditionSpansSince(0, Number.MAX_SAFE_INTEGER, 21_000);
+    expect(spans[0]).toMatchObject({
+      start_ms: 20_000,
+      fired_at: 20_000,
+      onset_known: false,
+      // The repo leaves threshold_minutes null; the HTTP route fills it
+      // from live config.
+      threshold_minutes: null,
+    });
+  });
+
   it('recovery_body is null for implicit closes and open spans (#322)', async () => {
     // Orphan closed implicitly by the next same-class opener: no real
     // recovery moment -> no recovery_body.

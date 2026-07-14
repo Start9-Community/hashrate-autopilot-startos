@@ -39,6 +39,39 @@ issue #60.
 | `BHA_BITCOIND_RPC_PASSWORD` | `bitcoind_rpc_password` | Optional. |
 | `BHA_TELEGRAM_BOT_TOKEN` | `telegram_bot_token` | Active (#100). Dual-location: also a live-editable config field; the env var seeds both. |
 
+### Secrets at rest and in the API (#331)
+
+Secrets that live in the database are **AES-256-GCM encrypted at rest**
+(Braiins owner + read-only tokens, `bitcoind_rpc_password`,
+`telegram_bot_token`, `ddns_credential`), and the dashboard password is
+stored as a one-way **scrypt** hash. The encryption key is resolved
+`BHA_SECRET_KEY` env > `BHA_SECRET_KEY_FILE` > a generated `secret.key`
+next to `state.db` (see the process-level table below). Legacy plaintext
+rows are encrypted or hashed in place on the next daemon boot. If the key
+is lost the daemon treats the affected secret as unset and asks you to
+re-enter it, rather than crash-looping.
+
+The config API is **write-only** for credential fields: `GET /api/config`
+returns `telegram_bot_token`, `bitcoind_rpc_password`, and
+`ddns_credential` blanked, and a blank value on save means "keep the
+stored one". Non-secret fields (usernames, URLs) stay visible. The
+config-change audit log redacts credential values as well (GHSA-x8x9).
+
+Env-var and SOPS values still win over the database on every boot, so on
+those installs the encrypted DB copy is effectively a seed, not the
+source of truth.
+
+### Rotating secrets in-app (#332)
+
+On database-sourced installs (the appliance / Umbrel path, where there is
+no shell or SOPS), Config -> Pool & Payout -> **Security & credentials**
+lets you change the dashboard password (applied immediately) and rotate
+the Braiins owner and read-only tokens (validated against Braiins before
+saving; applied on the next daemon restart), each gated on your current
+password. On env- or SOPS-sourced installs that section is read-only and
+points you back to this file, since a database write would be overwritten
+on the next boot. See [`credential-rotation.md`](credential-rotation.md).
+
 ## Targets and pricing
 
 | Env var | Schema field | Type |
@@ -115,7 +148,7 @@ issue #60.
 
 | Env var | Schema field | Type |
 |---|---|---|
-| `BHA_TELEGRAM_BOT_TOKEN` | `telegram_bot_token` | string (live-editable config field; same env var also seeds the secrets-tier fallback) |
+| `BHA_TELEGRAM_BOT_TOKEN` | `telegram_bot_token` | string (editable config field, but write-only in the API and encrypted at rest - see [Secrets at rest](#secrets-at-rest-and-in-the-api-331); the env var also seeds the secrets-tier fallback) |
 | `BHA_TELEGRAM_CHAT_ID` | `telegram_chat_id` | string |
 | `BHA_TELEGRAM_INSTANCE_LABEL` | `telegram_instance_label` | string |
 | `BHA_NOTIFICATIONS_MUTED` | `notifications_muted` | boolean |
@@ -187,3 +220,5 @@ prefix - they predate the override layer:
 | `SECRETS_PATH` | `<repo>/.env.sops.yaml` | Override the SOPS file location. |
 | `DB_PATH` | `<repo>/data/state.db` | Override the SQLite path. |
 | `SOPS_AGE_KEY_FILE` | `~/.config/hashrate-autopilot/age.key` | Age private key for SOPS decrypt. |
+| `BHA_SECRET_KEY` | (unset) | Master key for encrypting database-stored secrets at rest (#331). On Umbrel this is set to the device-derived `APP_SEED`. When unset, the daemon falls back to `BHA_SECRET_KEY_FILE`, then to a generated `secret.key` (mode 0600) next to `state.db`. |
+| `BHA_SECRET_KEY_FILE` | (unset) | Path to a file holding the at-rest encryption key, used when `BHA_SECRET_KEY` is not set. |

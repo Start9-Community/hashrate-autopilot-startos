@@ -30,6 +30,32 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+/**
+ * #332: POST that returns the parsed JSON body on ANY status (never
+ * throws on 4xx), so the Security forms can show the server's error
+ * message. A genuine 401 still clears the session; 403/422/409 (wrong
+ * current password, weak password, managed-externally) surface `error`.
+ */
+export interface SecurityPostResult {
+  ok: boolean;
+  status: number;
+  error?: string;
+  detail?: string;
+  applies_on_restart?: boolean;
+}
+async function securityPost(path: string, body: unknown): Promise<SecurityPostResult> {
+  const password = getPassword();
+  const headers = new Headers({ Accept: 'application/json', 'Content-Type': 'application/json' });
+  if (password) headers.set('Authorization', basicAuthHeader(password));
+  const res = await fetch(path, { method: 'POST', headers, body: JSON.stringify(body) });
+  if (res.status === 401) {
+    clearPassword();
+    throw new UnauthorizedError();
+  }
+  const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  return { ok: res.ok, status: res.status, ...data };
+}
+
 export type NextActionDescriptor =
   | { kind: 'paused' }
   | { kind: 'unknown_bids'; ids: readonly string[] }
@@ -217,7 +243,8 @@ export interface BidHistoryPage {
 export interface BidHistoryFilters {
   kinds?: ReadonlyArray<'CREATE_BID' | 'EDIT_PRICE' | 'EDIT_SPEED' | 'CANCEL_BID' | 'MODE_CHANGE' | 'BID_PAUSED' | 'BID_RESUMED'>;
   source?: 'AUTOPILOT' | 'OPERATOR';
-  orderIdContains?: string;
+  /** #342: free-text search across bid id, reason, and note (server-side). */
+  textContains?: string;
   sinceMs?: number;
   untilMs?: number;
   /** In sat/PH/day. EDIT_PRICE events with |Δ| < this are hidden. */
@@ -265,6 +292,16 @@ export interface AlertConditionSpanView {
   body: string;
   start_ms: number;
   end_ms: number | null;
+  /** #341: when the loud alert fired (opener.created_at). The gap from
+   *  start_ms is the sustained threshold waited out before paging. */
+  fired_at: number;
+  /** #341: true when condition-onset was recorded, so the threshold and
+   *  total are exact; false = pre-0119 row, drawer estimates + footnotes. */
+  onset_known: boolean;
+  /** #341: current-config sustained threshold (minutes) for this class,
+   *  for the estimate when onset_known is false; null when the class has
+   *  no minutes-based threshold (wallet runway / overheating). */
+  threshold_minutes: number | null;
   /** #322: the paired recovery alert's body; null when the span closed
    *  implicitly or is still open. Non-null = a real recovery moment. */
   recovery_body: string | null;
@@ -373,6 +410,16 @@ export interface StatusResponse {
       ticks_required: number;
       minutes: number;
     } | null;
+  } | null;
+  /** #335: current Bitcoin chain tip for the "block height" tile. Null
+   *  when no bitcoind RPC is configured (the tile hides). */
+  chain_tip: {
+    height: number;
+    hash: string;
+    found_by_ocean: boolean;
+    signals_bip110: boolean;
+    pool_tag: string | null;
+    miner_tag: string | null;
   } | null;
 }
 
@@ -501,6 +548,8 @@ export interface AppConfig {
 
 export interface ConfigResponse {
   config: AppConfig;
+  /** #331: credential fields are write-only - blanked in `config`; this flags which are configured. */
+  credentials_set?: Record<string, boolean>;
 }
 
 // #149: solo-mining monitoring (Bitaxe / AxeOS / Nerdaxe). The
@@ -797,6 +846,18 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify(cfg),
     }),
+  // #332: in-app credential rotation. These use a body-preserving POST
+  // (not `request`) so a 403 "wrong current password" surfaces its error
+  // message instead of being swallowed into the session-logout path.
+  securityState: () =>
+    request<{ secret_source: 'env' | 'sops' | 'db'; editable: boolean }>('/api/security/state'),
+  changePassword: (body: { current_password: string; new_password: string }) =>
+    securityPost('/api/security/password', body),
+  rotateBraiinsToken: (body: {
+    kind: 'owner' | 'read_only';
+    current_password: string;
+    token: string;
+  }) => securityPost('/api/security/braiins-token', body),
   setRunMode: (run_mode: 'DRY_RUN' | 'LIVE' | 'PAUSED') =>
     request<{ run_mode: string }>('/api/run-mode', {
       method: 'POST',
@@ -846,7 +907,7 @@ export const api = {
     // every action" - and omit it only when undefined (no filter).
     if (filters.kinds !== undefined) qs.set('kinds', filters.kinds.join(','));
     if (filters.source) qs.set('source', filters.source);
-    if (filters.orderIdContains) qs.set('order_id', filters.orderIdContains);
+    if (filters.textContains) qs.set('q', filters.textContains);
     if (filters.sinceMs != null) qs.set('since_ms', String(filters.sinceMs));
     if (filters.untilMs != null) qs.set('until_ms', String(filters.untilMs));
     if (filters.minAbsPriceDelta != null && filters.minAbsPriceDelta > 0) {
@@ -863,6 +924,14 @@ export const api = {
   retargets: (since: number, until: number) =>
     request<{ retargets: RetargetView[] }>(
       `/api/retargets?since_ms=${since}&until_ms=${until}`,
+    ),
+  // #336: operator's personal notes on Timeline events, keyed by the
+  // row's stable `<kind>:<key>` id.
+  eventNotes: () => request<{ notes: Record<string, string> }>('/api/event-notes'),
+  setEventNote: (key: string, note: string) =>
+    request<{ event_key: string; note: string }>(
+      `/api/event-notes/${encodeURIComponent(key)}`,
+      { method: 'PUT', body: JSON.stringify({ note }) },
     ),
   // #318: config-change + daemon-boot events for the unified History log.
   systemEvents: (since: number, until: number) =>
@@ -884,6 +953,8 @@ export const api = {
     request<RewardEventsResponse>(
       `/api/reward-events${limit ? `?limit=${limit}` : ''}`,
     ),
+  // #323: Ocean payout ledger (earnpay) - drives the Price chart's payout gems.
+  payoutLedger: () => request<PayoutLedgerResponse>('/api/payout-ledger'),
   deposits: (limit?: number) =>
     request<DepositsResponse>(
       `/api/deposits${limit ? `?limit=${limit}` : ''}`,
@@ -1063,6 +1134,18 @@ export const api = {
     request<{ ok: boolean; error?: string }>('/api/finance/spend/rebuild', {
       method: 'POST',
     }),
+  /** #343: force a full re-fetch of the Ocean payout history (heals `collected`). */
+  rebuildPayouts: () =>
+    request<{ ok: boolean; error?: string; payouts?: number; collected_sat?: number }>(
+      '/api/finance/payouts/rebuild',
+      { method: 'POST' },
+    ),
+  /** #343: hard reset - wipe + rebuild both the payout store and the spend cache. */
+  hardResetFinance: () =>
+    request<{ ok: boolean; error?: string; payouts?: number; collected_sat?: number }>(
+      '/api/finance/hard-reset',
+      { method: 'POST' },
+    ),
   stats: (range: ChartRange) =>
     request<StatsResponse>(`/api/stats?range=${encodeURIComponent(range)}`),
   statsViewport: (since: number, until: number) =>
@@ -1103,10 +1186,26 @@ export interface RewardEventView {
   value_sat: number;
   detected_at: number;
   reorged: boolean;
+  /** #323: settlement rail. Absent on legacy on-chain-scanner rows (treated as on-chain). */
+  rail?: 'onchain' | 'lightning';
 }
 
 export interface RewardEventsResponse {
   events: RewardEventView[];
+}
+
+/** #323: a payout from Ocean's own payout ledger (earnpay). Drives the Price chart's gems. */
+export interface PayoutLedgerView {
+  id: number;
+  ts_ms: number;
+  on_chain_txid: string | null;
+  net_sat: number;
+  rail: 'onchain' | 'lightning';
+  is_generation: boolean;
+}
+
+export interface PayoutLedgerResponse {
+  payouts: PayoutLedgerView[];
 }
 
 export interface DepositView {
@@ -1366,7 +1465,10 @@ export interface FinanceResponse {
   spent_closed_sat: number | null;
   spent_active_sat: number | null;
   collected_sat: number | null;
-  /** #97 - distinguishes "first scan still running" (computing) from "0 sat collected" (ready) from "observer disabled" (idle). */
+  /** #323 - collected split by settlement rail. `onchain + lightning === collected_sat`. Null when no payout address is configured. */
+  collected_onchain_sat: number | null;
+  collected_lightning_sat: number | null;
+  /** #97 / #323 - distinguishes "first earnpay read still running" (computing) from "0 sat collected" (ready) from "no payout address" (idle). */
   collected_status: 'computing' | 'ready' | 'idle';
   expected_sat: number | null;
   /** #170 follow-up: operator-entered pre-installation / off-chain earnings. Always >= 0. Already folded into net_sat. */

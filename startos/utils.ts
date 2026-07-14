@@ -1,2 +1,2 @@
 export const servicePort = 3010;
-export const appVersion = '1.16.0';
+export const appVersion = '1.17.1';

@@ -65,6 +65,12 @@ msgstr "(nog geen update verstuurd)"
 msgid "{0} events landed in the same daemon tick - the line shows their combined effect on the rolling-{windowLabel} window. Pool luck went from {luckBeforeText} to {luckAfterText}."
 msgstr "{0} gebeurtenissen vielen in dezelfde daemon-tick - de lijn toont hun gecombineerde effect op het rollende {windowLabel}-venster. Pool luck ging van {luckBeforeText} naar {luckAfterText}."
 
+#. placeholder {0}: finResult.payouts
+#. placeholder {1}: denomination.formatSat(finResult.collected_sat, intlLocale)
+#: src/pages/Status.tsx
+msgid "{0} payouts · collected {1}"
+msgstr "{0} uitbetalingen · geïnd {1}"
+
 #. placeholder {0}: conditionLabel(s.event_class)
 #. placeholder {0}: conditionLabel(span.event_class)
 #: src/components/AlertSpanDrawer.tsx
@@ -95,9 +101,37 @@ msgstr "{daysCount} dagen · ~{dateLabel}"
 msgid "{hours}h ago"
 msgstr "{hours}u geleden"
 
+#: src/pages/History.tsx
+msgid "{label} changed"
+msgstr "{label} gewijzigd"
+
+#: src/pages/History.tsx
+msgid "{label} changed ({n} recolored)"
+msgstr "{label} gewijzigd ({n} verkleurd)"
+
+#: src/pages/History.tsx
+msgid "{label} changed ({na} added, {nr} removed)"
+msgstr "{label} gewijzigd ({na} toegevoegd, {nr} verwijderd)"
+
+#: src/pages/History.tsx
+msgid "{label} changed ({na} added)"
+msgstr "{label} gewijzigd ({na} toegevoegd)"
+
+#: src/pages/History.tsx
+msgid "{label} changed ({na} replaced)"
+msgstr "{label} gewijzigd ({na} vervangen)"
+
+#: src/pages/History.tsx
+msgid "{label} changed ({nr} removed)"
+msgstr "{label} gewijzigd ({nr} verwijderd)"
+
 #: src/pages/Status.tsx
 msgid "{label} DOWN"
 msgstr "{label} OFFLINE"
+
+#: src/pages/History.tsx
+msgid "{label} reordered"
+msgstr "{label} opnieuw geordend"
 
 #. placeholder {0}: markersHiddenKind === 'edit_price' ? 'edit-price' : markersHiddenKind === 'pool_block' ? 'pool-block' : markersHiddenKind === 'reward_event' ? 'reward-event' : ''
 #: src/components/PriceChart.tsx
@@ -350,6 +384,10 @@ msgstr "Toevoegen"
 msgid "Add {pickedCount} selected"
 msgstr "{pickedCount} geselecteerde toevoegen"
 
+#: src/components/EventNoteField.tsx
+msgid "Add a personal note (saved when you click away)"
+msgstr "Voeg een persoonlijke notitie toe (opgeslagen als je wegklikt)"
+
 #: src/components/TilesBar.tsx
 msgid "Add a tile"
 msgstr "Tegel toevoegen"
@@ -398,6 +436,14 @@ msgstr "alertconditie"
 #: src/components/AlertSpanDrawer.tsx
 msgid "Alert condition detail"
 msgstr "Alarmconditie-detail"
+
+#: src/components/AlertSpanDrawer.tsx
+msgid "Alert duration"
+msgstr "Duur van de melding"
+
+#: src/components/AlertSpanDrawer.tsx
+msgid "Alert fired"
+msgstr "Melding verstuurd"
 
 #: src/pages/Config.tsx
 msgid "Alert thresholds"
@@ -694,10 +740,6 @@ msgstr "Bod vult op {speed}."
 msgid "bid id"
 msgstr "bod-id"
 
-#: src/pages/History.tsx
-msgid "Bid id contains"
-msgstr "Bod-id bevat"
-
 #: src/components/PriceChart.tsx
 #: src/pages/Config.tsx
 #: src/pages/History.tsx
@@ -906,7 +948,7 @@ msgid "Block hash"
 msgstr "Blokhash"
 
 #: src/components/HashrateChart.tsx
-#: src/pages/History.tsx
+#: src/components/TilesBar.tsx
 msgid "block height"
 msgstr "blokhoogte"
 
@@ -1033,6 +1075,10 @@ msgstr "Braiins marketplace API - bereikbaar wanneer de laatste observe() market
 msgid "Braiins marketplace empty for"
 msgstr "Braiins-marktplaats leeg gedurende"
 
+#: src/pages/Config.tsx
+msgid "Braiins rejected this token."
+msgstr "Braiins heeft dit token geweigerd."
+
 #: src/components/TilesBar.tsx
 msgid "Braiins share-rejection ratio over the selected chart range. Same figure as the \"rejection ratio\" row in the Braiins panel below. Computed server-side from the first and last cumulative counter samples in the range."
 msgstr "Braiins share-afwijzingsratio over het geselecteerde bereik. Zelfde getal als de \"rejection ratio\" rij in het Braiins-paneel hieronder. Server-side berekend uit de eerste en laatste cumulatieve teller-monsters in het bereik."
@@ -1143,9 +1189,25 @@ msgstr "Celsius (°C)"
 msgid "change"
 msgstr "wijziging"
 
+#: src/pages/Config.tsx
+msgid "Change dashboard password"
+msgstr "Dashboardwachtwoord wijzigen"
+
+#: src/pages/Config.tsx
+msgid "Change password"
+msgstr "Wachtwoord wijzigen"
+
+#: src/pages/Config.tsx
+msgid "Change your dashboard password and rotate your Braiins API tokens. Every change asks for your current password."
+msgstr "Wijzig je dashboardwachtwoord en roteer je Braiins API-tokens. Elke wijziging vraagt om je huidige wachtwoord."
+
 #: src/components/Layout.tsx
 msgid "changelog"
 msgstr "wijzigingslog"
+
+#: src/pages/Config.tsx
+msgid "Changing…"
+msgstr "Wijzigen…"
 
 #: src/pages/Config.tsx
 msgid "Chart colors"
@@ -1249,12 +1311,12 @@ msgid "Collapse to default height"
 msgstr "Inklappen naar standaardhoogte"
 
 #: src/pages/Status.tsx
-msgid "collected (on-chain)"
-msgstr "ontvangen (on-chain)"
+msgid "collected"
+msgstr "geïnd"
 
 #: src/pages/Status.tsx
-msgid "Collected on-chain + pre-installation (manual) + Ocean's unpaid earnings − spent on bids. Missing collected is treated as 0 (the on-chain row still shows - so the operator sees the gap). Negative = still recouping the initial deposit."
-msgstr "On-chain ontvangen + pre-installatie (handmatig) + Ocean's onbetaalde inkomsten − uitgegeven aan bids. Ontbrekend ontvangen wordt als 0 behandeld (de on-chain-regel blijft zichtbaar zodat je het gat ziet). Negatief = nog steeds bezig met het terugverdienen van de initiële inleg."
+msgid "Collected (Ocean's full payout ledger, on-chain + Lightning) + pre-installation (manual) + Ocean's unpaid earnings − spent on bids. Missing collected is treated as 0. Negative = still recouping the initial deposit."
+msgstr "Geïnd (Ocean's volledige uitbetalingsgrootboek, on-chain + Lightning) + vooraf-installatie (handmatig) + Ocean's onbetaalde verdiensten − besteed aan biedingen. Ontbrekend geïnd telt als 0. Negatief = je verdient nog de eerste storting terug."
 
 #: src/pages/Config.tsx
 msgid "Compact numeric time series - one row per tick (~1,440/day) with hashrate, prices, share-log %, spend. This is what backs the Hashrate / Price / Overpay charts, so set it to the longest range you want to be able to chart. Cheap on disk: a year is ~525k small rows. Default 0 = keep forever."
@@ -1291,6 +1353,10 @@ msgstr "Configuratiesnapshot (geheimen verwijderd)"
 #: src/components/StaleUrlBanner.tsx
 msgid "Confirm cancel"
 msgstr "Bevestig annulering"
+
+#: src/pages/Config.tsx
+msgid "Confirm new password"
+msgstr "Nieuw wachtwoord bevestigen"
 
 #: src/pages/Setup.tsx
 msgid "Confirm password"
@@ -1369,6 +1435,14 @@ msgstr "Kopieer JSON"
 msgid "copy URL"
 msgstr "URL kopiëren"
 
+#: src/pages/Config.tsx
+msgid "Could not change the password."
+msgstr "Kon het wachtwoord niet wijzigen."
+
+#: src/pages/Config.tsx
+msgid "Could not load security settings."
+msgstr "Kon beveiligingsinstellingen niet laden."
+
 #: src/components/BidEventDrawer.tsx
 #: src/components/PriceChart.tsx
 #: src/pages/Config.tsx
@@ -1426,6 +1500,14 @@ msgstr "huidig bod"
 msgid "current bid · primary of {0}"
 msgstr "huidig bod · primair van {0}"
 
+#: src/components/TilesBar.tsx
+msgid "Current Bitcoin block height - you found this one! Click to open it in your block explorer."
+msgstr "Huidige Bitcoin-blokhoogte - dit blok heb jij gevonden! Klik om het in je blokverkenner te openen."
+
+#: src/components/TilesBar.tsx
+msgid "Current Bitcoin block height. The caption names the pool (or miner) that found it, and the icon marks Ocean / BIP-110 blocks. Click to open it in your block explorer."
+msgstr "Huidige Bitcoin-blokhoogte. Het bijschrift toont de pool (of miner) die het vond, en het icoon markeert Ocean- / BIP-110-blokken. Klik om het in je blokverkenner te openen."
+
 #: src/components/StaleUrlBanner.tsx
 msgid "Current config:"
 msgstr "Huidige config:"
@@ -1441,6 +1523,14 @@ msgstr "Huidige Ocean-hashprice (sat per PH per dag in het meest recente venster
 #: src/pages/Status.tsx
 msgid "Current owned-bid price (sat/PH/day). Under pay-your-bid this is exactly what Braiins charges per delivered EH-day - the live price you're paying. The plus/minus next to it is the spread vs Ocean's spot hashprice (positive = paying above break-even, negative = below). For the spend-weighted average paid across the selected chart range (handy when the bid moved during the window), see the AVG COST / PH DELIVERED stats card."
 msgstr "Current owned-bid price (sat/PH/day). Under pay-your-bid this is exactly what Braiins charges per delivered EH-day - the live price you're paying. The plus/minus next to it is the spread vs Ocean's spot hashprice (positive = paying above break-even, negative = below). For the spend-weighted average paid across the selected chart range (handy when the bid moved during the window), see the AVG COST / PH DELIVERED stats card."
+
+#: src/pages/Config.tsx
+msgid "Current password"
+msgstr "Huidig wachtwoord"
+
+#: src/pages/Config.tsx
+msgid "Current password is incorrect."
+msgstr "Huidig wachtwoord is onjuist."
 
 #: src/pages/Config.tsx
 msgid "Currently: <0>{filename}</0> ({blobKb} KB)"
@@ -1570,6 +1660,10 @@ msgstr "Beslissingenlogboek - gebeurtenisloos"
 #: src/pages/Config.tsx
 msgid "decrease"
 msgstr "verlagen"
+
+#: src/pages/History.tsx
+msgid "default"
+msgstr "standaard"
 
 #: src/pages/Config.tsx
 msgid "Delete this device permanently. To pause without deleting, uncheck the box at the left of the row."
@@ -1712,6 +1806,7 @@ msgstr "Sleep de dashboardkaarten in de gewenste volgorde"
 msgid "Drag to reorder"
 msgstr "Sleep om te herschikken"
 
+#: src/components/BidEventDrawer.tsx
 #: src/components/ModeBadge.tsx
 msgid "Dry Run"
 msgstr "Dry Run"
@@ -1720,7 +1815,6 @@ msgstr "Dry Run"
 msgid "DRY RUN"
 msgstr "DRY RUN"
 
-#: src/components/AlertSpanDrawer.tsx
 #: src/components/AlertSpanTooltip.tsx
 msgid "Duration"
 msgstr "Duur"
@@ -1906,6 +2000,10 @@ msgstr "wijzigingen geladen; scroll voor meer"
 #: src/pages/Config.tsx
 msgid "Every restart resets to DRY_RUN. You explicitly flip to LIVE from the dashboard."
 msgstr "Elke herstart reset naar DRY_RUN. Je schakelt expliciet over naar LIVE vanuit het dashboard."
+
+#: src/pages/Status.tsx
+msgid "Everything Ocean has actually paid you, from Ocean's own payout ledger - both on-chain payouts and Lightning payouts. Counts what you were paid, even if you've since spent it."
+msgstr "Alles wat Ocean je daadwerkelijk heeft uitbetaald, uit Ocean's eigen uitbetalingsgrootboek - zowel on-chain- als Lightning-uitbetalingen. Telt wat je is uitbetaald, ook als je het inmiddels hebt uitgegeven."
 
 #: src/components/TilesBar.tsx
 msgid "exa"
@@ -2135,6 +2233,22 @@ msgstr "Glas valt & rolt"
 msgid "Hard ceiling. If fillable + overpay would exceed this, the bid is clamped down to this value (and may not fill)."
 msgstr "Harde bovengrens. Als vulbaar + toeslag dit zou overschrijden, wordt het bod naar deze waarde teruggebracht (en mogelijk niet gevuld)."
 
+#: src/pages/Status.tsx
+msgid "hard reset"
+msgstr "harde reset"
+
+#: src/pages/Status.tsx
+msgid "hard reset done"
+msgstr "harde reset klaar"
+
+#: src/pages/Status.tsx
+msgid "Hard reset the Profit & Loss data? This DELETES the stored Ocean payout history and Braiins spend cache, then rebuilds both from scratch. Safe (no other data touched, and it won't re-notify you), but the collected figure will briefly show 0 while it re-pulls."
+msgstr "Profit & Loss-data hard resetten? Dit VERWIJDERT de opgeslagen Ocean-uitbetalingsgeschiedenis en de Braiins-spendcache en bouwt beide opnieuw op vanaf nul. Veilig (geen andere data wordt geraakt en je krijgt geen nieuwe meldingen), maar het geïnd-bedrag toont even 0 terwijl het opnieuw ophaalt."
+
+#: src/pages/Status.tsx
+msgid "Hard reset: delete the stored payout history + spend cache and rebuild both from scratch. Use only if 'rebuild' didn't fix it."
+msgstr "Harde reset: verwijder de opgeslagen uitbetalingsgeschiedenis + spendcache en bouw beide opnieuw op vanaf nul. Gebruik alleen als 'rebuild' het niet oploste."
+
 #: src/components/BidEventDrawer.tsx
 #: src/components/PriceChart.tsx
 #: src/pages/Config.tsx
@@ -2204,6 +2318,10 @@ msgstr "hashrate-eenheid"
 #: src/pages/Config.tsx
 msgid "headers"
 msgstr "headers"
+
+#: src/pages/Status.tsx
+msgid "Heads up: collected now comes from Ocean's full payout ledger, Lightning included. If you set this manual offset to make up for Lightning payouts, it may now double-count - review it under Config → Pool & Payout."
+msgstr "Let op: geïnd komt nu uit Ocean's volledige uitbetalingsgrootboek, inclusief Lightning. Als je deze handmatige correctie hebt ingesteld om Lightning-uitbetalingen te compenseren, telt die nu mogelijk dubbel - controleer hem onder Config → Pool en payout."
 
 #: src/components/Bip110ScanCard.tsx
 #: src/pages/History.tsx
@@ -2325,8 +2443,8 @@ msgid "Informational. Off by default. Fires the moment Ocean debits your unpaid 
 msgstr "Informatief. Standaard uit. Wordt geactiveerd zodra Ocean je onbetaalde saldo afboekt - Ocean heeft je uitbetaling in de wachtrij gezet en handelt die af via een gebundelde betaaltransactie, maar ze is nog niet on-chain bevestigd. Detectie: de ocean_unpaid_sat per tick van de daemon daalt met meer dan 30% EN het restant ligt onder de uitbetalingsdrempel van 1.048.576 sat (filtert tick-ruis / Ocean-boekhoudcorrecties eruit)."
 
 #: src/pages/Config.tsx
-msgid "Informational. Off by default. Fires when the on-chain payout scanner observes a new transaction crediting your payout address - i.e. the payout Ocean queued has now confirmed (any tx, not just a coinbase - Ocean pays out via batched sweeps). Includes block height, payout amount, and a truncated tx id. Source: reward_events ledger (populated by your Electrum server or bitcoind scantxoutset, whichever the operator has wired)."
-msgstr "Informatief. Standaard uit. Wordt geactiveerd wanneer de on-chain uitbetalingsscanner een nieuwe transactie ziet die je uitbetalingsadres crediteert - d.w.z. de door Ocean in de wachtrij gezette uitbetaling is nu bevestigd (elke transactie, niet alleen een coinbase - Ocean betaalt uit via gebundelde sweeps). Bevat blokhoogte, uitbetalingsbedrag en een ingekorte tx-id. Bron: reward_events-grootboek (gevuld door je Electrum-server of bitcoind scantxoutset, afhankelijk van wat de operator heeft ingesteld)."
+msgid "Informational. Off by default. The follow-up to \"payout initiated\": fires once Ocean's own payout ledger reports the settlement with its confirmed amount and rail. Works for both on-chain and Lightning payouts (a Lightning payout never touches the blockchain, so the old on-chain scanner could not confirm it). Message states the amount and whether it settled on-chain or over Lightning."
+msgstr "Informatief. Standaard uit. Het vervolg op \"uitbetaling gestart\": vuurt zodra Ocean's eigen uitbetalingsgrootboek de afwikkeling meldt met het bevestigde bedrag en de rail. Werkt voor zowel on-chain- als Lightning-uitbetalingen (een Lightning-uitbetaling raakt de blockchain nooit, dus de oude on-chain-scanner kon die niet bevestigen). Het bericht vermeldt het bedrag en of het on-chain of via Lightning is afgewikkeld."
 
 #: src/pages/Config.tsx
 msgid "Informational. Off by default. When on, every block Ocean credits to your payout address sends a small INFO message: block height, your share %, your credit, and progress toward the next 1,048,576-sat on-chain payout."
@@ -2434,6 +2552,10 @@ msgid "Learn more →"
 msgstr "Meer informatie →"
 
 #: src/pages/Config.tsx
+msgid "leave blank to keep saved value"
+msgstr "laat leeg om de opgeslagen waarde te behouden"
+
+#: src/pages/Config.tsx
 msgid "Leave Disabled if you maintain DDNS elsewhere (router, VPS, static IP). When set, the daemon pushes an update every 5 minutes (and at minimum hourly to keep free hostnames active)."
 msgstr "Laat op Uitgeschakeld als je DDNS elders regelt (router, VPS, vast IP). Wanneer ingesteld stuurt de daemon elke 5 minuten een update (en minstens elk uur, zodat gratis hostnamen actief blijven)."
 
@@ -2453,10 +2575,24 @@ msgstr "totale opbrengst bij deze stap"
 msgid "Lifetime sum of (amount_sat − amount_remaining_sat) across every bid the autopilot has tagged. Excludes any bids placed before the autopilot was switched on. Switch to \"whole account\" via Config → Money panel."
 msgstr "Levenslange som van (amount_sat − amount_remaining_sat) over elk bod dat de autopilot heeft getagd. Exclusief biedingen die geplaatst werden voordat de autopilot werd aangezet. Schakel via Config → Money-paneel naar \"hele account\"."
 
+#: src/pages/History.tsx
+#: src/pages/Status.tsx
+msgid "Lightning"
+msgstr "Lightning"
+
+#: src/pages/History.tsx
+msgid "Lightning (off-chain)"
+msgstr "Lightning (off-chain)"
+
+#: src/components/PriceChart.tsx
+msgid "LIGHTNING PAYOUT"
+msgstr "LIGHTNING-UITBETALING"
+
 #: src/pages/Status.tsx
 msgid "live"
 msgstr "live"
 
+#: src/components/BidEventDrawer.tsx
 #: src/components/ModeBadge.tsx
 msgid "Live"
 msgstr "Live"
@@ -2477,6 +2613,14 @@ msgstr "Meer laden"
 msgid "load older"
 msgstr "oudere laden"
 
+#: src/pages/Status.tsx
+msgid "Loading or daemon restart required."
+msgstr "Laden of daemon-herstart vereist."
+
+#: src/pages/Status.tsx
+msgid "Loading your payout history from Ocean. Waiting for the first read of Ocean's payout ledger to complete - usually a few seconds."
+msgstr "Je uitbetalingsgeschiedenis wordt vanuit Ocean geladen. Wachten tot de eerste uitlezing van Ocean's uitbetalingsgrootboek klaar is - meestal een paar seconden."
+
 #: src/components/BidEventDrawer.tsx
 #: src/pages/Alerts.tsx
 #: src/pages/Config.tsx
@@ -2484,6 +2628,7 @@ msgstr "oudere laden"
 msgid "loading…"
 msgstr "laden…"
 
+#: src/pages/Config.tsx
 #: src/pages/History.tsx
 #: src/pages/Setup.tsx
 msgid "Loading…"
@@ -2743,6 +2888,22 @@ msgstr "nieuw"
 msgid "new difficulty"
 msgstr "nieuwe moeilijkheid"
 
+#: src/pages/Config.tsx
+msgid "New owner token"
+msgstr "Nieuw eigenaar-token"
+
+#: src/pages/Config.tsx
+msgid "New password"
+msgstr "Nieuw wachtwoord"
+
+#: src/pages/Config.tsx
+msgid "New password must be at least 8 characters."
+msgstr "Nieuw wachtwoord moet minstens 8 tekens bevatten."
+
+#: src/pages/Config.tsx
+msgid "New read-only token"
+msgstr "Nieuw alleen-lezen-token"
+
 #: src/components/BidEventDrawer.tsx
 #: src/components/PriceChart.tsx
 #: src/components/SpeedEditMarkers.tsx
@@ -2814,6 +2975,14 @@ msgstr "geen wijziging nodig"
 msgid "no change observed yet"
 msgstr "nog geen wijziging waargenomen"
 
+#: src/pages/History.tsx
+msgid "No change."
+msgstr "Geen wijziging."
+
+#: src/pages/History.tsx
+msgid "No color changes."
+msgstr "Geen kleurwijzigingen."
+
 #: src/pages/Config.tsx
 msgid "No devices yet. Add one below."
 msgstr "Nog geen apparaten. Voeg er hieronder een toe."
@@ -2827,8 +2996,12 @@ msgid "No hashrate available on the market right now."
 msgstr "Op dit moment geen hashrate beschikbaar op de markt."
 
 #: src/pages/Config.tsx
-msgid "No on-chain balance tracking. The Profit & Loss panel won't show collected BTC."
-msgstr "Geen on-chain saldo-tracking. Het Profit & Loss-paneel toont geen ontvangen BTC."
+msgid "No on-chain balance scanning. The Profit & Loss panel still shows your collected BTC from Ocean's payout ledger (on-chain + Lightning); this scanner only adds the chart's on-chain confirmation markers."
+msgstr "Geen on-chain saldoscan. Het Winst & Verlies-paneel toont je geïnde BTC nog steeds uit Ocean's uitbetalingsgrootboek (on-chain + Lightning); deze scanner voegt alleen de on-chain-bevestigingsmarkeringen op de grafiek toe."
+
+#: src/pages/Status.tsx
+msgid "No payout address configured. Set your Ocean payout address under Config → Pool & Payout so the Profit & Loss panel can read your collected earnings. The net line treats missing collected as 0 so the arithmetic still reads."
+msgstr "Geen uitbetalingsadres ingesteld. Stel je Ocean-uitbetalingsadres in onder Config → Pool en payout zodat het Winst & Verlies-paneel je geïnde verdiensten kan uitlezen. De nettoregel behandelt ontbrekend geïnd als 0 zodat de berekening blijft kloppen."
 
 #: src/components/BidEventDrawer.tsx
 msgid "no tick recorded near this event"
@@ -2866,10 +3039,6 @@ msgstr "niet geconfigureerd"
 #: src/pages/Status.tsx
 msgid "Not configured"
 msgstr "Niet geconfigureerd"
-
-#: src/pages/Status.tsx
-msgid "Not configured. Go to Config → On-chain payouts and select Electrum server or Bitcoin Knots RPC to track your on-chain balance. The net line treats missing collected as 0 so the arithmetic still reads - a blank row here is the hint that a piece of the income side isn't wired up."
-msgstr "Niet geconfigureerd. Ga naar Config → On-chain-uitbetalingen en kies Electrum-server of Bitcoin Knots RPC om je on-chain-saldo te volgen. De netto-regel behandelt ontbrekend geïnd als 0 zodat de rekensom leesbaar blijft - een lege rij hier is de hint dat een deel van de inkomstenkant niet is aangesloten."
 
 #: src/components/HashrateChart.tsx
 #: src/components/PriceChart.tsx
@@ -2909,8 +3078,8 @@ msgid "Ocean"
 msgstr "Ocean"
 
 #: src/components/TilesBar.tsx
-msgid "Ocean blocks found in the past 30 days. Used by the pool-luck calculation as the numerator."
-msgstr "Door Ocean gevonden blokken in de laatste 30 dagen. Wordt gebruikt als teller in de pool-geluk-berekening."
+msgid "Ocean blocks found in the past 30 days. Used by the pool-luck calculation as the numerator. Colour reflects the 30-day pool luck (actual ÷ expected): green >=1.0, amber 0.9-1.0, red below 0.9."
+msgstr "Ocean-blokken gevonden in de afgelopen 30 dagen. Gebruikt als teller in de pool-luck-berekening. De kleur weerspiegelt de 30-daagse pool luck (werkelijk ÷ verwacht): groen >=1,0, amber 0,9-1,0, rood onder 0,9."
 
 #: src/components/PriceChart.tsx
 msgid "Ocean debited the unpaid balance. On-chain transaction follows shortly."
@@ -2938,8 +3107,8 @@ msgid "Ocean mining found a block (voice)"
 msgstr "Ocean mining heeft een blok gevonden (stem)"
 
 #: src/pages/Config.tsx
-msgid "Ocean payout confirmed on-chain"
-msgstr "Ocean-uitbetaling bevestigd on-chain"
+msgid "Ocean payout confirmed"
+msgstr "Ocean-uitbetaling bevestigd"
 
 #: src/pages/Config.tsx
 msgid "Ocean payout initiated"
@@ -3047,7 +3216,11 @@ msgstr ""
 msgid "On target - bid at fillable + overpay."
 msgstr "Op doel - bod gelijk aan vulbaar + toeslag."
 
-#: src/components/PriceChart.tsx
+#: src/pages/History.tsx
+#: src/pages/Status.tsx
+msgid "on-chain"
+msgstr "on-chain"
+
 #: src/pages/Config.tsx
 msgid "on-chain payout"
 msgstr "on-chain uitbetaling"
@@ -3134,8 +3307,8 @@ msgid "Operations & next action"
 msgstr "Bediening & volgende actie"
 
 #: src/pages/Status.tsx
-msgid "Operator-entered offset for earnings the on-chain payout observer can't see - Lightning payouts, pre-autopilot Ocean history that's already been swept, etc. Set under Config → Pool & Payout → On-chain payouts."
-msgstr "Door de operator ingevoerde correctie voor inkomsten die de on-chain payout-observer niet kan zien - Lightning-uitbetalingen, Ocean-historie van vóór de autopilot die al weggezet is, enzovoort. In te stellen onder Config → Pool & Payout → On-chain uitbetalingen."
+msgid "Operator-entered offset for earnings outside Ocean's payout ledger - e.g. pre-autopilot history from a different pool. Set under Config → Pool & Payout → On-chain payouts."
+msgstr "Door de operator ingevoerde correctie voor verdiensten buiten Ocean's uitbetalingsgrootboek - bijv. geschiedenis van vóór de autopilot bij een andere pool. Stel in onder Config → Pool en payout → On-chain uitbetalingen."
 
 #: src/pages/Config.tsx
 msgid "Opt-in diagnostics endpoint. When enabled, GET /api/debug/dump returns a bundled JSON snapshot of tick_metrics, pool_blocks, alerts, bid_events, reward_events, config (safe fields only), and daemon info. Useful for remote triage - one curl gives you everything. When disabled (default), the endpoint returns 404."
@@ -3256,6 +3429,10 @@ msgstr "wachtwoord"
 msgid "Password"
 msgstr "Wachtwoord"
 
+#: src/pages/Config.tsx
+msgid "Password changed."
+msgstr "Wachtwoord gewijzigd."
+
 #: src/pages/Setup.tsx
 msgid "passwords don't match"
 msgstr "wachtwoorden komen niet overeen"
@@ -3273,6 +3450,7 @@ msgstr "Pauzeren"
 msgid "paused"
 msgstr "gepauzeerd"
 
+#: src/components/BidEventDrawer.tsx
 #: src/components/ModeBadge.tsx
 #: src/lib/labels.ts
 msgid "Paused"
@@ -3286,6 +3464,7 @@ msgstr "GEPAUZEERD"
 msgid "Paused - no bids will be placed or edited until run mode changes."
 msgstr "Gepauzeerd - er worden geen biedingen geplaatst of bewerkt totdat de runmodus verandert."
 
+#: src/components/PriceChart.tsx
 #: src/pages/History.tsx
 msgid "payout"
 msgstr "uitbetaling"
@@ -3301,10 +3480,6 @@ msgstr "uitbetaling gestart"
 #: src/components/PriceChart.tsx
 msgid "PAYOUT INITIATED"
 msgstr "UITBETALING GESTART"
-
-#: src/pages/Status.tsx
-msgid "Payout observer is starting up. Waiting for the first balance scan to complete - usually a few seconds with an Electrum server, up to a minute with bitcoind scantxoutset."
-msgstr "De uitbetalingswaarnemer start op. Wachten tot de eerste saldoscan klaar is - meestal een paar seconden met een Electrum-server, tot een minuut met bitcoind scantxoutset."
 
 #: src/pages/Config.tsx
 msgid "Payout source"
@@ -3624,6 +3799,18 @@ msgstr "publieke-IP-wijziging"
 msgid "Push outage alerts (Datum unreachable, hashrate floor breach, wallet runway, etc.) to Telegram so the operator finds out within minutes, not hours. See the setup walkthrough for the @BotFather + @userinfobot steps."
 msgstr "Stuur uitvalmeldingen (Datum onbereikbaar, hashrate-vloer overschreden, wallet-runway, enz.) door naar Telegram zodat de operator het binnen minuten weet, niet uren. Zie de setup-walkthrough voor de @BotFather + @userinfobot stappen."
 
+#: src/pages/History.tsx
+msgid "rail"
+msgstr "rail"
+
+#: src/components/HashrateChart.tsx
+msgid "range"
+msgstr "bereik"
+
+#: src/pages/Status.tsx
+msgid "Re-fetch both sides of the ledger (re-paginate Braiins bids + re-pull the full Ocean payout history) and fill any gaps. Use if 'spent' or 'collected' looks off."
+msgstr "Haal beide kanten van het grootboek opnieuw op (Braiins-biedingen herpagineren + volledige Ocean-uitbetalingsgeschiedenis opnieuw ophalen) en vul eventuele gaten. Gebruik als 'spent' of 'collected' er verkeerd uitziet."
+
 #: src/pages/Setup.tsx
 msgid "Re-setup"
 msgstr "Opnieuw instellen"
@@ -3648,9 +3835,17 @@ msgstr "reden"
 msgid "Reason"
 msgstr "Reden"
 
+#: src/pages/History.tsx
+msgid "reason, id, note, address…"
+msgstr "reden, id, notitie, adres…"
+
 #: src/pages/Status.tsx
 msgid "rebuild"
 msgstr "opnieuw opbouwen"
+
+#: src/pages/Status.tsx
+msgid "rebuild done"
+msgstr "rebuild klaar"
 
 #: src/components/HashrateChart.tsx
 #: src/pages/Config.tsx
@@ -3661,6 +3856,10 @@ msgstr "ontvangen (Datum)"
 #: src/pages/Config.tsx
 msgid "received (Ocean)"
 msgstr "ontvangen (Ocean)"
+
+#: src/pages/Status.tsx
+msgid "Recompute the Profit & Loss panel from scratch? Re-paginates every bid from Braiins (spent) and re-fetches your full Ocean payout history (collected). Safe, just slower than a normal refresh."
+msgstr "Profit & Loss-paneel opnieuw berekenen? Herlaadt elk bod van Braiins (uitgegeven) en haalt je volledige Ocean-uitbetalingsgeschiedenis opnieuw op (geïnd). Veilig, alleen trager dan een normale verversing."
 
 #: src/lib/alertConditions.ts
 msgid "recovered"
@@ -3720,6 +3919,11 @@ msgstr "Apparaat verwijderen"
 #: src/components/TilesBar.tsx
 msgid "Remove this tile"
 msgstr "Verwijder deze tegel"
+
+#. placeholder {0}: d.count
+#: src/pages/History.tsx
+msgid "Reordered · {0} items, none added or removed"
+msgstr "Opnieuw geordend · {0} items, niets toegevoegd of verwijderd"
 
 #: src/pages/Config.tsx
 msgid "Replace file…"
@@ -3816,6 +4020,18 @@ msgid "Rolling-window rejection ratio above which the alert fires. Default 10 %.
 msgstr "Afwijzingsratio over het rollende venster waarboven het alarm afgaat. Standaard 10 %."
 
 #: src/pages/Config.tsx
+msgid "Rotate Braiins owner token"
+msgstr "Braiins eigenaar-token roteren"
+
+#: src/pages/Config.tsx
+msgid "Rotate Braiins read-only token"
+msgstr "Braiins alleen-lezen-token roteren"
+
+#: src/pages/Config.tsx
+msgid "Rotate token"
+msgstr "Token roteren"
+
+#: src/pages/Config.tsx
 #: src/pages/Setup.tsx
 msgid "RPC password"
 msgstr "RPC-wachtwoord"
@@ -3875,6 +4091,10 @@ msgstr "opslaan"
 #: src/pages/Config.tsx
 msgid "save failed:"
 msgstr "opslaan mislukt:"
+
+#: src/components/EventNoteField.tsx
+msgid "saved"
+msgstr "opgeslagen"
 
 #. placeholder {0}: formatAge(lastSavedAt)
 #: src/pages/Config.tsx
@@ -3937,6 +4157,10 @@ msgstr "Scannen..."
 msgid "Scanning…"
 msgstr "Bezig met scannen…"
 
+#: src/pages/History.tsx
+msgid "Search"
+msgstr "Zoeken"
+
 #: src/pages/Config.tsx
 msgid "Search settings..."
 msgstr "Zoek instellingen..."
@@ -3944,6 +4168,10 @@ msgstr "Zoek instellingen..."
 #: src/pages/Alerts.tsx
 msgid "Search titles + bodies..."
 msgstr "Zoek in titels + bodies..."
+
+#: src/pages/Config.tsx
+msgid "Security & credentials"
+msgstr "Beveiliging & inloggegevens"
 
 #: src/pages/Config.tsx
 msgid "Select a price source to test."
@@ -4112,7 +4340,6 @@ msgstr "uitgegeven (hele account)"
 msgid "Start a chat with your bot, then send /start. Send any message to <0>@userinfobot</0> and copy the numeric Id back into this field. Test connection validates the values currently in the form, before saving."
 msgstr "Start een chat met je bot en stuur /start. Stuur daarna een willekeurig bericht naar <0>@userinfobot</0> en kopieer de numerieke Id terug in dit veld. Test connection valideert de waarden uit het formulier, vóór het opslaan."
 
-#: src/components/AlertSpanDrawer.tsx
 #: src/components/AlertSpanTooltip.tsx
 msgid "Started"
 msgstr "Gestart"
@@ -4274,6 +4501,22 @@ msgstr "De daemon staat misschien niet in setup-modus. Herlaad de pagina of cont
 msgid "The hostname being maintained. For No-IP DDNS Key groups (the modern auth flow that doesn't expose your account password), use the special hostname all.ddnskey.com - that updates every hostname assigned to the DDNS Key's group in one call. Test connection pushes a real update with the values currently in the form (without saving). `nochg` and `good` are both success."
 msgstr "De hostnaam die onderhouden wordt. Voor No-IP DDNS Key-groepen (de moderne auth-flow die je accountwachtwoord niet blootstelt), gebruik de speciale hostnaam all.ddnskey.com - die werkt elke hostnaam in de DDNS Key-groep in één call bij. Test connection stuurt een echte update met de waarden uit het formulier (zonder op te slaan). `nochg` en `good` zijn beide succes."
 
+#: src/pages/Config.tsx
+msgid "The new password and its confirmation don't match."
+msgstr "Het nieuwe wachtwoord en de bevestiging komen niet overeen."
+
+#: src/pages/Config.tsx
+msgid "The new token is tested against Braiins before it's saved, so a typo can't disable order authorization. It takes effect after the daemon restarts."
+msgstr "Het nieuwe token wordt bij Braiins getest voordat het wordt opgeslagen, zodat een typefout de orderautorisatie niet kan uitschakelen. Het wordt actief nadat de daemon opnieuw is gestart."
+
+#: src/pages/Status.tsx
+msgid "The part of collected that settled on-chain (has a transaction on the blockchain)."
+msgstr "Het deel van geïnd dat on-chain is afgewikkeld (heeft een transactie op de blockchain)."
+
+#: src/pages/Status.tsx
+msgid "The part of collected that settled over Lightning (off-chain, no blockchain transaction)."
+msgstr "Het deel van geïnd dat via Lightning is afgewikkeld (off-chain, geen blockchain-transactie)."
+
 #. placeholder {0}: cs.cheap_target_hashrate_ph
 #: src/components/TilesBar.tsx
 msgid "The price the controller would post (fillable ask + overpay) as a percent of Ocean hashprice. Cheap mode steps the hashrate target up to {0} PH/s when this stays below the {threshold}% threshold. Lower is cheaper."
@@ -4290,6 +4533,14 @@ msgstr "Scheidingstekens voor duizendtallen en decimalen."
 #: src/pages/Config.tsx
 msgid "Three append-only logs back the dashboard: tick_metrics powers every chart, decisions is a per-tick forensic log split by whether the autopilot proposed any action, and alerts is the Telegram notification history. Pruning runs hourly and on daemon boot. 0 on any field = keep forever."
 msgstr "Drie append-only-logs ondersteunen het dashboard: tick_metrics voedt alle grafieken, decisions is een per-tick forensisch log opgesplitst naar of de autopilot een actie voorstelde, en alerts is de Telegram-notificatie-geschiedenis. Pruning draait elk uur en bij start van de daemon. 0 op een veld = altijd bewaren."
+
+#: src/components/AlertSpanDrawer.tsx
+msgid "Threshold and total are estimated from your current alert settings. Historical config changes aren't stored, so this is a best guess (≈), not an exact record."
+msgstr "Drempel en totaal zijn geschat op basis van je huidige meldingsinstellingen. Historische configuratiewijzigingen worden niet bewaard, dus dit is een schatting (≈), geen exacte registratie."
+
+#: src/components/AlertSpanDrawer.tsx
+msgid "Threshold before firing"
+msgstr "Drempel voor activering"
 
 #: src/pages/Config.tsx
 msgid "Tick any event type you want pushed. Untouched types skip the daemon entirely - no Telegram, no /alerts row, no retry ladder."
@@ -4337,6 +4588,10 @@ msgstr "Tot datum"
 msgid "Today"
 msgstr "Vandaag"
 
+#: src/pages/Config.tsx
+msgid "Token saved. It applies after the next daemon restart."
+msgstr "Token opgeslagen. Het wordt actief na de volgende herstart van de daemon."
+
 #: src/pages/Status.tsx
 msgid "total"
 msgstr "totaal"
@@ -4348,6 +4603,10 @@ msgstr "Totaal aantal blokken dat Ocean heeft gevonden sinds de daemon begon met
 #: src/pages/Config.tsx
 msgid "Total Braiins balance ÷ trailing-3h burn rate has dropped below the configured threshold. Off by default; tick the box and pick a day count to enable."
 msgstr "Totaal Braiins-saldo ÷ verbrandingstempo over de laatste 3 uur is onder de ingestelde drempel gezakt. Standaard uit; vink het vakje aan en kies een aantal dagen om in te schakelen."
+
+#: src/components/AlertSpanDrawer.tsx
+msgid "Total condition time"
+msgstr "Totale duur van de conditie"
 
 #: src/pages/Status.tsx
 msgid "Total earned at this address since first share, per Ocean."
@@ -4486,13 +4745,13 @@ msgstr "gebruikt de huidige share_log - een benadering voor oudere blokken, aang
 msgid "Uses scantxoutset -- CPU-heavy, 30+ seconds per scan. Polled hourly. Use only if you don't have an Electrum server."
 msgstr "Gebruikt scantxoutset -- CPU-intensief, 30+ seconden per scan. Elk uur bevraagd. Gebruik dit alleen als je geen Electrum-server hebt."
 
-#: src/pages/Status.tsx
-msgid "UTXOs at the configured payout address. Read via your Electrum server (preferred, instant) or bitcoind RPC (slower)."
-msgstr "UTXO's op het geconfigureerde uitbetalingsadres. Gelezen via je Electrum-server (voorkeur, direct) of bitcoind RPC (langzamer)."
-
 #: src/pages/Setup.tsx
 msgid "v{__APP_VERSION__} · build {__BUILD_NUMBER__} · {__BUILD_HASH__}"
 msgstr "v{__APP_VERSION__} · build {__BUILD_NUMBER__} · {__BUILD_HASH__}"
+
+#: src/pages/Config.tsx
+msgid "Validating…"
+msgstr "Valideren…"
 
 #: src/pages/History.tsx
 msgid "View details"
@@ -4639,14 +4898,6 @@ msgstr "Verhoogt naar {target} over ~{0} min (nu {current})."
 msgid "Window over which the rejection ratio is computed."
 msgstr "Venster waarover de afwijzingsratio wordt berekend."
 
-#: src/pages/Status.tsx
-msgid "Wipe the local terminal-bid cache and re-paginate every bid from Braiins on the next refresh? This is safe but slower than a normal refresh."
-msgstr "De lokale cache van afgesloten biedingen wissen en bij de volgende refresh elk bod opnieuw pagineren vanaf Braiins? Dit is veilig maar trager dan een normale refresh."
-
-#: src/pages/Status.tsx
-msgid "Wipe the local terminal-bid cache and re-paginate every bid from Braiins on the next refresh. Use if the 'spent (whole account)' figure looks wrong."
-msgstr "Wis de lokale cache van afgesloten biedingen en pagineer bij de volgende refresh elk bod opnieuw vanaf Braiins. Gebruik als het 'uitgegeven (hele account)' bedrag verkeerd lijkt."
-
 #: src/pages/Config.tsx
 #: src/pages/Setup.tsx
 msgid "Worker identity"
@@ -4676,9 +4927,21 @@ msgstr "je Bitcoin-node registreert BIP 110 niet als benoemde softfork"
 msgid "Your Bitcoin node supports BIP 110, which is currently in its activation window. There are two paths it can activate by:"
 msgstr "Je Bitcoin-node ondersteunt BIP 110, dat zich momenteel in zijn activatievenster bevindt. Er zijn twee paden waarlangs het kan activeren:"
 
+#: src/pages/Config.tsx
+msgid "Your credentials come from environment variables, not the database. Change them where they're defined and restart the daemon. The in-app editors are disabled here so a change couldn't be silently overwritten on the next boot."
+msgstr "Je inloggegevens komen uit omgevingsvariabelen, niet uit de database. Wijzig ze waar ze zijn gedefinieerd en herstart de daemon. De in-app editors zijn hier uitgeschakeld zodat een wijziging niet stilzwijgend kan worden overschreven bij de volgende start."
+
+#: src/pages/Config.tsx
+msgid "Your credentials come from your SOPS secrets file, not the database. Change them with your SOPS tooling and restart the daemon. The in-app editors are disabled here so a change couldn't be silently overwritten on the next boot."
+msgstr "Je inloggegevens komen uit je SOPS-secretsbestand, niet uit de database. Wijzig ze met je SOPS-tooling en herstart de daemon. De in-app editors zijn hier uitgeschakeld zodat een wijziging niet stilzwijgend kan worden overschreven bij de volgende start."
+
 #: src/pages/Status.tsx
 msgid "Your layout is saved on this device."
 msgstr "Je indeling wordt op dit apparaat opgeslagen."
+
+#: src/components/EventNoteField.tsx
+msgid "Your note"
+msgstr "Je notitie"
 
 #: src/components/TilesBar.tsx
 msgid "Your share of Ocean's reward window. Approximately your hashrate ÷ pool hashrate; drives the unpaid-earnings line on the price chart."

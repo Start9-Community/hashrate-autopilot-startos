@@ -27,8 +27,10 @@ Umbrel stores every app's persistent data under `~/umbrel/app-data/<app-id>/`. B
 
 If you just click **Install** in the official store while keeping the community version, you end up with two instances running side by side, the new one with an empty database. If you uninstall the community version after installing the official one without migrating, your history goes with it.
 
-The Docker image is identical (at the time of writing, both installs pull `ghcr.io/rdouma/hashrate-autopilot:1.16.0`),
+The Docker image is identical (at the time of writing, both installs pull `ghcr.io/rdouma/hashrate-autopilot:1.17.1`),
 so the only thing that has to move between the two on-host directories is the SQLite database. That's what the steps below do.
+
+> **Note on secrets encryption.** The official version encrypts database-stored secrets (Braiins tokens, dashboard password, and so on) at rest with AES-256-GCM, using a key that is specific to this install - on Umbrel it's the app's injected `APP_SEED`. The community version predates this and stores those secrets in plaintext. That means a `state.db` copied over from the community store migrates fine: the official version reads the plaintext secrets and transparently encrypts them in place on its first boot, so there's nothing extra to do. The one caveat worth knowing is for later: if you ever move an *already-encrypted* database to a different Umbrel app id or a different device (a different key), the secrets in it may not decrypt. When that happens the daemon degrades gracefully - it treats the affected secret as unset and asks you to re-enter it in Setup / Config - it does not crash or touch the rest of your history. So if a credential comes up blank after such a move, just re-enter it.
 
 ## Step by step
 

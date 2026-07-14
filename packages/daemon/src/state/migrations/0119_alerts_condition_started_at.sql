@@ -1,0 +1,13 @@
+-- #341: the moment an alert's underlying condition first went bad.
+--
+-- Alerts fire only after a sustained-threshold delay, so an alert row's
+-- created_at is the FIRE time, not when the problem started. The recovery
+-- body reports "was zero for 16m" (from condition-onset), but the drawer's
+-- Started/Duration were derived from the fire time, giving a contradictory
+-- span (e.g. Duration 56s vs body "16m"). We now stamp the condition-onset
+-- (bad_since) on the firing row so the span covers the true outage window.
+--
+-- Nullable: recovery rows and every pre-existing alert leave it NULL; the
+-- span builder falls back to created_at, preserving old behaviour for
+-- historical rows.
+ALTER TABLE alerts ADD COLUMN condition_started_at INTEGER;

@@ -13,7 +13,7 @@
 // handlers - the tooltip lives outside the SVG so the chart owns the
 // hovered-state machinery. Same contract as IpChangeMarkers (#250).
 
-import { useLayoutEffect, useRef, useState } from 'react';
+import { memo, useLayoutEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { t } from '@lingui/core/macro';
@@ -42,7 +42,11 @@ export interface SpeedEditTooltipState {
 
 const DEFAULT_COLOR = '#60a5fa'; // blue-400: matches the price chart's edit-speed glyph
 
-export function SpeedEditMarkers({
+// memo: the parent chart re-renders at crosshair/poll frequency; the
+// marker layer only needs to when its events or scales change.
+export const SpeedEditMarkers = memo(SpeedEditMarkersImpl);
+
+function SpeedEditMarkersImpl({
   events,
   xScale,
   dataMinX,
