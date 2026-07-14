@@ -63,3 +63,6 @@ docs/hashrate-marketplace-landscape.md
 
 # IDE artifacts
 *.iml
+
+# Internal release-announcement log (tweet drafts) - operator-only, never shared
+announcements.md
