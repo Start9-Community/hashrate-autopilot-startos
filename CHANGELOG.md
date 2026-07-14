@@ -2,6 +2,10 @@
 
 ## 2026-07-13
 
+### `[Release]` v1.17.1
+
+Feature + polish release since v1.17.0. New: a current-block-height stats tile that names the pool/miner and crowns your own blocks (#335); personal notes on Timeline events (#336); a full-text Timeline search across id, reason, notes, and identifiers (#342); a Profit & Loss "hard reset" control (#343). Improved: the alert-condition drawer breaks an outage into threshold / fired / recovered / duration / total with nearest-unit rounding (#341, #340); the P&L "collected" figure self-heals from a partial payout backfill (#343). Fixes: DDNS test push sends the daemon's detected IP (#339). Infra: @fastify/static v10, @fastify/cors, and dev-tooling bumps (#344, #345). Umbrel gallery screenshots refreshed.
+
 ### `[Infra]` Dependency bumps: @fastify/static v10, @fastify/cors, dev tooling (#344, #345)
 
 Merged the grouped Dependabot updates. `@fastify/static` went from 9 to 10 (major): its `setHeaders` callback now receives a Fastify reply instead of the raw Node response, so the dashboard's HTML no-cache headers were updated to `reply.header(...)`; static asset serving and the immutable-asset/no-cache-HTML behavior are unchanged. Also `@fastify/cors` 11.2 to 11.3, and dev-only bumps (eslint, prettier, tsx, typescript-eslint, vite). No user-visible behavior change.
