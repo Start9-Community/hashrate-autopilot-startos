@@ -200,20 +200,26 @@ export function formatSats(
  *
  * Returns `'-'` on null/undefined (matches the rest of this file's
  * placeholder convention). `digits` defaults to 1, matching the
- * existing `.toFixed(1) °C` pattern; pass 0 for whole-degree
- * thresholds where decimals would be noise.
+ * existing one-decimal pattern; pass 0 for whole-degree thresholds
+ * where decimals would be noise. `locale` drives the decimal
+ * separator (#347 - the Bitaxe card rendered "62.4 °C" for nl-NL
+ * operators); omitted falls back to the browser default like the
+ * rest of this file.
  */
 export function formatTemperature(
   c: number | null | undefined,
   unit: 'C' | 'F',
   digits: number = 1,
+  locale?: Locale,
 ): string {
   if (c === null || c === undefined) return '-';
-  if (unit === 'F') {
-    const f = c * 9 / 5 + 32;
-    return `${f.toFixed(digits)} °F`;
-  }
-  return `${c.toFixed(digits)} °C`;
+  const v = unit === 'F' ? c * 9 / 5 + 32 : c;
+  const num = formatNumber(
+    v,
+    { minimumFractionDigits: digits, maximumFractionDigits: digits },
+    locale,
+  );
+  return `${num} °${unit}`;
 }
 
 /** Round-trip conversion utilities for inputs that store °C but display °F. */

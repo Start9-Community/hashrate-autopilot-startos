@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-07-16
+
+### `[Fix]` Bitaxe miners card respects the number-format locale (#347)
+
+The Bitaxe card formatted every value with a hard-coded period decimal (hashrate, power, rejection rate, efficiency, temperatures, best difficulty), so operators with comma-decimal locales saw "1.02 TH/s" on the card next to a stats bar correctly saying "1,02". All card values now go through the locale-aware formatter, and best difficulty is re-formatted from its exact numeric so its decimal separator matches too.
+
 ## 2026-07-15
 
 ### `[Release]` v1.17.2
