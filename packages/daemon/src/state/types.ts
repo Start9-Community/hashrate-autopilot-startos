@@ -595,13 +595,24 @@ export interface OceanPayoutsTable {
   net_sat: number;
   /** 1 = coinbase-direct (`is_generation_txn`), 0 = batched sweep. */
   is_generation: Generated<0 | 1>;
-  /** Derived rail: 'onchain' when a txid is present, else 'lightning'. */
-  rail: 'onchain' | 'lightning';
-  /** Idempotency key: `<address>|oc:<txid>` or `<address>|ln:<ts>:<net_sat>`. */
+  /**
+   * Derived rail: 'onchain' when a txid is present, else 'lightning'.
+   * Deduced rows (#343) start as 'unknown' during the 24h correction
+   * window, then resolve to 'lightning'.
+   */
+  rail: 'onchain' | 'lightning' | 'unknown';
+  /** Idempotency key: `<address>|oc:<txid>`, `<address>|ln:<ts>:<net_sat>`, or `<address>|dd:<drop_tick_at>` for deduced rows. */
   dedup_key: string;
   /** 1 once the stage-2 (enriched) alert has been fired for this payout. */
   enriched_alert: Generated<0 | 1>;
   first_seen_at: number;
+  /**
+   * #343: 1 = not from earnpay but deduced from a confirmed drop of
+   * the unpaid-earnings series to ~zero with no matching settlement
+   * (Ocean's API doesn't return Lightning payouts). Amount is the
+   * last-seen unpaid value before the drop - approximate by nature.
+   */
+  deduced: Generated<0 | 1>;
 }
 
 /** #108: persisted Ocean pool blocks. See migration 0065. */

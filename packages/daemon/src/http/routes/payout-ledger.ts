@@ -23,8 +23,15 @@ export interface PayoutLedgerView {
   readonly ts_ms: number;
   readonly on_chain_txid: string | null;
   readonly net_sat: number;
-  readonly rail: 'onchain' | 'lightning';
+  /** 'unknown' = deduced payout still inside its 24h correction window (#343). */
+  readonly rail: 'onchain' | 'lightning' | 'unknown';
   readonly is_generation: boolean;
+  /**
+   * #343: true when this payout was deduced from the unpaid-series
+   * drop rather than read from Ocean's ledger (which doesn't return
+   * Lightning payouts). Amount is approximate; the UI badges it.
+   */
+  readonly deduced: boolean;
 }
 
 export interface PayoutLedgerResponse {
@@ -52,6 +59,7 @@ export async function registerPayoutLedgerRoute(
       net_sat: Number(r.net_sat),
       rail: r.rail,
       is_generation: Number(r.is_generation) === 1,
+      deduced: Number(r.deduced) === 1,
     }));
     return { payouts };
   });

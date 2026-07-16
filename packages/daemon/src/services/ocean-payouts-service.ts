@@ -71,6 +71,15 @@ export interface OceanPayoutsServiceOptions {
    * enrichment without waiting for the next tick. Best-effort.
    */
   readonly onPayoutsChanged?: () => Promise<void>;
+  /**
+   * #343: fired after EVERY successful sync (even a no-change one),
+   * with `fullBackfill` telling whether the whole history was just
+   * re-fetched. Drives the deduced-payouts scan - it must only run
+   * against a ledger we just read successfully, or every on-chain
+   * payout would look unmatched and get misclassified as deduced.
+   * Best-effort.
+   */
+  readonly onAfterSync?: (fullBackfill: boolean) => Promise<void>;
 }
 
 /** ms-epoch -> `YYYY-MM-DD` in UTC (matches how Ocean interprets the range). */
@@ -211,6 +220,12 @@ export class OceanPayoutsService {
     if (inserted > 0 && this.options.onPayoutsChanged) {
       await this.options.onPayoutsChanged().catch((err) =>
         this.log(`[ocean-payouts] onPayoutsChanged failed: ${(err as Error).message}`),
+      );
+    }
+
+    if (this.options.onAfterSync) {
+      await this.options.onAfterSync(fullBackfill).catch((err) =>
+        this.log(`[ocean-payouts] onAfterSync failed: ${(err as Error).message}`),
       );
     }
   }

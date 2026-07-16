@@ -145,6 +145,7 @@ describe('openDatabase - migrations', () => {
       '0117_scrub_config_change_secrets.sql',
       '0118_event_notes.sql',
       '0119_alerts_condition_started_at.sql',
+      '0120_deduced_payouts.sql',
     ]);
     expect(handle.migrations.skipped).toEqual([]);
   });

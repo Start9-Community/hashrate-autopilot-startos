@@ -706,6 +706,7 @@ export function Status() {
         detected_at: p.ts_ms,
         reorged: false,
         rail: p.rail,
+        deduced: p.deduced,
       })),
     [rewardEventsQuery.data?.payouts],
   );
@@ -3576,7 +3577,7 @@ function FinancePanel({
             data.collected_status === 'computing'
               ? t`Loading your payout history from Ocean. Waiting for the first read of Ocean's payout ledger to complete - usually a few seconds.`
               : data.collected_sat !== null
-                ? t`Everything Ocean has actually paid you, from Ocean's own payout ledger - both on-chain payouts and Lightning payouts. Counts what you were paid, even if you've since spent it.`
+                ? t`Everything Ocean has actually paid you: on-chain payouts from Ocean's own payout ledger, plus Lightning payouts deduced from your unpaid earnings dropping to zero (Ocean's ledger doesn't report those). Counts what you were paid, even if you've since spent it.`
                 : t`No payout address configured. Set your Ocean payout address under Config → Pool & Payout so the Profit & Loss panel can read your collected earnings. The net line treats missing collected as 0 so the arithmetic still reads.`
           }
         />
@@ -3596,7 +3597,7 @@ function FinancePanel({
               <FinanceFootnote
                 label={t`Lightning`}
                 value={denomination.formatSat(data.collected_lightning_sat, intlLocale)}
-                tooltip={t`The part of collected that settled over Lightning (off-chain, no blockchain transaction).`}
+                tooltip={t`The part of collected that settled over Lightning (off-chain, no blockchain transaction). Ocean's payout ledger doesn't report Lightning payouts, so these are deduced from your unpaid earnings dropping to zero - amounts are approximate.`}
               />
             </div>
           )}
