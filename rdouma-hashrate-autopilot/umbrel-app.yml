@@ -7,7 +7,7 @@ manifestVersion: 1
 id: rdouma-hashrate-autopilot
 category: bitcoin
 name: Hashrate Autopilot
-version: "1.17.1"
+version: "1.17.2"
 tagline: Autopilot for renting hashrate to mine on Ocean Mining
 icon: https://raw.githubusercontent.com/rdouma/hashrate-autopilot/main/assets/icon-512.png
 # Umbrel renders description literally - no YAML folding of soft
@@ -53,6 +53,15 @@ defaultPassword: ""
 submitter: Remco Douma
 submission: https://github.com/rdouma/hashrate-autopilot
 releaseNotes: |
+  v1.17.2 - Lightning payouts no longer missing from Profit & Loss.
+
+  NEW
+  - Lightning payouts are deduced: Ocean's payout API turns out not to report Lightning payouts at all (confirmed by Ocean support), so anyone paid over Lightning saw a too-low collected figure and an inflated loss rate. The autopilot now deduces those payouts from your unpaid earnings dropping to zero - confirmed over two consecutive readings so a brief API glitch can't fake one, and only when no matching entry exists in Ocean's own ledger. A deduced payout shows as "type not known yet" for its first 24 hours (a late-arriving on-chain record replaces it automatically), then as "probably Lightning". Your history is backfilled on upgrade, and if Ocean's API ever starts reporting Lightning payouts, the real records take over seamlessly.
+  - Deduced payouts on the chart: they render as a ghost gem (dashed outline) whose tooltip explains how the payout was deduced and marks the amount as approximate.
+
+  FIXED
+  - Timeline notes survive the Profit & Loss hard reset: rebuilding your finances no longer erases the personal notes you attached to payout events.
+
   v1.17.1 - a current-block-height tile, a searchable Timeline with personal notes, and a Profit & Loss self-heal.
 
   NEW

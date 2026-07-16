@@ -2,6 +2,10 @@
 
 ## 2026-07-15
 
+### `[Release]` v1.17.2
+
+Focused follow-up to v1.17.0/1.17.1's Lightning P&L work. Ocean's payout API turns out not to report Lightning payouts at all (confirmed by Ocean support), so the daemon now deduces them from confirmed drops of unpaid earnings to zero with no matching ledger entry (#343) - history backfilled on upgrade, deduced records superseded automatically if the real settlement ever appears, ghost gems + explanatory tooltips on the chart. Also fixes Timeline notes being erased by the P&L hard reset (#346).
+
 ### `[Fix]` Timeline notes survive the P&L hard reset (#343, #336)
 
 The hard reset rebuilds the payout store by deleting and re-fetching every payout, which gave each one a new internal id - and Timeline notes are attached to those ids, so every note on a payout silently vanished. Notes are now snapshotted before the wipe and re-attached to the rebuilt payouts afterwards (matched by their stable identity), a note on a payout that doesn't come back is kept rather than destroyed, and a deduced payout that gets replaced by the real ledger record passes its note along to the replacement.
