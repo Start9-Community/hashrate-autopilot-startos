@@ -634,12 +634,14 @@ async function bootOperational(
   const deducedPayoutsScanner = new DeducedPayoutsScanner({
     tickMetricsRepo,
     oceanPayoutsRepo,
+    eventNotesRepo,
     getAddress: () => cfgRefHolder.value.btc_payout_address,
     log: (m) => log(m),
   });
   const oceanPayoutsService = new OceanPayoutsService({
     oceanClient,
     repo: oceanPayoutsRepo,
+    eventNotesRepo,
     getAddress: () => cfgRefHolder.value.btc_payout_address,
     log: (m) => log(m),
     onAfterSync: (fullBackfill) => deducedPayoutsScanner.scan(fullBackfill),

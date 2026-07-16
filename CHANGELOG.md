@@ -2,6 +2,10 @@
 
 ## 2026-07-15
 
+### `[Fix]` Timeline notes survive the P&L hard reset (#343, #336)
+
+The hard reset rebuilds the payout store by deleting and re-fetching every payout, which gave each one a new internal id - and Timeline notes are attached to those ids, so every note on a payout silently vanished. Notes are now snapshotted before the wipe and re-attached to the rebuilt payouts afterwards (matched by their stable identity), a note on a payout that doesn't come back is kept rather than destroyed, and a deduced payout that gets replaced by the real ledger record passes its note along to the replacement.
+
 ### `[Feature]` Lightning payouts are deduced from unpaid earnings - P&L "collected" no longer misses them (#343)
 
 Ocean's payout API turns out not to report Lightning payouts at all (confirmed by Ocean support), so operators paid over Lightning saw a too-low "collected" figure and an inflated loss rate. The daemon now deduces those payouts: a confirmed sharp drop of your unpaid earnings to zero (two consecutive readings, so a brief API glitch can't fake one) with no matching entry in Ocean's ledger is recorded as a deduced payout - first as "type not known yet" for 24 hours (a late-arriving on-chain record replaces it automatically), then as "probably Lightning". Historical drops are backfilled on upgrade, deduced records survive the P&L rebuild/hard-reset controls, and if Ocean's API ever starts reporting Lightning payouts the real records take over seamlessly. On the chart, deduced payouts render as a ghost gem (dashed outline) whose tooltip explains the deduction and marks the amount as approximate.

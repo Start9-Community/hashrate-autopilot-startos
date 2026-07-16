@@ -22,6 +22,7 @@
  * on-chain path.
  */
 
+import type { EventNotesRepo } from '../state/repos/event_notes.js';
 import type { OceanPayoutsRepo, OceanPayoutInsert } from '../state/repos/ocean_payouts.js';
 import type { OceanClient } from './ocean.js';
 
@@ -71,6 +72,15 @@ export interface OceanPayoutsServiceOptions {
    * enrichment without waiting for the next tick. Best-effort.
    */
   readonly onPayoutsChanged?: () => Promise<void>;
+  /**
+   * #343 follow-up: Timeline notes are keyed `payout:<id>`, and the
+   * hard reset's delete-and-refetch gives every payout a new id -
+   * without this, the operator's notes silently orphan. When provided,
+   * the service snapshots annotated payouts by `dedup_key` (stable
+   * across a refetch) before the wipe and re-keys the notes to the new
+   * ids afterwards.
+   */
+  readonly eventNotesRepo?: EventNotesRepo;
   /**
    * #343: fired after EVERY successful sync (even a no-change one),
    * with `fullBackfill` telling whether the whole history was just
@@ -184,7 +194,13 @@ export class OceanPayoutsService {
     // #343 hard reset: the fetch above succeeded, so it's now safe to wipe
     // the old rows before re-inserting the fresh full history. A delete
     // failure is non-fatal - the upsert below still fills the store.
+    // Timeline notes are keyed on the row ids the wipe destroys, so
+    // snapshot the annotated payouts (by stable dedup_key) first and
+    // re-key the notes once the store is rebuilt (after onAfterSync,
+    // so re-derived deduced payouts get their notes back too).
+    let noteSnapshot: Array<{ dedup_key: string; event_key: string }> | null = null;
     if (this.forceHardReset) {
+      noteSnapshot = await this.snapshotPayoutNoteKeys(address);
       try {
         await this.options.repo.deleteForAddress(address);
       } catch (err) {
@@ -226,6 +242,68 @@ export class OceanPayoutsService {
     if (this.options.onAfterSync) {
       await this.options.onAfterSync(fullBackfill).catch((err) =>
         this.log(`[ocean-payouts] onAfterSync failed: ${(err as Error).message}`),
+      );
+    }
+
+    if (noteSnapshot && noteSnapshot.length > 0) {
+      await this.reattachPayoutNotes(address, noteSnapshot);
+    }
+  }
+
+  /**
+   * #343 follow-up: which payouts carry a Timeline note, captured as
+   * (dedup_key, old event_key) pairs before the hard reset wipes the
+   * rows. dedup_key is what survives the refetch (txid for on-chain,
+   * ts+amount for Lightning, drop tick for deduced), so it's the
+   * bridge from old id to new id. Best-effort: a failure just means
+   * this reset behaves like before the fix.
+   */
+  private async snapshotPayoutNoteKeys(
+    address: string,
+  ): Promise<Array<{ dedup_key: string; event_key: string }> | null> {
+    if (!this.options.eventNotesRepo) return null;
+    try {
+      const [rows, notes] = await Promise.all([
+        this.options.repo.listForAddressSince(address, 0),
+        this.options.eventNotesRepo.all(),
+      ]);
+      return rows
+        .filter((r) => `payout:${r.id}` in notes)
+        .map((r) => ({ dedup_key: r.dedup_key, event_key: `payout:${r.id}` }));
+    } catch (err) {
+      this.log(
+        `[ocean-payouts] note snapshot failed: ${(err as Error).message}`,
+      );
+      return null;
+    }
+  }
+
+  /**
+   * Re-key the snapshotted notes onto the rebuilt rows. A note whose
+   * payout did not re-derive (vanished from Ocean's ledger and no
+   * matching drop) keeps its old key - orphaned but never destroyed.
+   */
+  private async reattachPayoutNotes(
+    address: string,
+    snapshot: ReadonlyArray<{ dedup_key: string; event_key: string }>,
+  ): Promise<void> {
+    if (!this.options.eventNotesRepo) return;
+    try {
+      const rows = await this.options.repo.listForAddressSince(address, 0);
+      const idByDedup = new Map(rows.map((r) => [r.dedup_key, r.id]));
+      const pairs = snapshot.flatMap((s) => {
+        const newId = idByDedup.get(s.dedup_key);
+        return newId === undefined
+          ? []
+          : [{ from: s.event_key, to: `payout:${newId}` }];
+      });
+      await this.options.eventNotesRepo.rekeyMany(pairs);
+      if (pairs.length > 0) {
+        this.log(`[ocean-payouts] hard reset: re-keyed ${pairs.length} payout note(s)`);
+      }
+    } catch (err) {
+      this.log(
+        `[ocean-payouts] note re-attach failed: ${(err as Error).message}`,
       );
     }
   }

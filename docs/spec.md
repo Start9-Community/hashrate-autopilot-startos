@@ -550,7 +550,12 @@ Persistent ledger (SQLite) of:
   Lightning) **supersedes** the deduced row, which is deleted. The scan runs after every successful earnpay sync
   (never against a failed read); full-history passes (boot, daily self-heal, rebuild, hard reset) retro-fill
   historical drops and re-derive deduced rows after the hard reset's delete-and-refetch, since drop candidates are
-  deterministic over the immutable tick history and idempotent on dedup key `<address>|dd:<drop_tick_at>`. The P&L
+  deterministic over the immutable tick history and idempotent on dedup key `<address>|dd:<drop_tick_at>`.
+  **Timeline notes survive both row-replacing flows**: notes are keyed `payout:<id>` on the AUTOINCREMENT id, so
+  the hard reset snapshots annotated payouts by dedup_key before the wipe and re-keys the notes onto the rebuilt
+  ids afterwards (after the deduced re-scan, so deduced rows get theirs back too; a note whose payout doesn't
+  re-derive keeps its old key - orphaned, never destroyed), and a real settlement superseding a deduced row
+  inherits that row's note (an existing note on the target is never clobbered). The P&L
   collected figure is `oceanPayoutsRepo.sumNetUpTo(address, now)` scoped to the current payout address, split into
   on-chain and Lightning sub-totals for the panel (`'unknown'` counts toward Lightning). This replaced the
   on-chain-only `reward_events` derivation, which by construction could not see Lightning payouts and so

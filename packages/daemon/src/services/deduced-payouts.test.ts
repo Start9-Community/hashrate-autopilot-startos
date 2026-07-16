@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { closeDatabase, openDatabase, type DatabaseHandle } from '../state/db.js';
+import { EventNotesRepo } from '../state/repos/event_notes.js';
 import { OceanPayoutsRepo } from '../state/repos/ocean_payouts.js';
 import { TickMetricsRepo } from '../state/repos/tick_metrics.js';
 import {
@@ -197,6 +198,39 @@ describe('DeducedPayoutsScanner (#343)', () => {
     // now matches the real record, so it is never re-deduced.
     await scanner(dropAt + 2 * DAY).scan(true);
     expect(await payoutsRepo.listForAddressSince(ADDR, 0)).toHaveLength(1);
+  });
+
+  it('moves a Timeline note from a superseded deduced row to the real record', async () => {
+    const dropAt = 10 * DAY;
+    await seedDrop(dropAt, 200_000);
+    const notesRepo = new EventNotesRepo(handle.db, () => dropAt);
+    const withNotes = (nowMs: number) =>
+      new DeducedPayoutsScanner({
+        tickMetricsRepo: ticksRepo,
+        oceanPayoutsRepo: payoutsRepo,
+        eventNotesRepo: notesRepo,
+        getAddress: () => ADDR,
+        now: () => nowMs,
+      });
+
+    await withNotes(dropAt + 10 * MIN).scan(false);
+    const deducedRow = (await payoutsRepo.listForAddressSince(ADDR, 0))[0]!;
+    await notesRepo.set(`payout:${deducedRow.id}`, 'that surprise payout');
+
+    // The real settlement lands later and supersedes the deduced row.
+    await payoutsRepo.upsertMany(
+      [{ address: ADDR, ts_ms: dropAt + 60 * MIN, on_chain_txid: 'tx1', net_sat: 198_000, is_generation: false }],
+      dropAt + 60 * MIN,
+      1,
+    );
+    await withNotes(dropAt + 90 * MIN).scan(false);
+
+    const rows = await payoutsRepo.listForAddressSince(ADDR, 0);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.deduced).toBe(0);
+    // The operator's note followed the payout onto the real record.
+    expect(await notesRepo.get(`payout:${rows[0]!.id}`)).toBe('that surprise payout');
+    expect(await notesRepo.get(`payout:${deducedRow.id}`)).toBeNull();
   });
 
   it('collapses a two-step drop into one deduced payout carrying the full pre-drop amount', async () => {

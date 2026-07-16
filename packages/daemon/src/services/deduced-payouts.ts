@@ -40,6 +40,7 @@
  * address switch mid-history would misattribute older drops.
  */
 
+import type { EventNotesRepo } from '../state/repos/event_notes.js';
 import type { OceanPayoutsRepo, OceanPayoutRow } from '../state/repos/ocean_payouts.js';
 import type { TickMetricsRepo } from '../state/repos/tick_metrics.js';
 
@@ -97,17 +98,18 @@ export function collapseCooldown(
 }
 
 /**
- * Does a real (earnpay) settlement match this drop? Time within the
- * correction window and amount within tolerance of the pre-drop
- * reading. Used both to decide "don't deduce - the ledger already has
- * it" and to supersede an existing deduced row.
+ * The real (earnpay) settlement matching this drop, if any: time
+ * within the correction window and amount within tolerance of the
+ * pre-drop reading. Used both to decide "don't deduce - the ledger
+ * already has it" and to supersede an existing deduced row (where the
+ * matched row also inherits the deduced row's Timeline note).
  */
-export function matchesRealPayout(
-  real: readonly Pick<OceanPayoutRow, 'ts' | 'net_sat'>[],
+export function findMatchingRealPayout<T extends Pick<OceanPayoutRow, 'ts' | 'net_sat'>>(
+  real: readonly T[],
   dropTsMs: number,
   amountSat: number,
-): boolean {
-  return real.some(
+): T | undefined {
+  return real.find(
     (r) =>
       Math.abs(r.ts - dropTsMs) <= TYPE_RESOLUTION_MS &&
       Math.abs(r.net_sat - amountSat) <= amountSat * MATCH_AMOUNT_TOLERANCE,
@@ -118,6 +120,8 @@ export interface DeducedPayoutsScannerOptions {
   readonly tickMetricsRepo: TickMetricsRepo;
   readonly oceanPayoutsRepo: OceanPayoutsRepo;
   readonly getAddress: () => string;
+  /** When provided, a superseded deduced row's Timeline note (`payout:<id>`) moves to the real record instead of orphaning. */
+  readonly eventNotesRepo?: EventNotesRepo;
   readonly now?: () => number;
   readonly log?: (msg: string) => void;
 }
@@ -170,7 +174,7 @@ export class DeducedPayoutsScanner {
       .filter(
         (c) =>
           !deducedTs.has(c.tick_at) &&
-          !matchesRealPayout(real, c.tick_at, c.pre_drop_unpaid_sat),
+          !findMatchingRealPayout(real, c.tick_at, c.pre_drop_unpaid_sat),
       )
       .map((c) => ({
         address,
@@ -182,10 +186,22 @@ export class DeducedPayoutsScanner {
       }));
     const inserted = await this.options.oceanPayoutsRepo.insertDeducedMany(inserts, nowMs);
 
-    // Supersede: a real settlement now matches an existing deduced row.
-    const supersededIds = deduced
-      .filter((d) => matchesRealPayout(real, d.ts, d.net_sat))
-      .map((d) => d.id);
+    // Supersede: a real settlement now matches an existing deduced
+    // row. The deduced row's Timeline note (if any) moves to the real
+    // record first, so the operator's comment survives the swap.
+    const superseded = deduced.flatMap((d) => {
+      const match = findMatchingRealPayout(real, d.ts, d.net_sat);
+      return match ? [{ deduced: d, real: match }] : [];
+    });
+    const supersededIds = superseded.map((s) => s.deduced.id);
+    if (this.options.eventNotesRepo && superseded.length > 0) {
+      await this.options.eventNotesRepo.rekeyMany(
+        superseded.map((s) => ({
+          from: `payout:${s.deduced.id}`,
+          to: `payout:${s.real.id}`,
+        })),
+      );
+    }
     await this.options.oceanPayoutsRepo.deleteByIds(supersededIds);
 
     // Resolve: 'unknown' rows past the correction window, still
