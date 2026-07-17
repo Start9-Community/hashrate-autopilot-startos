@@ -262,6 +262,44 @@ describe('DeducedPayoutsScanner (#343)', () => {
     expect(await payoutsRepo.listForAddressSince(ADDR, 0)).toHaveLength(1);
   });
 
+  it('records the balance decrease, not the full pre-drop reading, on a partial sweep (#343)', async () => {
+    // regenerous's case: Ocean credited a fresh block, then paid the
+    // OLDER balance and left that block's 150k unpaid. The payout is the
+    // 900k decrease, not the 1,050,000 pre-drop reading.
+    const dropAt = 10 * DAY;
+    await tick(dropAt - MIN, 1_050_000);
+    await tick(dropAt, 150_000);
+    await tick(dropAt + MIN, 150_000);
+    await tick(dropAt + 2 * MIN, 150_400);
+
+    await scanner(12 * DAY).scan(true);
+    const rows = await payoutsRepo.listForAddressSince(ADDR, 0);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.net_sat).toBe(900_000);
+    expect(rows[0]!.ts).toBe(dropAt);
+  });
+
+  it('repairs an already-stored deduced row that overcounted the residual (#343)', async () => {
+    const dropAt = 10 * DAY;
+    await tick(dropAt - MIN, 1_050_000);
+    await tick(dropAt, 150_000);
+    await tick(dropAt + MIN, 150_000);
+    await tick(dropAt + 2 * MIN, 150_400);
+
+    // Row as an older build would have stored it: the full pre-drop reading.
+    await payoutsRepo.insertDeducedMany(
+      [{ address: ADDR, ts_ms: dropAt, net_sat: 1_050_000, rail: 'lightning' }],
+      dropAt,
+    );
+
+    await scanner(12 * DAY).scan(true);
+    const rows = await payoutsRepo.listForAddressSince(ADDR, 0);
+    expect(rows).toHaveLength(1);
+    // Self-corrected to the balance decrease, no hard reset needed.
+    expect(rows[0]!.net_sat).toBe(900_000);
+    expect(rows[0]!.rail).toBe('lightning');
+  });
+
   it('ignores drops below the noise floor', async () => {
     const dropAt = 10 * DAY;
     await seedDrop(dropAt, 5_000); // under MIN_PRE_DROP_SAT
@@ -285,15 +323,19 @@ describe('DeducedPayoutsScanner (#343)', () => {
 });
 
 describe('collapseCooldown', () => {
-  it('keeps the first candidate and drops trailing ones inside the cooldown', () => {
+  it('folds trailing candidates into the first and extends its residual to the last step', () => {
     const collapsed = collapseCooldown(
       [
-        { tick_at: 0, pre_drop_unpaid_sat: 500 },
-        { tick_at: 60_000, pre_drop_unpaid_sat: 250 },
-        { tick_at: 45 * 60_000, pre_drop_unpaid_sat: 400 },
+        { tick_at: 0, pre_drop_unpaid_sat: 500, post_drop_unpaid_sat: 250 },
+        { tick_at: 60_000, pre_drop_unpaid_sat: 250, post_drop_unpaid_sat: 0 },
+        { tick_at: 45 * 60_000, pre_drop_unpaid_sat: 400, post_drop_unpaid_sat: 50 },
       ],
       30 * 60_000,
     );
     expect(collapsed.map((c) => c.tick_at)).toEqual([0, 45 * 60_000]);
+    // First group folds in the 60s step: residual drops to that step's 0,
+    // so the merged amount is 500 - 0 = the whole two-step payout.
+    expect(collapsed[0]!.post_drop_unpaid_sat).toBe(0);
+    expect(collapsed[1]!.post_drop_unpaid_sat).toBe(50);
   });
 });

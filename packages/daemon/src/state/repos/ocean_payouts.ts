@@ -46,7 +46,7 @@ export interface DeducedPayoutInsert {
   readonly address: string;
   /** tick_at of the first low tick - when the drop was observed. */
   readonly ts_ms: number;
-  /** Last-seen unpaid value before the drop - the approximate payout amount. */
+  /** Balance decrease across the drop (pre minus residual) - the approximate payout amount (#343). */
   readonly net_sat: number;
   /** 'unknown' inside the 24h correction window, 'lightning' when deduced retroactively past it. */
   readonly rail: 'unknown' | 'lightning';
@@ -134,6 +134,30 @@ export class OceanPayoutsRepo {
       .onConflict((oc) => oc.column('dedup_key').doNothing())
       .executeTakeFirst();
     return Number(result.numInsertedOrUpdatedRows ?? 0);
+  }
+
+  /**
+   * #343: correct the amount of already-stored deduced rows when the
+   * derivation improves (regenerous: a partial-sweep Lightning payout's
+   * amount is the balance decrease, not the full pre-drop reading).
+   * Guarded on `deduced = 1` so a real earnpay row is never rewritten;
+   * rail is left untouched. Returns the number of rows actually changed.
+   */
+  async updateDeducedAmounts(
+    updates: readonly { id: number; net_sat: number }[],
+  ): Promise<number> {
+    if (updates.length === 0) return 0;
+    let changed = 0;
+    for (const u of updates) {
+      const res = await this.db
+        .updateTable('ocean_payouts')
+        .set({ net_sat: u.net_sat })
+        .where('id', '=', u.id)
+        .where('deduced', '=', 1)
+        .executeTakeFirst();
+      changed += Number(res.numUpdatedRows ?? 0);
+    }
+    return changed;
   }
 
   /**

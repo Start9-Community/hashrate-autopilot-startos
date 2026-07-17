@@ -917,7 +917,7 @@ export class TickMetricsRepo {
       residualThresholdSat: number;
       minPreDropSat: number;
     },
-  ): Promise<Array<{ tick_at: number; pre_drop_unpaid_sat: number }>> {
+  ): Promise<Array<{ tick_at: number; pre_drop_unpaid_sat: number; post_drop_unpaid_sat: number }>> {
     // The window functions only see rows from `innerSince` on, so the
     // frequent incremental pass doesn't walk the whole table. The 4-day
     // lookback (vs the caller's 3-day scan window) guarantees LAG has a
@@ -927,7 +927,7 @@ export class TickMetricsRepo {
     const DAY = 24 * 60 * 60 * 1000;
     const innerSince = sinceMs > 0 ? sinceMs - 4 * DAY : 0;
     const queryText = `
-      SELECT tick_at, prev_unpaid AS pre_drop_unpaid_sat
+      SELECT tick_at, prev_unpaid AS pre_drop_unpaid_sat, cur AS post_drop_unpaid_sat
       FROM (
         SELECT
           tick_at,
@@ -951,11 +951,15 @@ export class TickMetricsRepo {
     `;
     const res = await sql.raw(queryText).execute(this.db);
     const rows = (res as unknown as {
-      rows: Array<{ tick_at: number; pre_drop_unpaid_sat: number }>;
+      rows: Array<{ tick_at: number; pre_drop_unpaid_sat: number; post_drop_unpaid_sat: number }>;
     }).rows;
     return rows.map((r) => ({
       tick_at: Number(r.tick_at),
       pre_drop_unpaid_sat: Number(r.pre_drop_unpaid_sat),
+      // The residual left on the drop tick itself. A Lightning payout
+      // can pay the older balance and leave a freshly-credited block
+      // unpaid, so the actual amount paid is prev - cur, not prev (#343).
+      post_drop_unpaid_sat: Number(r.post_drop_unpaid_sat),
     }));
   }
 

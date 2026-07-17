@@ -544,7 +544,7 @@ Persistent ledger (SQLite) of:
   drop of `tick_metrics.ocean_unpaid_sat` (>30% of the previous reading, residual below the 1,048,576-sat
   threshold) confirmed by **two consecutive low ticks** (a single-tick API glitch never mints a payout) with no
   earnpay settlement matching within ±24h and ±25% amount is inserted into `ocean_payouts` with `deduced = 1`
-  (migration 0120) and the last-seen pre-drop unpaid value as its approximate amount. Deduced rows start as rail
+  (migration 0120) and the **balance decrease** across the drop (pre-drop reading minus the residual left on the drop tick) as its approximate amount - not the full pre-drop reading, since a Lightning payout can settle the older balance while leaving a freshly-credited block unpaid, and that residual is not part of the payout (#343). A multi-step drop within the 30-minute cooldown folds into one payout whose amount spans the whole group. Already-stored deduced rows whose amount predates this correction are repaired in place on the next scan, so history self-corrects without a hard reset. Deduced rows start as rail
   `'unknown'`; past the 24h correction window with no match they resolve to `'lightning'` by elimination, and a
   matching real settlement (whenever it appears - laggy on-chain record, or a future earnpay that reports
   Lightning) **supersedes** the deduced row, which is deleted. The scan runs after every successful earnpay sync

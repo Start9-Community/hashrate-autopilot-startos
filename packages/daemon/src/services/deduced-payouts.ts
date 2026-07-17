@@ -13,8 +13,12 @@
  *   1. A drop is confirmed (two consecutive low ticks - a single-tick
  *      API glitch never mints a payout) -> a deduced row is inserted
  *      immediately into `ocean_payouts` with rail 'unknown'. Amount is
- *      the last-seen unpaid value before the drop (approximate: fees
- *      and the accrual since the previous tick aren't visible).
+ *      the balance DECREASE across the drop (pre-drop reading minus the
+ *      residual left on the drop tick), not the full pre-drop reading:
+ *      a Lightning payout can settle the older balance while leaving a
+ *      freshly-credited block unpaid, so the residual is not part of
+ *      the payout (#343, regenerous). Still approximate - fees and the
+ *      accrual since the previous tick aren't visible.
  *   2. For 24h the row can be corrected: if Ocean's ledger produces a
  *      settlement matching in time and amount (an on-chain payout
  *      whose earnpay record lagged), the real record supersedes the
@@ -80,9 +84,23 @@ export const RECENT_SCAN_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
 export interface DropCandidate {
   readonly tick_at: number;
   readonly pre_drop_unpaid_sat: number;
+  /** Residual on the drop tick itself. Payout amount = pre - post (#343). */
+  readonly post_drop_unpaid_sat: number;
 }
 
-/** Collapse candidates within DROP_COOLDOWN_MS of an accepted one (input must be ascending by tick_at). */
+/** The deduced payout amount for a candidate: the balance decrease, floored at 0. */
+export function candidateAmountSat(c: DropCandidate): number {
+  return Math.max(0, c.pre_drop_unpaid_sat - c.post_drop_unpaid_sat);
+}
+
+/**
+ * Collapse candidates within DROP_COOLDOWN_MS of an accepted one (input
+ * must be ascending by tick_at). A payout Ocean surfaces in steps
+ * (100% -> 50% -> 0%) shows as several drops; they fold into the first,
+ * whose residual becomes the LAST step's residual - so the merged
+ * amount (pre of first minus post of last) is the whole payout, not
+ * just the first step (#343).
+ */
 export function collapseCooldown(
   candidates: readonly DropCandidate[],
   cooldownMs: number = DROP_COOLDOWN_MS,
@@ -90,7 +108,15 @@ export function collapseCooldown(
   const out: DropCandidate[] = [];
   let lastAccepted = Number.NEGATIVE_INFINITY;
   for (const c of candidates) {
-    if (c.tick_at - lastAccepted < cooldownMs) continue;
+    if (c.tick_at - lastAccepted < cooldownMs) {
+      // Fold this step into the group: extend the accepted candidate's
+      // residual down to this later, lower reading.
+      const head = out[out.length - 1];
+      if (head) {
+        out[out.length - 1] = { ...head, post_drop_unpaid_sat: c.post_drop_unpaid_sat };
+      }
+      continue;
+    }
     out.push(c);
     lastAccepted = c.tick_at;
   }
@@ -161,6 +187,7 @@ export class DeducedPayoutsScanner {
       minPreDropSat: MIN_PRE_DROP_SAT,
     });
     const candidates = collapseCooldown(raw);
+    const amountByTick = new Map(candidates.map((c) => [c.tick_at, candidateAmountSat(c)]));
 
     const all = await this.options.oceanPayoutsRepo.listForAddressSince(address, 0);
     const real = all.filter((r) => !r.deduced);
@@ -174,12 +201,12 @@ export class DeducedPayoutsScanner {
       .filter(
         (c) =>
           !deducedTs.has(c.tick_at) &&
-          !findMatchingRealPayout(real, c.tick_at, c.pre_drop_unpaid_sat),
+          !findMatchingRealPayout(real, c.tick_at, candidateAmountSat(c)),
       )
       .map((c) => ({
         address,
         ts_ms: c.tick_at,
-        net_sat: c.pre_drop_unpaid_sat,
+        net_sat: candidateAmountSat(c),
         rail: (nowMs - c.tick_at > TYPE_RESOLUTION_MS ? 'lightning' : 'unknown') as
           | 'lightning'
           | 'unknown',
@@ -217,11 +244,27 @@ export class DeducedPayoutsScanner {
       .map((d) => d.id);
     await this.options.oceanPayoutsRepo.resolveRailToLightning(resolveIds);
 
-    if (inserted > 0 || supersededIds.length > 0 || resolveIds.length > 0) {
+    // Repair: correct the amount of surviving deduced rows whose stored
+    // net_sat no longer matches the derivation (e.g. rows written by an
+    // older build that recorded the full pre-drop reading rather than
+    // the balance decrease). Inserts use ON CONFLICT DO NOTHING, so a
+    // formula change only fixes new rows unless we update the old ones
+    // here - so an operator's history self-corrects on the next scan
+    // without a hard reset (#343, regenerous).
+    const repairs = deduced
+      .filter((d) => !supersededSet.has(d.id) && amountByTick.has(d.ts))
+      .flatMap((d) => {
+        const amount = amountByTick.get(d.ts)!;
+        return amount !== d.net_sat ? [{ id: d.id, net_sat: amount }] : [];
+      });
+    const repaired = await this.options.oceanPayoutsRepo.updateDeducedAmounts(repairs);
+
+    if (inserted > 0 || supersededIds.length > 0 || resolveIds.length > 0 || repaired > 0) {
       this.options.log?.(
         `[deduced-payouts] ${fullHistory ? 'full' : 'incremental'} scan: ` +
           `${candidates.length} drop(s), ${inserted} deduced, ` +
-          `${supersededIds.length} superseded, ${resolveIds.length} resolved to lightning`,
+          `${supersededIds.length} superseded, ${resolveIds.length} resolved to lightning, ` +
+          `${repaired} amount-repaired`,
       );
     }
   }
