@@ -2,6 +2,10 @@
 
 ## 2026-07-17
 
+### `[Release]` v1.17.3
+
+Bug-fix release. Deduced Lightning payouts recorded the full pre-drop unpaid balance rather than the actual balance decrease, over-counting a partial sweep where Ocean leaves a freshly-credited block unpaid (#343, diagnosed by regenerous); the amount is now the decrease, multi-step drops fold into one payout, and already-stored amounts self-correct on the next scan. Also fixes the Bitaxe miners card ignoring the number-format locale (#347).
+
 ### `[Fix]` Deduced Lightning payouts no longer overcount a partial sweep (#343)
 
 A deduced Lightning payout recorded the full unpaid balance from just before the drop as its amount. That over-counts whenever Ocean credits a freshly found block and then pays out only the older balance, leaving that new credit unpaid: the payout is the balance decrease, not the whole pre-drop reading (diagnosed by regenerous). The daemon now records the decrease (pre-drop minus the residual left behind), a multi-step drop folds into one payout spanning the whole group, and already-stored deduced amounts self-correct on the next scan - no hard reset needed.

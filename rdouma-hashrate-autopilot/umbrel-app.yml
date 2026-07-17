@@ -7,7 +7,7 @@ manifestVersion: 1
 id: rdouma-hashrate-autopilot
 category: bitcoin
 name: Hashrate Autopilot
-version: "1.17.2"
+version: "1.17.3"
 tagline: Autopilot for renting hashrate to mine on Ocean Mining
 icon: https://raw.githubusercontent.com/rdouma/hashrate-autopilot/main/assets/icon-512.png
 # Umbrel renders description literally - no YAML folding of soft
@@ -53,6 +53,12 @@ defaultPassword: ""
 submitter: Remco Douma
 submission: https://github.com/rdouma/hashrate-autopilot
 releaseNotes: |
+  v1.17.3 - Lightning payout amounts corrected; Bitaxe card respects your number format.
+
+  FIXED
+  - Deduced Lightning payouts no longer overcount: a deduced payout recorded the full unpaid balance from just before the drop, which overcounts whenever Ocean credits a freshly found block and then pays out only the older balance, leaving that new credit unpaid. The autopilot now records the actual balance decrease, folds a multi-step drop into one payout, and self-corrects any amounts already stored - no hard reset needed.
+  - Bitaxe miners card respects your number format: every value on the card (hashrate, power, rejection ratio, efficiency, temperatures, best difficulty) now uses your chosen decimal separator instead of a hard-coded period, so a comma-decimal locale no longer shows "1.02 TH/s" next to a stats bar reading "1,02".
+
   v1.17.2 - Lightning payouts no longer missing from Profit & Loss.
 
   NEW
