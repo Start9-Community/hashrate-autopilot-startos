@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-07-19
+
+### `[Fix]` Daemon no longer crashes when the Electrum connection drops mid-session
+
+The Electrum (electrs/Fulcrum) client dropped its socket's error handler right after connecting, so if the Electrum server restarted or dropped an idle connection while the daemon was mid-request - common during a payout backfill, or when Umbrel's Electrs app bounces - the next write hit a broken pipe with no listener and Node escalated it to an uncaughtException ("write EPIPE"), crashing the whole daemon (systemd then restarted it). The socket now keeps a persistent error handler for its whole life: a dropped connection cleanly fails the in-flight Electrum calls (already treated as best-effort, retried next tick with a fresh connection) instead of taking the process down.
+
 ## 2026-07-17
 
 ### `[Release]` v1.17.3

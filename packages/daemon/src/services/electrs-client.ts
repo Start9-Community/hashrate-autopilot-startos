@@ -136,6 +136,32 @@ export async function createElectrsClient(config: ElectrsConfig): Promise<Electr
     socket.connect(config.port, config.host);
   });
 
+  // Post-connect the temporary connect-phase 'error'/'timeout' handlers
+  // are removed (see the 'connect' handler above), so the long-lived
+  // socket would otherwise have NO 'error' listener. A broken pipe on a
+  // later write - electrs restarting, an idle connection dropped, the
+  // Electrum app bouncing mid-backfill - then reaches Node as an
+  // uncaughtException ("write EPIPE") and kills the whole daemon. Keep a
+  // persistent handler so any such failure is recorded and turned into a
+  // clean rejection of the in-flight calls; the caller (payout-observer)
+  // already treats an electrs failure as best-effort and reopens a fresh
+  // client next tick.
+  let socketError: Error | null = null;
+  const failAllPending = (err: Error): void => {
+    for (const [id, p] of [...pending]) {
+      pending.delete(id);
+      p.reject(err);
+    }
+  };
+  socket.on('error', (err) => {
+    socketError = err instanceof Error ? err : new Error(String(err));
+    failAllPending(new Error(`Electrs socket error: ${socketError.message}`));
+  });
+  socket.on('close', () => {
+    if (!socketError) socketError = new Error('Electrs socket closed');
+    failAllPending(new Error('Electrs socket closed'));
+  });
+
   socket.on('data', (chunk) => {
     buffer += chunk.toString('utf8');
     let newline: number;
@@ -161,6 +187,10 @@ export async function createElectrsClient(config: ElectrsConfig): Promise<Electr
 
   function call<T>(method: string, params: unknown[]): Promise<T> {
     return new Promise((resolve, reject) => {
+      if (socketError) {
+        reject(new Error(`Electrs RPC ${method}: socket unavailable (${socketError.message})`));
+        return;
+      }
       const id = nextId++;
       const timer = setTimeout(() => {
         pending.delete(id);
@@ -177,7 +207,20 @@ export async function createElectrsClient(config: ElectrsConfig): Promise<Electr
         },
       });
       const msg = JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n';
-      socket.write(msg);
+      // Pass a write callback so a synchronous/async write failure (EPIPE)
+      // rejects THIS call promptly. The persistent 'error' handler above is
+      // what actually prevents the uncaughtException; this just gives the
+      // in-flight caller a precise error instead of waiting for the timeout.
+      socket.write(msg, (err) => {
+        if (err) {
+          const p = pending.get(id);
+          if (p) {
+            pending.delete(id);
+            clearTimeout(timer);
+            p.reject(new Error(`Electrs RPC ${method}: write failed (${err.message})`));
+          }
+        }
+      });
     });
   }
 
