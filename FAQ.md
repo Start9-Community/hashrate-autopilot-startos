@@ -73,13 +73,13 @@ luck, not a fixed schedule, and nothing expires while you wait.
 ### On-chain versus Lightning payouts - what's the difference?
 
 On-chain payouts are reported fully by Ocean's API, so your "collected" figure is exact. Lightning payouts are faster
-and smaller, but Ocean's API doesn't report them yet, so the app deduces them from your unpaid balance dropping. 
+and smaller, but Ocean's API doesn't report them yet, so the app deduces them from your unpaid balance dropping.
 Both work; it comes down to exact accounting (on-chain) versus payout speed (Lightning).
 
 ### What is the "Pre-installation earnings" field for?
 
-It's a manual number added to your "collected" total, for payouts the app couldn't see itself, such as payouts from 
-before you installed the app (or before version 1.5.0, which is the first version that started tracking unpaid 
+It's a manual number added to your "collected" total, for payouts the app couldn't see itself, such as payouts from
+before you installed the app (or before version 1.5.0, which is the first version that started tracking unpaid
 payouts). Don't include amounts the app already counts or you'll double up. Config → Pool & Payout.
 
 ---
@@ -97,13 +97,15 @@ switch is on the Status page.
 
 ### What's the difference between "max bid" and "cheap mode"?
 
-Max bid is your absolute ceiling. Autopilot never bids above it. Cheap mode is the opposite lever: when the market 
-gets cheap (as measured against hashprice as reported by Ocean), it raises your target so you buy more while it's 
+Max bid is your absolute ceiling. Autopilot never bids above it. Cheap mode is the opposite lever: when the market
+gets cheap (as measured against hashprice as reported by Ocean), it raises your target so you buy more while it's
 cheap. One caps spending, the other opportunistically increases it. Both live under Config → Strategy.
 
 ### Why isn't the autopilot placing or changing my bid?
 
-Usually the mode: only **LIVE** places and edits real bids - DRY_RUN just shows what it *would* do, and PAUSED does nothing. Other common reasons are that a recent Braiins deposit hasn't cleared its screening yet (nothing spendable to bid with), or you've hit a Braiins limit - notably, a bid's price can only be lowered once every 10 minutes. You don't need to approve anything in Telegram: that Telegram confirmation is part of Braiins' own web interface, not the API the autopilot uses.
+The most common reason: **you already have a bid on your Braiins account that the autopilot didn't place itself** - one you created by hand, or one left over from another tool. To avoid fighting another bidder over the same account, the autopilot stands down completely the moment it sees a bid it doesn't recognize; it only ever manages a bid it created. Cancel that stray bid (or make the autopilot the only thing bidding) and it takes over on the next tick.
+
+Otherwise it's the usual two: it only acts in **LIVE** mode (DRY_RUN previews, PAUSED does nothing), and your Braiins account has to be funded. You don't need to approve anything in Telegram - that confirmation is part of Braiins' web interface, not the API the autopilot uses.
 
 ### I deposited to Braiins but still can't bid. Why?
 
@@ -115,12 +117,15 @@ once it clears.
 
 ## Requirements
 
-### Do I need to run my own Bitcoin node?
+### What do I need running besides the autopilot?
 
-For the on-chain part of your Profit & Loss - payouts landing in your wallet - yes: it's read through a Bitcoin node and
-an Electrum server (electrs, Fulcrum, or ElectrumX). It doesn't have to be a new one: if you run Umbrel, its node and
-Electrs already cover this and you just point the app at them. The node doesn't have to be on the same machine as the
-autopilot.
+You're mining through Ocean's Datum setup, so a few pieces have to be in place - the autopilot orchestrates them, it doesn't replace them:
+
+- **A Bitcoin node** (Knots or Core). Datum builds your own block templates from it - that's the whole point of mining this way, so a node isn't optional.
+- **Datum Gateway** - the local Stratum endpoint that sits between Braiins and Ocean (see [How does this all fit together?](#how-does-this-all-fit-together)). It has to be reachable from the internet, which is your own network setup (a DDNS hostname and a port-forward on your router), not something the autopilot does for you.
+- **An Electrum server** (electrs, Fulcrum, or ElectrumX), recommended - the autopilot reads your on-chain payouts through it for the Profit & Loss panel.
+
+If you run Umbrel, all three are one-click apps and the autopilot auto-detects them. They don't have to be on the same machine as the autopilot; it just needs network access to each.
 
 ### Does the machine need to stay on all the time?
 
