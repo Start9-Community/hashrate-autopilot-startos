@@ -6,6 +6,8 @@ A personal-scale autopilot and monitor for the [Braiins Hashpower marketplace](h
 Keeps a rented-hashrate bid continuously alive at an operator-chosen price ceiling, so purchased hashrate keeps
 landing at your own Datum-connected pool without manual babysitting.
 
+> 💬 **New here, or something not behaving as expected?** The **[FAQ](FAQ.md)** covers the common setup and Profit & Loss questions - how the pieces fit together, what to put in the Stratum host field (and why a LAN IP won't work), and why your Profit & Loss can read as a loss early on.
+
 ![Dashboard in real-time mode](docs/images/dashboard.png)
 
 The Status page is a single scroll: a hero card with the **live current bid** (the price Braiins charges
