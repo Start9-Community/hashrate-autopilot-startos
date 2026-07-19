@@ -2,6 +2,10 @@
 
 ## 2026-07-19
 
+### `[Fix]` Remove the misleading "Telegram 2FA tap required" note from bid-create
+
+The Timeline note stamped on every bid creation claimed a Telegram 2FA tap was required. That's not true for the way the autopilot places bids: it uses the account owner token via Braiins' API, which does not need the Telegram confirmation (that confirmation is part of Braiins' web interface). The note is dropped so it no longer implies an action you have to take.
+
 ### `[Fix]` Daemon no longer crashes when the Electrum connection drops mid-session
 
 The Electrum (electrs/Fulcrum) client dropped its socket's error handler right after connecting, so if the Electrum server restarted or dropped an idle connection while the daemon was mid-request - common during a payout backfill, or when Umbrel's Electrs app bounces - the next write hit a broken pipe with no listener and Node escalated it to an uncaughtException ("write EPIPE"), crashing the whole daemon (systemd then restarted it). The socket now keeps a persistent error handler for its whole life: a dropped connection cleanly fails the in-flight Electrum calls (already treated as best-effort, retried next tick with a fresh connection) instead of taking the process down.

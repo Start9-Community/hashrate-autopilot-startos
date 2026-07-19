@@ -193,7 +193,7 @@ async function executeLive(deps: ExecuteDeps, proposal: Proposal): Promise<Execu
         return {
           proposal,
           outcome: 'EXECUTED',
-          note: `POST /spot/bid OK  id=${res.id}  (Telegram 2FA tap required)`,
+          note: `POST /spot/bid OK  id=${res.id}`,
         };
       }
 
