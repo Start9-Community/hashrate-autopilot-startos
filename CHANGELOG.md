@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-07-23
+
+### `[Release]` v1.17.4
+
+Stability + docs patch since v1.17.3. The headline fix reaches users here: the daemon no longer crash-loops when the Electrum connection drops mid-session (v1.17.3 still had that bug). Also removes a misleading "Telegram 2FA tap required" note from bid creation - the autopilot bids via Braiins' API with the owner token, which needs no Telegram confirmation - and adds a user-facing FAQ covering setup, payouts, bidding, and requirements.
+
 ## 2026-07-19
 
 ### `[Fix]` Remove the misleading "Telegram 2FA tap required" note from bid-create
