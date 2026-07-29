@@ -14,7 +14,7 @@
 // hovered-state machinery. Same contract as IpChangeMarkers (#250).
 
 import { memo, useLayoutEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 import { t } from '@lingui/core/macro';
 import { Trans, useLingui } from '@lingui/react/macro';

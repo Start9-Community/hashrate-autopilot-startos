@@ -3,7 +3,7 @@ import { t } from '@lingui/core/macro';
 import { useLingui } from '@lingui/react';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
-import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Link, Outlet, useLocation, useNavigate } from 'react-router';
 
 import { api, type AlertRow } from '../lib/api';
 import { clearPassword } from '../lib/auth';

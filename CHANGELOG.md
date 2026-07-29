@@ -2,6 +2,10 @@
 
 ## 2026-07-29
 
+### `[Infra]` React Router upgraded to v8, closing the last open advisory
+
+The dashboard moves from `react-router-dom` 7.18.1 to `react-router` 8.3.0. v8 removes the `react-router-dom` re-export package, so the 16 import lines now point at `react-router` directly; every component and hook the dashboard uses (`BrowserRouter`, `Routes`, `Route`, `Navigate`, `Link`, `Outlet`, `useNavigate`, `useLocation`, `useSearchParams`) is unchanged in v8. The advisory this closes only affects the unstable RSC APIs, which the dashboard does not use, so there was no real exposure - but it clears the alert rather than leaving it to age.
+
 ### `[Infra]` Dependency refresh with four security advisories closed
 
 Merged the pending dependency updates: production deps (fastify plugins, better-sqlite3 13, kysely, lingui 6.6, react 19.2.8, react-query) and dev deps (eslint 10.8, vite 8.1.5, playwright 1.62, tailwind 4.3.3, typescript-eslint 8.65). Four advisories are closed in the process - `@fastify/static` path traversal (high + medium), `find-my-way` and `fast-uri` (high), and `js-yaml` (high) - the last three by pinning patched versions of transitive dependencies that no upstream release had picked up yet. No user-visible behavior change.

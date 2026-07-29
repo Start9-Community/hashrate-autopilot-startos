@@ -19,7 +19,7 @@
 
 import { Trans } from '@lingui/react/macro';
 import { type ReactNode, useEffect, useState } from 'react';
-import { Navigate, useLocation } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router';
 
 import { api } from '../lib/api';
 import { clearPassword, getPassword } from '../lib/auth';

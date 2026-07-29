@@ -13,7 +13,7 @@ import { Trans } from '@lingui/react/macro';
 import { t } from '@lingui/core/macro';
 import { useLingui } from '@lingui/react';
 import { memo, useCallback, useEffect, useMemo, useState, useRef, useLayoutEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { sideTooltipPosition } from '../lib/tooltipPosition';
 import { pickLuckStepDot } from '../lib/luckStepDot';
 import type React from 'react';
