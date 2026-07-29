@@ -2,6 +2,10 @@
 
 ## 2026-07-29
 
+### `[Fix]` Hold better-sqlite3 at 12.x - 13.x cannot start the daemon on arm64
+
+better-sqlite3 13 moved its native bindings to prebuildify, shipping precompiled binaries inside the npm package instead of compiling on install. Its `linux-arm64` binary is linked against GLIBC_2.38, while the daemon's runtime image (and most self-hosted arm64 boxes) is Debian bookworm with glibc 2.36 - so the daemon would have failed at startup with "version `GLIBC_2.38' not found" the moment it opened the database. The `linux-x64` binary only needs GLIBC_2.34 and would have worked, which is why this hid on x64. The dependency is pinned to 12.x, whose arm64 prebuild tops out at GLIBC_2.29, and Dependabot is told not to offer the major again until the base image moves to a newer Debian.
+
 ### `[Infra]` React Router upgraded to v8, closing the last open advisory
 
 The dashboard moves from `react-router-dom` 7.18.1 to `react-router` 8.3.0. v8 removes the `react-router-dom` re-export package, so the 16 import lines now point at `react-router` directly; every component and hook the dashboard uses (`BrowserRouter`, `Routes`, `Route`, `Navigate`, `Link`, `Outlet`, `useNavigate`, `useLocation`, `useSearchParams`) is unchanged in v8. The advisory this closes only affects the unstable RSC APIs, which the dashboard does not use, so there was no real exposure - but it clears the alert rather than leaving it to age.

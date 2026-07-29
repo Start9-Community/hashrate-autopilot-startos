@@ -11,6 +11,21 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 10
+    ignore:
+      # better-sqlite3 13.x moved to prebuildify: the native bindings
+      # ship inside the npm tarball under prebuilds/, so node-gyp
+      # never runs and the builder image's toolchain cannot save us.
+      # Its prebuilds/linux-arm64.node is linked against GLIBC_2.38,
+      # but our runtime is node:22-slim (Debian bookworm, glibc 2.36)
+      # and Umbrel nodes are overwhelmingly arm64 - the daemon dies at
+      # startup with "version GLIBC_2.38 not found". linux-x64.node
+      # only needs 2.34, so x64 hides the break, as does a macOS dev
+      # machine (darwin prebuild, no glibc at all). Stay on 12.x,
+      # whose arm64 prebuild tops out at GLIBC_2.29, until the runtime
+      # base image moves to trixie.
+      - dependency-name: better-sqlite3
+        update-types:
+          - version-update:semver-major
     groups:
       production-deps:
         dependency-type: production
