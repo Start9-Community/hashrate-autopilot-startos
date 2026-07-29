@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-07-29
+
+### `[Infra]` Dependency refresh with four security advisories closed
+
+Merged the pending dependency updates: production deps (fastify plugins, better-sqlite3 13, kysely, lingui 6.6, react 19.2.8, react-query) and dev deps (eslint 10.8, vite 8.1.5, playwright 1.62, tailwind 4.3.3, typescript-eslint 8.65). Four advisories are closed in the process - `@fastify/static` path traversal (high + medium), `find-my-way` and `fast-uri` (high), and `js-yaml` (high) - the last three by pinning patched versions of transitive dependencies that no upstream release had picked up yet. No user-visible behavior change.
+
 ## 2026-07-23
 
 ### `[Release]` v1.17.4

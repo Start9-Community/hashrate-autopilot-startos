@@ -22,6 +22,9 @@ allowBuilds:
   esbuild: true
 
 overrides:
-  fast-uri: ">=3.1.2"
+  fast-uri: ">=4.1.1"
   esbuild: ">=0.28.1"
-  js-yaml: ">=4.2.0"
+  # Upper bound keeps the 4.x API that @redocly/openapi-core (via
+  # openapi-typescript) is written against; >=4.3.0 carries the fix.
+  js-yaml: ">=4.3.0 <5"
+  find-my-way: ">=9.7.0"
