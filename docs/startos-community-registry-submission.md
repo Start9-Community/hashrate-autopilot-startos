@@ -1,6 +1,6 @@
 # StartOS Community Registry Submission Checklist
 
-> **STATUS: PREPARATION ONLY — NOT READY FOR THE INITIAL EMAIL.** The clean Task 9 local rerun and
+> **STATUS: PREPARATION ONLY — NOT READY FOR THE INITIAL EMAIL.** The final Task 10 local rebuild and
 > fresh artifact build/inspection/checksum/commitment gates passed. Keep the initial email unsent
 > until the reviewed source is publicly reachable at an exact verified branch or commit URL and the
 > required physical-device validation has also passed. After Start9 responds and creates the
@@ -57,10 +57,14 @@ the Start9-Community fork, and a merged pull request drives the configured build
 - An earlier preparation snapshot was made from branch `sync-upstream-v1.17.4` at
   `139c63d8991918473769e9410049e2a427bbfc6e` before the checklist existed. It is historical context
   only, not the authoritative Task 9 source or evidence commit.
-- The authoritative Task 9 provenance pair is tested clean source
+- The superseded Task 9 provenance pair is tested clean source
   `404ad198ba242806a0042e4873df54636f1a6c64` and evidence commit
-  `e27fc7e870d76c2e7843c0c7273980f0e7005b66`. Later documentation-only clarifications succeed the
-  evidence commit without changing the tested artifacts or their source provenance.
+  `e27fc7e870d76c2e7843c0c7273980f0e7005b66`. It is retained as historical evidence only; the Task 10
+  rebuild below supersedes its source and artifact values.
+- The final Task 10 tested source is `b82884b089de8b41384ac47385c2efa83e9d0244`
+  (`chore: remove legacy StartOS packaging paths`). Its evidence-document successor is the immediately
+  following `docs: finalize Community Registry evidence` commit; Git history records that successor's
+  SHA without requiring the commit to embed its own recursive identifier.
 
 Identity commands:
 
@@ -75,7 +79,7 @@ git merge-base --is-ancestor refs/tags/v1.17.4 HEAD
 ## Local evidence already recorded
 
 These checks were run during preparation through commit `139c63d8`; they are historical evidence, not
-a substitute for the final clean Task 9 rerun.
+a substitute for the final Task 10 source gates and rebuild.
 
 | Check | Exact command | Recorded result |
 | --- | --- | --- |
@@ -88,9 +92,9 @@ a substitute for the final clean Task 9 rerun.
 | Workflow tag guards | `npm run check:startos-submission` | PASS; Community tags are `v*_*`, and StartOS underscore tags are excluded from the upstream Docker job |
 | Clean application/release-input build | `rm -rf javascript packages/*/dist && npm run build` | PASS; StartOS JavaScript, daemon, dashboard, and workspace outputs regenerated |
 
-## Task 9 executable command sequence
+## Superseded Task 9 executable command sequence
 
-Run this block in order from the clean repository root. It removes only named/generated dependency,
+This historical block records how the superseded Task 9 evidence was produced. It removes only named/generated dependency,
 build-output, checksum, and package paths before reinstalling; it deliberately does not invoke
 `make clean`, because the SDK 2 target deletes `node_modules` and therefore removes the included
 `s9pk.mk`. If a maintainer invokes `make clean` outside this sequence, run `npm ci` immediately
@@ -227,76 +231,89 @@ test -z "$(git status --porcelain)"
 test -z "$(git ls-files -- "${packages[@]}" SHA256SUMS)"
 ```
 
-Pre-existing or stale files with these names are not evidence. Task 9 must rebuild both from the tested
-source commit. Do not attach or describe either package as available before the sequence passes and the
-evidence below is recorded.
+Pre-existing or stale files with these names are not evidence. The final Task 10 run replaced both packages
+from its tested source commit. Do not attach or describe either package as available before the current
+procedure passes and the evidence below is recorded.
 
-## Task 9 result and evidence record
+## Task 10 final rebuild procedure
 
-Leave every field blank and every gate unchecked until the exact sequence above has run from the final
+Task 10 began from the clean source-fix commit, removed only the exact two package paths and checksum,
+then ran `npm run build`, `make x86`, and `make arm` sequentially. It reused the nearest SDK 2 workspace
+`build.key.pem` in place at mode `0600` and supplied the configured localhost host only through a
+command-scoped `start-cli` shim. The pre-existing `qemu-aarch64` binfmt handler was enabled and the
+default builder already advertised `linux/arm64`, so Task 10 did not re-register binfmt or change shared
+configuration.
+
+The final inspection commands checked identity, version, SDK version, source hash, architecture, packed
+image, dependencies, release notes, and the absence of SDK 2 `alerts` and `interfaces` fields. Commitment
+inspection remained a read-only report of `rootSighash` and `rootMaxsize`, not an independent signature
+verification. `SHA256SUMS` was generated only after both fresh package builds completed and was then
+verified with `sha256sum -c`.
+
+## Task 10 result and evidence record
+
+Leave every field blank and every gate unchecked until the current procedure above has run from the final
 clean commit.
 
 | Run evidence | Result |
 | --- | --- |
-| Tested source commit | `404ad198ba242806a0042e4873df54636f1a6c64` — clean pre-evidence commit; the evidence-only documentation commit follows it |
-| Execution timestamp, including time zone | `2026-08-04T06:33:22-07:00` |
+| Tested source commit | `b82884b089de8b41384ac47385c2efa83e9d0244` — clean source-fix commit; the evidence-only documentation commit follows it |
+| Execution timestamp, including time zone | `2026-08-04T08:12:09-07:00` |
 | `start-cli --version` | `start-cli 1.1.0` |
 | Workspace package-signing key ownership/mode preflight | PASS; nearest SDK 2 workspace `build.key.pem`, owner `missydog` (current user), mode `0600`; no key contents printed or copied |
-| `npm ci` | PASS; only the known `prebuild-install@7.1.3` deprecation warning |
-| Format check | N/A, non-blocking; the all-repository command is baseline-invalid as documented above and was not used as a Task 9 gate |
-| Full lint/typecheck/test check and totals | PASS; lock consistency: 51 external direct dependencies, 6 importers, 5 release workspaces; lint: 0 errors and 6 generated-locale warnings; all typechecks passed; Vitest: 78 files passed and 1 skipped, 739 tests passed and 1 skipped |
+| Host arm64 build support | PASS; host `qemu-aarch64` binfmt handler enabled and default builder advertised `linux/arm64`; Task 10 did not re-register binfmt |
+| Full lint/typecheck/test check and totals | Not rerun for Task 10; the fresh baseline at `0787dc7c970f40536ec14fae82b37745af9ac003` passed 80 test files and 746 tests plus recorded skips. Task 10 ran the focused contract/typecheck/lint/build gates below. |
+| Focused TypeScript check | PASS; `npx tsc --noEmit` |
 | Submission contract | PASS |
 | SDK lint | PASS |
-| Workflow parse and tag guards | PASS; every workflow YAML file parsed, and the submission contract passed its tag guards |
+| Workflow parse and tag guards | PASS; every remaining workflow YAML file parsed, and the submission contract passed its tag guards |
+| Focused documentation format check | PASS; both changed StartOS documentation files use Prettier style |
 | `git diff --check` | PASS |
-| Clean release-input build | PASS; workspace, daemon, dashboard, and StartOS JavaScript outputs regenerated; only known Vite chunk-size/plugin-timing warnings |
-| Final tracked-worktree status | PASS before the evidence edit; artifacts, checksum, JavaScript, and workspace build outputs were ignored and untracked |
+| Fresh release-input build | PASS; workspace, daemon, dashboard, and StartOS JavaScript outputs regenerated; only known Vite native-config, chunk-size, and plugin-timing warnings |
+| Generated release notes cleanup | PASS; ignored stale `.github/release-notes.generated.md` was unlinked and can be regenerated by release tooling |
+| Final tracked-worktree status | PASS before the evidence edit; packages, checksum, JavaScript, and workspace build outputs were ignored and untracked |
 
 | Artifact evidence | x86_64 | aarch64 |
 | --- | --- | --- |
 | Filename | `hashrate-autopilot-9_x86_64.s9pk` | `hashrate-autopilot-9_aarch64.s9pk` |
-| Size in bytes | `79062856` | `76826443` |
-| SHA-256 | `e2f8fb4ce906a41af126ae1c858c12fb12796521f1aad983f44fb3e56469c321` | `2d313dea17c86ae1e4561f839804fd2fa191f72281754c47fb93af913c8f2e49` |
-| Commitment/signature inspection result | `rootSighash: +U0DHdhoirDxV5K7x1foe5IR+GyCb/+yu0wFhLecOHs`; `rootMaxsize: 445` | `rootSighash: 0sszJondCY4fGnMj3TzV6/CZUXfLutlnZhBwHlxXpbc`; `rootMaxsize: 445` |
+| Size in bytes | `79058760` | `76822347` |
+| SHA-256 | `6a0cb6d4b7953e9b7989f15d53d687c1e3ce673c83d4343151b2ad8c9b9a55f9` | `f5e7a5e84a8407767f256d3221efd1694474a08b4f311756775bccacd0de6a24` |
+| Commitment/signature inspection result | `rootSighash: faCsnKQP9n4CXQ0MMCKj3qtz4s6xFZ7OGOZJfEcQGsI`; `rootMaxsize: 445` | `rootSighash: q0BGX5YQaa9CPlNoGmeojMdH3k0GflSX2tfmXH/D1Gw`; `rootMaxsize: 445` |
 | Manifest package ID | `hashrate-autopilot-9` | `hashrate-autopilot-9` |
 | Manifest title | `Hashrate Autopilot for StartOS` | `Hashrate Autopilot for StartOS` |
 | Manifest version | `1.17.4:0` | `1.17.4:0` |
 | Manifest SDK version | `2.0.9` | `2.0.9` |
-| Manifest git hash | `404ad198ba242806a0042e4873df54636f1a6c64` | `404ad198ba242806a0042e4873df54636f1a6c64` |
+| Manifest git hash | `b82884b089de8b41384ac47385c2efa83e9d0244` | `b82884b089de8b41384ac47385c2efa83e9d0244` |
 | Manifest architecture | `x86_64` | `aarch64` |
 | Manifest image summary | `main`: packed; `arch: [x86_64]`; `emulateMissingAs: x86_64`; `nvidiaContainer: false` | `main`: packed; `arch: [aarch64]`; `emulateMissingAs: x86_64`; `nvidiaContainer: false` |
 | Manifest dependency IDs | `bitcoind`, `datum`, `electrs` | `bitcoind`, `datum`, `electrs` |
 | Manifest dependency summaries | All required (`optional: false`): `bitcoind` provides the local Bitcoin node for Datum and optional BIP 110 checks; `datum` receives rented hashrate and exposes gateway statistics; `electrs` provides Ocean payout lookups/backfill | Same as x86_64 |
+| Manifest alerts field | Not present: SDK 2 package manifests do not emit the removed `alerts` field | Not present: SDK 2 package manifests do not emit the removed `alerts` field |
 | Manifest interface IDs | Not present: SDK 2 package manifests have no `interfaces` field | Not present: SDK 2 package manifests have no `interfaces` field |
 | Manifest release notes (`en_US`) | Upstream v1.17.4 update covering Ocean payout deductions/corrections, Timeline-note persistence, Electrum socket error handling, Bitaxe number formatting, Telegram 2FA-note removal, and the user FAQ; includes the upstream v1.17.4 release URL | Same as x86_64 |
 
-- [x] Corrected Task 9 sequence completed from the recorded clean source commit.
+- [x] Task 10 rebuild completed from the recorded clean source commit.
 - [x] Workspace package-signing key preflight passed without copying, printing, or committing the key.
 - [x] Fresh x86_64 and aarch64 packages built and match the recorded filenames.
-- [x] Both manifests inspected and every requested field recorded, including the absent SDK 2 interface field.
+- [x] Both manifests inspected and every requested field recorded, including absent SDK 2 alerts and interface fields.
 - [x] Both commitment/signature inspection results recorded without overstating verification.
 - [x] Both artifact sizes and SHA-256 values recorded; `sha256sum -c SHA256SUMS` passed.
 - [x] Generated artifacts, checksum file, and build outputs remain uncommitted.
 
-### Task 9 execution notes
+### Task 10 execution notes
 
-- The execution environment rejected the original literal `rm` block before it ran. After validating every
-  named path resolved inside the repository and was disposable, the exact directory/file loops now shown in
-  the executable sequence removed the targets; no broader target was used.
-- `start-cli init-key` was invoked once only after the expected legacy developer-key path was found absent.
-  It did not create or overwrite a key. The installed CLI and SDK 2 sources then established the distinct
-  identity-key and nearest-workspace package-signing-key roles documented above.
+- The prior package files and checksum were preserved through the source-fix commit, then only those three
+  exact ignored paths were unlinked before rebuilding. No `make clean` or broader cleanup ran.
 - The inherited workspace host was `dev-vm.local`, which did not resolve. A command-scoped loopback shim
   allowed local `s9pk` operations without editing shared config or contacting a device.
-- The first arm64 package attempt failed with `exec format error`. The single binfmt recovery and retry are
-  recorded under known warnings below; the successful retry produced the artifact recorded above. The
-  privileged registration changed the local host kernel's binfmt state and was not reverted during Task 9.
+- The host `qemu-aarch64` binfmt handler was already enabled and the builder advertised `linux/arm64` before
+  packaging. Both architecture builds succeeded sequentially; Task 10 performed no privileged registration.
 - Commitment inspection reports the package root signature hash and maximum size. It is recorded as the
   supported read-only evidence surface, not as independent cryptographic verification.
 
 ## Package compliance
 
-These repository-level checks were established before the final Task 9 rerun:
+These repository-level checks were reconfirmed for the final Task 10 rebuild:
 
 - [x] Version metadata uses ExVer `1.17.4:0`; the intended tag follows `v{upstream}_{downstream}` as `v1.17.4_0`.
 - [x] `.github/workflows/build.yml`, `tagAndRelease.yml`, and `release.yml` call the official Start9 reusable workflows.
@@ -325,7 +342,7 @@ enable LIVE or create, edit, or cancel a marketplace bid during automated prepar
 
 ### Before the initial email
 
-- [ ] At the initial-email stage, reconfirm the corrected Task 9 evidence and local artifacts are still current.
+- [ ] At the initial-email stage, reconfirm the final Task 10 evidence and local artifacts are still current.
 - [ ] Push the reviewed preparation branch (or an explicitly approved successor) to the public package repository,
       or merge it to the public default branch. The local preparation branch currently has no tracking branch; do
       not treat local commits as publicly reviewable evidence.
@@ -355,29 +372,28 @@ enable LIVE or create, edit, or cancel a marketplace bid during automated prepar
 
 - Lint reports warnings from generated Lingui locale catalogs. Generated locale warnings are not lint
   failures, but any new warning outside the known generated files must be investigated.
-- The all-repository Prettier check is baseline-invalid and is not a Task 9 gate. It reports existing
-  tracked application source files; Task 9 did not rewrite those files.
+- The all-repository Prettier check is baseline-invalid and is not a Task 10 gate. It reports existing
+  tracked application source files; Task 10 checked only its focused StartOS documentation files.
 - The Vite build emits known chunk-size/plugin timing warnings, and exercised Fastify paths emit known
-  warnings. They did not fail the recorded check/build, but Task 9 must confirm they have not become errors
-  or changed unexpectedly.
+  warnings. They did not fail the recorded build; Task 10 confirmed the Vite warnings did not become errors.
 - Both package builds warn that `bitcoind`, `datum`, and `electrs` have no package metadata. Their manifest
   dependency IDs and descriptions are present; the missing optional metadata did not fail packaging.
-- The first arm64 attempt failed at `/bin/sh` with `exec format error` because the default builder lacked
-  arm64 emulation. A single privileged host-kernel registration using
+- The superseded Task 9 run's first arm64 attempt failed at `/bin/sh` with `exec format error` because the
+  default builder lacked arm64 emulation. A single privileged host-kernel registration using
   `tonistiigi/binfmt@sha256:d3b963f787999e6c0219a48dba02978769286ff61a5f4d26245cb6a6e5567ea3`
   added `qemu-aarch64`; the builder then advertised `linux/arm64`, and the one retry completed
   successfully. The cached image reports `binfmt/3a63696`, QEMU `v10.2.1`, and an
   `--uninstall` option; local binary inspection shows matching entries are unregistered by writing `-1` to
-  their `binfmt_misc` handler. Task 9 did not exercise cleanup or establish a single-architecture helper
-  invocation, so this packet does not prescribe an untested command: reboot the host or manually unregister
-  the `qemu-aarch64` handler when removal is required. Container exit alone does not remove the registration.
+  their `binfmt_misc` handler. Task 10 observed the handler enabled and reused it without mutation. This
+  packet does not prescribe an untested cleanup command: reboot the host or manually unregister the
+  `qemu-aarch64` handler when removal is required. Container exit alone does not remove the registration.
 - Auditing the full lockfile reports advisories in dependencies used only by build/development tooling.
   The daemon production-runtime audit is zero. Treat a new runtime advisory, or a change in the existing
   build-only advisory set, as a release blocker pending review.
 
 ## UNSENT email draft
 
-> **UNSENT — DO NOT SEND until every placeholder below is replaced and the clean Task 9 local,
+> **UNSENT — DO NOT SEND until every placeholder below is replaced and the final Task 10 local,
 > fresh-package, signature, inspection, checksum, physical-device, and safety prerequisites are
 > complete.**
 
