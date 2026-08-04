@@ -61,8 +61,9 @@ must be retained.
 
 On a fresh data volume, the daemon serves the dashboard setup wizard. The operator supplies the
 Braiins access token, dashboard password, hashrate and pricing limits, public pool destination, Ocean
-payout address, and related settings. StartOS-provided dependency values are prefilled where the wizard
-supports them and applied as integration overrides when the daemon starts.
+payout address, and related settings. The wizard pre-fills package-provided dependency values. It stores
+the selected Datum statistics URL in SQLite; the separate Bitcoin, Electrs, and payout settings seed
+boot-time clients.
 
 Completing the wizard writes configuration and application secrets to SQLite and transitions the same
 daemon into normal operation. The controller starts in **DRY-RUN**, so proposed marketplace changes
@@ -84,17 +85,19 @@ The package also sets the following process environment variables in
 | `DASHBOARD_STATIC` | Selects the packaged dashboard asset directory. |
 | `APP_VERSION` | Exposes package build/version metadata to the application. |
 | `BHA_BITCOIND_RPC_URL` | Overrides the Bitcoin RPC URL in the boot-time integration configuration. |
-| `BHA_DATUM_API_URL` | Supplies the internal Datum statistics URL at boot. |
+| `BHA_DATUM_API_URL` | Supplies the fresh-setup default for the database-backed Datum statistics URL. |
 | `BHA_ELECTRS_HOST` | Overrides the Electrs hostname used to construct the payout observer at boot. |
 | `BHA_ELECTRS_PORT` | Overrides the Electrs port used to construct the payout observer at boot. |
 | `BHA_PAYOUT_SOURCE` | Selects Electrs in the boot-time integration configuration. |
 
-These variables contain routing and runtime values, not operator credentials. Hashrate Autopilot stores
-wizard and dashboard configuration in SQLite, while the five `BHA_*` values above override that
-configuration at daemon startup. Live behavior is mixed: the Datum poller rereads its saved URL while
-the process is running, but the payout backend, Electrs endpoint, and Bitcoin client are boot-time
-snapshots. Do not rely on dashboard integration-route edits as durable package configuration; a restart
-reconstructs the boot-time integrations with the package-provided values.
+These variables contain routing and runtime values, not operator credentials. Four are boot-time
+integration overrides: `BHA_BITCOIND_RPC_URL`, `BHA_ELECTRS_HOST`, `BHA_ELECTRS_PORT`, and
+`BHA_PAYOUT_SOURCE`. The payout backend, Electrs endpoint, and Bitcoin client are constructed from that
+startup configuration, so a restart reconstructs them with the package-provided values.
+
+Datum is different. `BHA_DATUM_API_URL` pre-fills the fresh-setup value, which the wizard stores in
+SQLite. The Datum poller reads the saved URL on every poll. A dashboard change takes effect on the next
+poll, persists in SQLite, and remains effective after restart.
 
 ## Network Access and Interfaces
 
@@ -107,10 +110,10 @@ The package defines one interface:
 StartOS publishes `ui` as the Dashboard interface and prefers the standard external HTTP port. The
 daemon serves the dashboard and API from the same listener.
 
-The package supplies `BHA_DATUM_API_URL` as an internal statistics connection at boot. The Datum poller
-can reread a saved URL edit while the process is running. Neither URL is the public Stratum destination
-that Braiins needs: the pool URL entered in Hashrate Autopilot must resolve to a Datum or other pool
-endpoint reachable from the public internet.
+The package offers its internal Datum statistics address as the fresh-setup default. The Datum poller
+reads the saved URL on every poll, so dashboard changes remain effective after restart. This statistics
+URL is not the public Stratum destination that Braiins needs: the pool URL entered in Hashrate Autopilot
+must resolve to a Datum or other pool endpoint reachable from the public internet.
 
 ## Actions (StartOS UI)
 
@@ -150,10 +153,10 @@ dependency health checks and mounts no dependency volumes.
    keep DRY-RUN enabled until targets, price ceilings, and observed decisions are correct.
 2. **Pool ingress is operator-managed.** The package does not expose a public Datum Stratum endpoint or
    configure router forwarding and dynamic DNS. Verify the exact public pool destination before LIVE.
-3. **Integration overrides apply at startup.** The wrapper overlays the internal Bitcoin, Datum, and
-   Electrs locations and the Electrs payout selection when the daemon starts. Some services can observe
-   saved edits while running, but boot-time clients cannot. A restart reconstructs boot-time integrations
-   from package values. Bitcoin RPC credentials are not embedded.
+3. **Some integration overrides apply at startup.** The wrapper overlays the Bitcoin RPC URL, Electrs
+   endpoint, and Electrs payout selection when the daemon starts. A restart reconstructs those boot-time
+   integrations from package values. The Datum statistics URL is the exception: it is saved in SQLite,
+   read on every poll, and remains effective after restart. Bitcoin RPC credentials are not embedded.
 4. **The setup wizard is initially unauthenticated.** The application password takes effect after setup,
    so complete first-run setup from a trusted connection.
 5. **Uninstall removes persistent state.** Preserve the `main` volume with a backup before uninstalling
@@ -212,11 +215,14 @@ startos_managed_env_vars:
 startup_integration_overrides:
   variables:
     - BHA_BITCOIND_RPC_URL
-    - BHA_DATUM_API_URL
     - BHA_ELECTRS_HOST
     - BHA_ELECTRS_PORT
     - BHA_PAYOUT_SOURCE
   applied: daemon-start
-  live_behavior: mixed
+datum_live_endpoint:
+  setup_default_env_var: BHA_DATUM_API_URL
+  storage: sqlite
+  refresh: every-poll
+  persists_across_restart: true
 default_run_mode: DRY-RUN
 ```
