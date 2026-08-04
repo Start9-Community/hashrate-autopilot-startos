@@ -6,6 +6,8 @@
 
 The StartOS wrapper now tracks upstream Hashrate Autopilot v1.17.4 and publishes canonical SDK 2.x version metadata as `1.17.4:0`, with the corresponding `v1.17.4_0` release tag.
 
+- **Infra:** Migrated the StartOS package build wrapper to the SDK 2-provided `s9pk.mk`.
+
 ## 2026-07-23
 
 ### `[Release]` v1.17.4

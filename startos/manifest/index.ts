@@ -10,10 +10,6 @@ export const manifest = setupManifest({
   upstreamRepo: 'https://github.com/rdouma/hashrate-autopilot',
   marketingUrl: 'https://github.com/mdubore/hashrate9',
   donationUrl: null,
-  docsUrls: [
-    'https://github.com/mdubore/hashrate9',
-    'https://github.com/mdubore/hashrate9/blob/main/docs/configuration.md',
-  ],
   description: { short, long },
   volumes: ['main'],
   images: {
