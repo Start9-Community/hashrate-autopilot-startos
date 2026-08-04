@@ -2,6 +2,12 @@
 
 ## 2026-08-04
 
+### `[Docs]` StartOS package guidance follows the registry format
+
+The package README is now a concise StartOS wrapper reference with a machine-readable inventory, while the
+in-service instructions provide a DRY-RUN-first operator flow and link to upstream documentation instead of
+duplicating the upstream manual.
+
 ### `[Infra]` StartOS package tracks upstream v1.17.4
 
 The StartOS wrapper now tracks upstream Hashrate Autopilot v1.17.4 and publishes canonical SDK 2.x version metadata as `1.17.4:0`, with the corresponding `v1.17.4_0` release tag.
