@@ -10,6 +10,10 @@ The StartOS wrapper now tracks upstream Hashrate Autopilot v1.17.4 and publishes
 
 The StartOS package now includes SDK 2's installed `s9pk.mk` directly; release builds clean only generated `.s9pk` artifacts so installed build tooling remains available.
 
+### `[Infra]` Community Registry releases use isolated StartOS tags
+
+StartOS pull requests and main-branch updates now use the official Start9 build and Community Registry release automation. StartOS releases use underscore tags such as `vX.Y.Z_N`, keeping them out of the upstream Docker image publication path.
+
 ## 2026-07-23
 
 ### `[Release]` v1.17.4
