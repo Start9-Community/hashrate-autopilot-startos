@@ -1,6 +1,8 @@
 packages:
   - "packages/*"
 
+linkWorkspacePackages: true
+
 # pnpm v11 no longer reads the `pnpm` field from package.json - these
 # settings (build-script approval + dependency version pins) live here
 # instead. Keep package.json free of a `pnpm` block. See #299.

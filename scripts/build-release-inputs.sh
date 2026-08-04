@@ -23,5 +23,9 @@ rm -rf packages/*/dist javascript
 export APP_VERSION="$app_version"
 export GIT_SHA="$git_sha"
 
-pnpm -r run build
-pnpm run build:startos
+npm run build --workspace @hashrate-autopilot/shared
+npm run build --workspace @hashrate-autopilot/bitcoind-client
+npm run build --workspace @hashrate-autopilot/braiins-client
+npm run build --workspace @hashrate-autopilot/dashboard
+npm run build --workspace @hashrate-autopilot/daemon
+npm run build:startos
