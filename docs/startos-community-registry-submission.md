@@ -53,8 +53,13 @@ the Start9-Community fork, and a merged pull request drives the configured build
 - Merge parents, in order:
   `96b59ccfec0f055f32edd0cbf2b498c68a802aa8` and
   `dcd98b1d6dca8922a91fa1c939831ed19e7455b3`. The second parent is the peeled upstream tag commit.
-- This evidence snapshot was prepared from branch `sync-upstream-v1.17.4` at
-  `139c63d8991918473769e9410049e2a427bbfc6e` before this checklist commit.
+- An earlier preparation snapshot was made from branch `sync-upstream-v1.17.4` at
+  `139c63d8991918473769e9410049e2a427bbfc6e` before the checklist existed. It is historical context
+  only, not the authoritative Task 9 source or evidence commit.
+- The authoritative Task 9 provenance pair is tested clean source
+  `404ad198ba242806a0042e4873df54636f1a6c64` and evidence commit
+  `e27fc7e870d76c2e7843c0c7273980f0e7005b66`. Later documentation-only clarifications succeed the
+  evidence commit without changing the tested artifacts or their source provenance.
 
 Identity commands:
 
@@ -111,8 +116,10 @@ lint, typecheck, and test gate.
 Some `start-cli 1.1.0` installations eagerly resolve the configured default host even for local `s9pk`
 commands. The command-scoped shim below supplies loopback only to prevent a stale host such as
 `dev-vm.local` from blocking local packaging; it does not contact a device or modify shared config. On
-an x86_64 host whose builder lacks arm64 emulation, the arm step registers only arm64 using the standard
-transient `tonistiigi/binfmt` container, then confirms the builder advertises `linux/arm64`.
+an x86_64 host whose builder lacks arm64 emulation, the arm step performs an explicit privileged host-kernel
+binfmt registration for arm64, then confirms the builder advertises `linux/arm64`. This is an opt-in local
+host mutation, not a repository, StartOS device, or shared-config change. Removing the helper container does
+not remove the kernel registration; it can persist until the handler is unregistered or the host reboots.
 
 ```bash
 set -euo pipefail
@@ -191,6 +198,7 @@ make x86
 
 builder_info="$(docker buildx inspect default --bootstrap)"
 if ! grep -q 'linux/arm64' <<< "$builder_info"; then
+  # Opt-in host mutation: registers qemu-aarch64 with the host kernel's binfmt_misc service.
   docker run --privileged --rm \
     tonistiigi/binfmt@sha256:d3b963f787999e6c0219a48dba02978769286ff61a5f4d26245cb6a6e5567ea3 \
     --install arm64
@@ -280,7 +288,8 @@ clean commit.
 - The inherited workspace host was `dev-vm.local`, which did not resolve. A command-scoped loopback shim
   allowed local `s9pk` operations without editing shared config or contacting a device.
 - The first arm64 package attempt failed with `exec format error`. The single binfmt recovery and retry are
-  recorded under known warnings below; the successful retry produced the artifact recorded above.
+  recorded under known warnings below; the successful retry produced the artifact recorded above. The
+  privileged registration changed the local host kernel's binfmt state and was not reverted during Task 9.
 - Commitment inspection reports the package root signature hash and maximum size. It is recorded as the
   supported read-only evidence surface, not as independent cryptographic verification.
 
@@ -348,10 +357,14 @@ enable LIVE or create, edit, or cancel a marketplace bid during automated prepar
 - Both package builds warn that `bitcoind`, `datum`, and `electrs` have no package metadata. Their manifest
   dependency IDs and descriptions are present; the missing optional metadata did not fail packaging.
 - The first arm64 attempt failed at `/bin/sh` with `exec format error` because the default builder lacked
-  arm64 emulation. A single transient
+  arm64 emulation. A single privileged host-kernel registration using
   `tonistiigi/binfmt@sha256:d3b963f787999e6c0219a48dba02978769286ff61a5f4d26245cb6a6e5567ea3`
-  arm64 registration added `qemu-aarch64`; the builder then advertised `linux/arm64`, and the one retry
-  completed successfully.
+  added `qemu-aarch64`; the builder then advertised `linux/arm64`, and the one retry completed
+  successfully. The cached image reports `binfmt/3a63696`, QEMU `v10.2.1`, and an
+  `--uninstall` option; local binary inspection shows matching entries are unregistered by writing `-1` to
+  their `binfmt_misc` handler. Task 9 did not exercise cleanup or establish a single-architecture helper
+  invocation, so this packet does not prescribe an untested command: reboot the host or manually unregister
+  the `qemu-aarch64` handler when removal is required. Container exit alone does not remove the registration.
 - Auditing the full lockfile reports advisories in dependencies used only by build/development tooling.
   The daemon production-runtime audit is zero. Treat a new runtime advisory, or a change in the existing
   build-only advisory set, as a release blocker pending review.
