@@ -1186,8 +1186,10 @@ export interface RewardEventView {
   value_sat: number;
   detected_at: number;
   reorged: boolean;
-  /** #323: settlement rail. Absent on legacy on-chain-scanner rows (treated as on-chain). */
-  rail?: 'onchain' | 'lightning';
+  /** #323: settlement rail. Absent on legacy on-chain-scanner rows (treated as on-chain). 'unknown' = deduced payout inside its 24h correction window (#343). */
+  rail?: 'onchain' | 'lightning' | 'unknown';
+  /** #343: true when the payout was deduced from the unpaid-series drop (Ocean's API doesn't report Lightning payouts). Amount is approximate. */
+  deduced?: boolean;
 }
 
 export interface RewardEventsResponse {
@@ -1200,8 +1202,11 @@ export interface PayoutLedgerView {
   ts_ms: number;
   on_chain_txid: string | null;
   net_sat: number;
-  rail: 'onchain' | 'lightning';
+  /** 'unknown' = deduced payout still inside its 24h correction window (#343). */
+  rail: 'onchain' | 'lightning' | 'unknown';
   is_generation: boolean;
+  /** #343: true when deduced from the unpaid-series drop rather than read from Ocean's ledger. */
+  deduced: boolean;
 }
 
 export interface PayoutLedgerResponse {

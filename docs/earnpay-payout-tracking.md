@@ -6,6 +6,26 @@ rewire + rail split; rail-aware stage-2 payout_confirmed alert; chart
 gems from `/api/payout-ledger`. Migration 0116.
 Related: issue #323 ("Lightning Payouts Show as On-Chain Payouts"), #240 (collected = lifetime received), #170 (historical offset).
 
+> **#343 amendment (build 799, 2026-07-15): earnpay does NOT return
+> Lightning payouts.** This doc's core assumption - that earnpay rows
+> with `on_chain_txid: null` are Lightning settlements - turned out to
+> be false in practice: a Lightning-paid user's earnpay history
+> contained only their on-chain payout, and Ocean support confirmed
+> "there are no ways to fetch the lightning payouts for the OCEAN API
+> at the moment. The API is still in beta and will evolve to include
+> such information." The `rail: 'lightning'` plumbing below stays
+> correct and forward-compatible; the missing rows are now supplied by
+> the **DeducedPayoutsScanner** (`services/deduced-payouts.ts`,
+> migration 0120 adds `ocean_payouts.deduced`): a confirmed drop of
+> `tick_metrics.ocean_unpaid_sat` to ~zero (>30% drop, residual below
+> the payout threshold, two consecutive low ticks) with no earnpay
+> settlement matching within ±24h / ±25% amount is inserted as a
+> deduced payout - rail `'unknown'` inside the 24h correction window,
+> `'lightning'` by elimination after it, superseded (deleted) whenever
+> a matching real settlement appears. Full-history passes retro-fill
+> old drops and re-derive deduced rows after a hard reset. See
+> `docs/spec.md` §P&L and the scanner's module docblock for details.
+
 ## Problem
 
 P&L "collected" is derived from the on-chain payout-address scanner

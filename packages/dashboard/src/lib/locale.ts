@@ -31,6 +31,7 @@ import {
   formatNumber as formatNumberRaw,
   formatSatPerPH as formatSatPerPHRaw,
   formatSats as formatSatsRaw,
+  formatTemperature as formatTemperatureRaw,
   formatTimestamp as formatTimestampRaw,
   type DateLayout,
 } from './format';
@@ -415,6 +416,9 @@ export function useFormatters() {
       satPerPH: (n: number | null | undefined) => formatSatPerPHRaw(n, intlLocale),
       sats: (n: number | null | undefined) => formatSatsRaw(n, intlLocale),
       hashratePH: (n: number | null | undefined) => formatHashratePHRaw(n, intlLocale),
+      /** #347: locale-aware temperature (decimal separator follows the number-format preference). */
+      temperature: (c: number | null | undefined, unit: 'C' | 'F', digits?: number) =>
+        formatTemperatureRaw(c, unit, digits, intlLocale),
       timestamp: (ms: number | null | undefined) =>
         formatTimestampRaw(ms, { uiLocale: dateTimeLocale, layout: dateLayout }),
       age: formatAgeRaw,

@@ -38,6 +38,7 @@ import { DatumPoller } from './services/datum.js';
 import { HashpriceCache } from './services/hashprice-cache.js';
 import { HashpriceRefresher } from './services/hashprice-refresher.js';
 import { createOceanClient } from './services/ocean.js';
+import { DeducedPayoutsScanner } from './services/deduced-payouts.js';
 import { OceanPayoutsService } from './services/ocean-payouts-service.js';
 import { PayoutObserver } from './services/payout-observer.js';
 import { PoolHealthTracker } from './services/pool-health.js';
@@ -624,11 +625,26 @@ async function bootOperational(
   // Live-reads the address via cfgRefHolder so a dashboard address
   // change re-backfills the new address on the next sync (its store is
   // empty -> full backfill). Started below with the other services.
+  // #343: deduces Lightning payouts (which earnpay doesn't return)
+  // from confirmed drops of the unpaid series to ~zero. Runs after
+  // every successful earnpay sync so it never deduces against a ledger
+  // it failed to read; full-history passes (boot, daily self-heal,
+  // rebuild, hard reset) retro-fill and let deduced rows survive the
+  // hard reset's delete-and-refetch.
+  const deducedPayoutsScanner = new DeducedPayoutsScanner({
+    tickMetricsRepo,
+    oceanPayoutsRepo,
+    eventNotesRepo,
+    getAddress: () => cfgRefHolder.value.btc_payout_address,
+    log: (m) => log(m),
+  });
   const oceanPayoutsService = new OceanPayoutsService({
     oceanClient,
     repo: oceanPayoutsRepo,
+    eventNotesRepo,
     getAddress: () => cfgRefHolder.value.btc_payout_address,
     log: (m) => log(m),
+    onAfterSync: (fullBackfill) => deducedPayoutsScanner.scan(fullBackfill),
   });
 
   // BTC/USD oracle is constructed early so observe() can capture

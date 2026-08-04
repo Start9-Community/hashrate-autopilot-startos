@@ -538,14 +538,32 @@ Persistent ledger (SQLite) of:
 - Range aggregation is the §11.1 per-day run-rate card (`/api/finance/range`), not a per-calendar-month
   ledger - the earlier per-month bookkeeping idea was superseded by the range-aware card.
 - **Collected income comes from Ocean's own payout ledger (the `/v1/earnpay` endpoint), stored in
-  `ocean_payouts` (#323, v2.11).** This is the authoritative record of what Ocean actually paid out and,
-  crucially, it covers **both on-chain and Lightning** settlements - each payout carries `on_chain_txid`
-  (null = Lightning), `net_sat` (`total_satoshis_net_paid`, already in sat), and `is_generation_txn`. The P&L
+  `ocean_payouts` (#323, v2.11).** This is the authoritative record of what Ocean paid out on-chain - each payout
+  carries `on_chain_txid`, `net_sat` (`total_satoshis_net_paid`, already in sat), and `is_generation_txn`.
+  **Correction (#343): the #323 design assumed earnpay also returned Lightning payouts (`on_chain_txid` null);
+  empirically it does not, and Ocean support confirmed (2026-07-15) the API has no way to fetch Lightning payouts
+  yet.** Lightning payouts are therefore **deduced** by the `DeducedPayoutsScanner` (daemon-internal): a sharp
+  drop of `tick_metrics.ocean_unpaid_sat` (>30% of the previous reading, residual below the 1,048,576-sat
+  threshold) confirmed by **two consecutive low ticks** (a single-tick API glitch never mints a payout) with no
+  earnpay settlement matching within ±24h and ±25% amount is inserted into `ocean_payouts` with `deduced = 1`
+  (migration 0120) and the **balance decrease** across the drop (pre-drop reading minus the residual left on the drop tick) as its approximate amount - not the full pre-drop reading, since a Lightning payout can settle the older balance while leaving a freshly-credited block unpaid, and that residual is not part of the payout (#343). A multi-step drop within the 30-minute cooldown folds into one payout whose amount spans the whole group. Already-stored deduced rows whose amount predates this correction are repaired in place on the next scan, so history self-corrects without a hard reset. Deduced rows start as rail
+  `'unknown'`; past the 24h correction window with no match they resolve to `'lightning'` by elimination, and a
+  matching real settlement (whenever it appears - laggy on-chain record, or a future earnpay that reports
+  Lightning) **supersedes** the deduced row, which is deleted. The scan runs after every successful earnpay sync
+  (never against a failed read); full-history passes (boot, daily self-heal, rebuild, hard reset) retro-fill
+  historical drops and re-derive deduced rows after the hard reset's delete-and-refetch, since drop candidates are
+  deterministic over the immutable tick history and idempotent on dedup key `<address>|dd:<drop_tick_at>`.
+  **Timeline notes survive both row-replacing flows**: notes are keyed `payout:<id>` on the AUTOINCREMENT id, so
+  the hard reset snapshots annotated payouts by dedup_key before the wipe and re-keys the notes onto the rebuilt
+  ids afterwards (after the deduced re-scan, so deduced rows get theirs back too; a note whose payout doesn't
+  re-derive keeps its old key - orphaned, never destroyed), and a real settlement superseding a deduced row
+  inherits that row's note (an existing note on the target is never clobbered). The P&L
   collected figure is `oceanPayoutsRepo.sumNetUpTo(address, now)` scoped to the current payout address, split into
-  on-chain and Lightning sub-totals for the panel. This replaced the on-chain-only `reward_events` derivation,
-  which by construction could not see Lightning payouts and so understated net P&L for any operator paid over
-  Lightning (a Lightning payout dropped `unpaid_sat` but never raised collected). Collected no longer requires an
-  Electrum/bitcoind node - earnpay needs only the Ocean address, so node-less installs get a collected figure too.
+  on-chain and Lightning sub-totals for the panel (`'unknown'` counts toward Lightning). This replaced the
+  on-chain-only `reward_events` derivation, which by construction could not see Lightning payouts and so
+  understated net P&L for any operator paid over Lightning (a Lightning payout dropped `unpaid_sat` but never
+  raised collected). Collected no longer requires an Electrum/bitcoind node - earnpay needs only the Ocean
+  address, so node-less installs get a collected figure too.
   There is no per-event receipt-time USD valuation - USD display uses the current oracle price, and historical
   USD context comes from per-tick `btc_usd_price` in `tick_metrics`. The `OceanPayoutsService` (daemon-internal)
   does a **full-history backfill** on first run for an address (and after an address change, whose store is empty)

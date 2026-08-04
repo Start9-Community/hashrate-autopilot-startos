@@ -481,6 +481,10 @@ msgstr "Siempre live (para despliegues de confianza)"
 msgid "amount"
 msgstr "monto"
 
+#: src/components/PriceChart.tsx
+msgid "amount (approx.)"
+msgstr "monto (aprox.)"
+
 #: src/pages/Config.tsx
 msgid "Any active owned bid reports fee_rate_pct > 0."
 msgstr "Alguna puja propia activa reporta fee_rate_pct > 0."
@@ -1661,6 +1665,14 @@ msgstr "Registro de decisiones - sin eventos"
 msgid "decrease"
 msgstr "disminuir"
 
+#: src/components/PriceChart.tsx
+msgid "Deduced from your unpaid earnings dropping to zero. Ocean's payout ledger doesn't report Lightning payouts and no matching on-chain payout appeared, so this can only be a Lightning payout. The amount is the last unpaid balance seen before the drop, so it's approximate."
+msgstr "Deducido de tus ganancias no pagadas cayendo a cero. El libro de pagos de Ocean no reporta pagos por Lightning y no apareció ningún pago on-chain coincidente, así que esto solo puede ser un pago por Lightning. El monto es el último saldo no pagado visto antes de la caída, por lo que es aproximado."
+
+#: src/components/PriceChart.tsx
+msgid "Deduced from your unpaid earnings dropping to zero. Ocean's payout ledger doesn't report Lightning payouts; if a matching payout shows up there within 24 hours, this record is replaced by the real one - otherwise it becomes a Lightning payout."
+msgstr "Deducido de tus ganancias no pagadas cayendo a cero. El libro de pagos de Ocean no reporta pagos por Lightning; si un pago coincidente aparece allí dentro de 24 horas, este registro se reemplaza por el real - de lo contrario pasa a ser un pago por Lightning."
+
 #: src/pages/History.tsx
 msgid "default"
 msgstr "predeterminado"
@@ -2002,8 +2014,8 @@ msgid "Every restart resets to DRY_RUN. You explicitly flip to LIVE from the das
 msgstr "Cada reinicio vuelve a DRY_RUN. Pasas explícitamente a LIVE desde el panel."
 
 #: src/pages/Status.tsx
-msgid "Everything Ocean has actually paid you, from Ocean's own payout ledger - both on-chain payouts and Lightning payouts. Counts what you were paid, even if you've since spent it."
-msgstr "Todo lo que Ocean te ha pagado realmente, según el propio libro de pagos de Ocean - tanto pagos on-chain como pagos por Lightning. Cuenta lo que se te pagó, aunque ya lo hayas gastado."
+msgid "Everything Ocean has actually paid you: on-chain payouts from Ocean's own payout ledger, plus Lightning payouts deduced from your unpaid earnings dropping to zero (Ocean's ledger doesn't report those). Counts what you were paid, even if you've since spent it."
+msgstr "Todo lo que Ocean realmente te ha pagado: pagos on-chain del propio libro de pagos de Ocean, más pagos por Lightning deducidos de tus ganancias no pagadas cayendo a cero (el libro de Ocean no los reporta). Cuenta lo que te pagaron, aunque ya lo hayas gastado."
 
 #: src/components/TilesBar.tsx
 msgid "exa"
@@ -3469,6 +3481,10 @@ msgstr "Pausado - no se colocarán ni editarán ofertas hasta que cambie el modo
 msgid "payout"
 msgstr "pago"
 
+#: src/components/PriceChart.tsx
+msgid "PAYOUT · TYPE NOT KNOWN YET"
+msgstr "PAGO · TIPO AÚN DESCONOCIDO"
+
 #: src/pages/Setup.tsx
 msgid "Payout address"
 msgstr "Dirección de pago"
@@ -3733,6 +3749,10 @@ msgstr "Precios"
 #: src/pages/Config.tsx
 msgid "Primary owned bid has been Paused by Braiins for at least this many minutes."
 msgstr "La oferta primaria lleva al menos este número de minutos en Paused por Braiins."
+
+#: src/components/PriceChart.tsx
+msgid "PROBABLY LIGHTNING PAYOUT"
+msgstr "PROBABLEMENTE PAGO POR LIGHTNING"
 
 #. placeholder {0}: candidates.length
 #: src/pages/Config.tsx
@@ -4514,8 +4534,8 @@ msgid "The part of collected that settled on-chain (has a transaction on the blo
 msgstr "La parte de lo cobrado que se liquidó on-chain (tiene una transacción en la blockchain)."
 
 #: src/pages/Status.tsx
-msgid "The part of collected that settled over Lightning (off-chain, no blockchain transaction)."
-msgstr "La parte de lo cobrado que se liquidó por Lightning (fuera de la cadena, sin transacción en la blockchain)."
+msgid "The part of collected that settled over Lightning (off-chain, no blockchain transaction). Ocean's payout ledger doesn't report Lightning payouts, so these are deduced from your unpaid earnings dropping to zero - amounts are approximate."
+msgstr "La parte de cobrado liquidada por Lightning (off-chain, sin transacción en la blockchain). El libro de pagos de Ocean no reporta pagos por Lightning, así que estos se deducen de tus ganancias no pagadas cayendo a cero - los montos son aproximados."
 
 #. placeholder {0}: cs.cheap_target_hashrate_ph
 #: src/components/TilesBar.tsx

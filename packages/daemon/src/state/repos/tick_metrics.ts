@@ -883,6 +883,86 @@ export class TickMetricsRepo {
     return Number(result.numUpdatedRows ?? 0);
   }
 
+  /**
+   * #343: candidate payout drops in the `ocean_unpaid_sat` series for
+   * the deduced-payouts scanner. A candidate is a tick where the
+   * unpaid balance fell sharply versus the previous non-null reading
+   * AND the next non-null reading confirms it stayed down - the
+   * two-consecutive-low-ticks gate that keeps a single-tick API glitch
+   * (Ocean briefly reporting 0) from minting a phantom payout.
+   *
+   * Gates, mirroring the payout_initiated alert heuristic plus the
+   * confirmation tick:
+   *   - prev >= minPreDropSat (noise floor; Ocean's lowest Lightning
+   *     payout floor is 65,536 sat, so 10k is safely below any real
+   *     payout and above jitter)
+   *   - (prev - cur) / prev > dropFraction (sharp, not accrual noise)
+   *   - cur < residualThresholdSat AND next < residualThresholdSat
+   *     (a real payout leaves residual near zero on BOTH ticks)
+   *   - next < prev * (1 - dropFraction) (the balance did not bounce
+   *     back - the glitch discriminator)
+   *
+   * NULL readings (Ocean outage, pre-#89 rows, the bogus-value
+   * cleanup) are bridged over: LAG/LEAD run on the non-null series
+   * only, so a drop across daemon downtime is still one candidate at
+   * the first low tick after the gap.
+   *
+   * Window functions keep the scan in SQLite - the full-history pass
+   * walks the whole table without materialising it in JS.
+   */
+  async findUnpaidDropCandidates(
+    sinceMs: number,
+    opts: {
+      dropFraction: number;
+      residualThresholdSat: number;
+      minPreDropSat: number;
+    },
+  ): Promise<Array<{ tick_at: number; pre_drop_unpaid_sat: number; post_drop_unpaid_sat: number }>> {
+    // The window functions only see rows from `innerSince` on, so the
+    // frequent incremental pass doesn't walk the whole table. The 4-day
+    // lookback (vs the caller's 3-day scan window) guarantees LAG has a
+    // prior reading for candidates at the window edge; a drop whose
+    // prior reading is older than that (multi-day daemon downtime) is
+    // picked up by the daily full-history pass instead.
+    const DAY = 24 * 60 * 60 * 1000;
+    const innerSince = sinceMs > 0 ? sinceMs - 4 * DAY : 0;
+    const queryText = `
+      SELECT tick_at, prev_unpaid AS pre_drop_unpaid_sat, cur AS post_drop_unpaid_sat
+      FROM (
+        SELECT
+          tick_at,
+          ocean_unpaid_sat AS cur,
+          LAG(ocean_unpaid_sat) OVER w AS prev_unpaid,
+          LEAD(ocean_unpaid_sat) OVER w AS next_unpaid
+        FROM tick_metrics
+        WHERE ocean_unpaid_sat IS NOT NULL
+          AND tick_at >= ${innerSince}
+        WINDOW w AS (ORDER BY tick_at)
+      )
+      WHERE tick_at >= ${sinceMs}
+        AND prev_unpaid IS NOT NULL
+        AND next_unpaid IS NOT NULL
+        AND prev_unpaid >= ${opts.minPreDropSat}
+        AND cur < ${opts.residualThresholdSat}
+        AND next_unpaid < ${opts.residualThresholdSat}
+        AND (prev_unpaid - cur) * 1.0 / prev_unpaid > ${opts.dropFraction}
+        AND next_unpaid < prev_unpaid * ${1 - opts.dropFraction}
+      ORDER BY tick_at ASC
+    `;
+    const res = await sql.raw(queryText).execute(this.db);
+    const rows = (res as unknown as {
+      rows: Array<{ tick_at: number; pre_drop_unpaid_sat: number; post_drop_unpaid_sat: number }>;
+    }).rows;
+    return rows.map((r) => ({
+      tick_at: Number(r.tick_at),
+      pre_drop_unpaid_sat: Number(r.pre_drop_unpaid_sat),
+      // The residual left on the drop tick itself. A Lightning payout
+      // can pay the older balance and leave a freshly-credited block
+      // unpaid, so the actual amount paid is prev - cur, not prev (#343).
+      post_drop_unpaid_sat: Number(r.post_drop_unpaid_sat),
+    }));
+  }
+
   async pruneOlderThan(cutoffMs: number): Promise<void> {
     await this.db.deleteFrom('tick_metrics').where('tick_at', '<', cutoffMs).execute();
     // Pruning can delete the earliest row; recompute lazily.

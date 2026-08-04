@@ -182,6 +182,7 @@ hashrate-autopilot/
 │   │   │   ├── braiins-service.ts
 │   │   │   ├── payout-observer.ts  (Electrs-preferred; bitcoind fallback; on-chain corroboration only since #323)
 │   │   │   ├── ocean-payouts-service.ts (#323 - syncs Ocean earnpay payouts into ocean_payouts; source of truth for P&L collected)
+│   │   │   ├── deduced-payouts.ts  (#343 - deduces Lightning payouts, which earnpay omits, from confirmed unpaid-series drops; runs after each successful earnpay sync)
 │   │   │   ├── pool-health.ts      (TCP probe of Datum Gateway :23334)
 │   │   │   ├── ocean.ts            (Ocean pool REST client: stats, blocks, earnings)
 │   │   │   ├── datum.ts            (optional Datum stats poller - gateway-measured hashrate + workers)
@@ -964,7 +965,12 @@ concern (not by order; the file names are authoritative):
   written in cleartext into `system_events` rows (`telegram_bot_token`,
   `bitcoind_rpc_user`, `bitcoind_rpc_password`, `ddns_username`,
   `ddns_credential`); the daemon also redacts these at write time going
-  forward.
+  forward. 0120 (#343) adds `ocean_payouts.deduced` - earnpay turned out
+  NOT to return Lightning payouts (Ocean support confirmed), so the
+  DeducedPayoutsScanner infers them from confirmed drops of
+  `tick_metrics.ocean_unpaid_sat` to ~zero and stores them here with
+  `deduced = 1` and rail `'unknown'` -> `'lightning'` (superseded by the
+  real settlement if one ever matches).
 
 - **Gap-backfill + boot-time payout refresh (0104-0105):** 0104 (#241)
   adds `tick_metrics.synthetic INTEGER NOT NULL DEFAULT 0` marking rows

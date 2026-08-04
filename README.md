@@ -5,10 +5,12 @@ daemon and dashboard for the [Braiins Hashpower marketplace](https://hashpower.b
 rented-hashrate bid alive within operator-defined limits and routes delivered hashrate to an Ocean/Datum mining
 setup.
 
-This fork tracks upstream Hashrate Autopilot v1.17.1 and adds the StartOS service wrapper, dependency
+This fork tracks upstream Hashrate Autopilot v1.17.4 and adds the StartOS service wrapper, dependency
 declarations, persistent data volume, backup hooks, web interface wiring, and `.s9pk` build flow. Upstream
 application behavior is intentionally kept close to `rdouma/hashrate-autopilot`; StartOS-specific work lives in
 `startos/`, `instructions.md`, `Makefile`, and `s9pk.mk`.
+
+> 💬 **New here, or something not behaving as expected?** The **[FAQ](FAQ.md)** covers the common setup and Profit & Loss questions - how the pieces fit together, what to put in the Stratum host field (and why a LAN IP won't work), and why your Profit & Loss can read as a loss early on.
 
 ![Dashboard in real-time mode](docs/images/dashboard.png)
 
@@ -18,7 +20,7 @@ application behavior is intentionally kept close to `rdouma/hashrate-autopilot`;
 | --- | --- |
 | Downstream package repo | `mdubore/hashrate9` |
 | Upstream app repo | `rdouma/hashrate-autopilot` |
-| Upstream version tracked | `v1.17.1` |
+| Upstream version tracked | `v1.17.4` |
 | StartOS package id | `hashrate-autopilot-9` |
 | Package architectures | `x86_64`, `aarch64` |
 | Verified sideload target | `x86_64`, `aarch64` StartOS servers |
@@ -141,11 +143,14 @@ Non-goals: SaaS / multi-user, cloud deployment, hands-free wallet funding, gaple
 - State and tick metrics persist to SQLite and survive restarts. Boot mode is configurable: always dry-run
   (default), resume last mode, or always live. Old `tick_metrics` and uneventful `decisions` rows are pruned
   hourly per configurable retention windows.
+- Each tick also polls the **Ocean pool API** (hashprice, pool stats, payout estimate, recent blocks) and - when
   a `datum_api_url` is configured - the **Datum Gateway's `/umbrel-api`** for a second hashrate reading measured
   at the gateway. Both integrations are informational; the control loop never depends on them being reachable.
-- Reads your collected income from **Ocean's own payout ledger** (the earnpay endpoint), which covers **both
-  on-chain and Lightning payouts** - so the Profit & Loss panel counts everything Ocean actually paid you, with an
-  on-chain vs Lightning split, and no Bitcoin node required. Optionally also reads `bitcoind` or an Electrum server
+- Reads your collected income from **Ocean's own payout ledger** (the earnpay endpoint) - no Bitcoin node
+  required. Ocean's API only reports on-chain payouts (confirmed by Ocean support), so **Lightning payouts are
+  deduced**: a confirmed drop of your unpaid earnings to zero with no matching ledger entry is recorded as a
+  deduced payout, giving the Profit & Loss panel everything Ocean actually paid you with an on-chain vs Lightning
+  split. Optionally also reads `bitcoind` or an Electrum server
   (electrs, Fulcrum, and ElectrumX all work) as a corroboration source that adds the on-chain confirmation gems to
   the chart, but the P&L numbers no longer depend on it. There's also a `Pre-installation earnings` field for
   income outside Ocean's ledger (e.g. pre-autopilot history at another pool) that gets folded into the net P&L.
@@ -248,8 +253,8 @@ Full design: [`docs/spec.md`](docs/spec.md) · [`docs/architecture.md`](docs/arc
   Service panels include a runway forecast AND a Braiins share-rejection ratio on the Braiins card (computed
   server-side from raw `tick_metrics` rows over the selected chart range; also available as a chart right-axis
   series so the operator can see when the ratio spiked - #243), split P&L panels (period and lifetime - "collected"
-  reads lifetime received from Ocean's payout ledger (earnpay), covering on-chain and Lightning payouts with a
-  per-rail split, so a payout that's been spent still counts and Lightning payouts are no longer invisible - #323;
+  reads lifetime received from Ocean's payout ledger (earnpay) plus deduced Lightning payouts with a
+  per-rail split, so a payout that's been spent still counts and Lightning payouts are no longer invisible - #323/#343;
   the lifetime panel also carries a dedicated **return on spend** row showing
   `net / spent` as a percentage so the operator can read the rate of return alongside the absolute net
   figure - #249). The payout store the "collected" figure reads from self-heals: the daemon re-runs the full
@@ -297,7 +302,7 @@ Full design: [`docs/spec.md`](docs/spec.md) · [`docs/architecture.md`](docs/arc
   default). Detection happens daemon-side via your bitcoind RPC (`getblockheader`) or Electrum server
   (`blockchain.block.header`) - no third-party API. **Public-IP change markers** (sky router icons) appear at the top of the Hashrate chart whenever the daemon's IP poller (60 s cadence to `api.ipify.org`) observes a different public IP; the marker's styled tooltip shows the old → new IP pair and locale-formatted detection time, and the DDNS card on the Pool & Payout tab carries an "IP last changed" timestamp so rejection-rate spikes can be correlated against ISP rotation events. Each pool-luck step-marker tooltip carries a green `FOUND` or red `AGED OUT` badge per contributing block; multiple events landing in the same daemon tick (e.g. one block ages out while another lands) collapse into a single dot with both blocks' detail panels. A separate **BIP 110 scan card** on the Status page
   lets you scan signaling by difficulty epoch (toggle: `Current epoch` for the live MASF window, or `All` for everything since block 938,903 - the first known BIP 110 signaling block, found 2026-03-01). Per-epoch breakdown rows expand to show their signaling blocks inline (Pool / Miner column split - Ocean blocks surface both the pool wrapper and the inner template-author tag; non-Ocean blocks show the pool tag alone). Each row carries a MASF progress bar against the 55% threshold (`ceil(2016 × 0.55) = 1109` signaling blocks). The deployment-status badge has a lifecycle-aware tooltip naming both paths: miner-activated (MASF, 55% in any epoch locks in early) and user-activated (UASF, block height 965,664 enforced unconditionally regardless of signaling); when LOCKED_IN or ACTIVE the wording adapts. The forecasted UASF date is dynamic - `now + (965,664 − tip) × 600s`, matching every block-time calculator (currently early-September 2026 at typical block rate). Block markers and retarget icons are mirrored onto the price chart, so the operator sees these events in
-  context on both charts. **Braiins deposit markers** (purple fuel-pump icons) appear on the Price chart whenever Braiins credits a deposit to your marketplace wallet. The marker is positioned at the Bitcoin transaction timestamp from the Braiins API. When the right-axis series is `total_balance_sat`, a purple dot appears on the balance line at the step-up caused by the deposit, with a dotted connector line back to the fuel icon so the operator can visually trace which deposit caused which balance jump. Hovering either the fuel icon or the dot opens the same tooltip with deposit amount, transaction ID, and timing. **Payout gems** (emerald) appear at the top of the Price chart with a dashed vertical line for every payout in Ocean's payout ledger (earnpay) - both on-chain and Lightning. Clicking opens a tooltip with date and amount; on-chain payouts add a block-explorer deep-link, Lightning payouts are labelled "LIGHTNING PAYOUT" with no link (there's no on-chain transaction to open). A purple dot on the unpaid-earnings line marks the earlier moment Ocean debited the balance (payout initiated), bridging the visual gap between the unpaid drop and the confirmed settlement.
+  context on both charts. **Braiins deposit markers** (purple fuel-pump icons) appear on the Price chart whenever Braiins credits a deposit to your marketplace wallet. The marker is positioned at the Bitcoin transaction timestamp from the Braiins API. When the right-axis series is `total_balance_sat`, a purple dot appears on the balance line at the step-up caused by the deposit, with a dotted connector line back to the fuel icon so the operator can visually trace which deposit caused which balance jump. Hovering either the fuel icon or the dot opens the same tooltip with deposit amount, transaction ID, and timing. **Payout gems** (emerald) appear at the top of the Price chart with a dashed vertical line for every payout - on-chain payouts from Ocean's payout ledger (earnpay), and Lightning payouts deduced from the unpaid-earnings series (Ocean's API doesn't report them - #343). Deduced payouts render as a **ghost gem** (dashed outline, hollow fill). Clicking opens a tooltip with date and amount; on-chain payouts add a block-explorer deep-link, Lightning payouts are labelled "LIGHTNING PAYOUT" (or "PROBABLY LIGHTNING PAYOUT" when deduced, "PAYOUT · TYPE NOT KNOWN YET" during the first 24 hours while a matching ledger entry can still supersede the deduction) with no link (there's no on-chain transaction to open), and deduced payouts carry an explanatory note with an approximate amount. A purple dot on the unpaid-earnings line marks the earlier moment Ocean debited the balance (payout initiated), bridging the visual gap between the unpaid drop and the confirmed settlement.
 - **Telegram notifications** - three severity tiers across eighteen event classes. **IMPORTANT** (red, with a
   retry ladder and paired recovery messages): Datum stratum unreachable, hashrate below floor, zero
   hashrate, Braiins API unreachable, unknown bid detected, bid sustained-paused, wallet runway below

@@ -1,5 +1,51 @@
 # Changelog
 
+## 2026-07-23
+
+### `[Release]` v1.17.4
+
+Stability + docs patch since v1.17.3. The headline fix reaches users here: the daemon no longer crash-loops when the Electrum connection drops mid-session (v1.17.3 still had that bug). Also removes a misleading "Telegram 2FA tap required" note from bid creation - the autopilot bids via Braiins' API with the owner token, which needs no Telegram confirmation - and adds a user-facing FAQ covering setup, payouts, bidding, and requirements.
+
+## 2026-07-19
+
+### `[Fix]` Remove the misleading "Telegram 2FA tap required" note from bid-create
+
+The Timeline note stamped on every bid creation claimed a Telegram 2FA tap was required. That's not true for the way the autopilot places bids: it uses the account owner token via Braiins' API, which does not need the Telegram confirmation (that confirmation is part of Braiins' web interface). The note is dropped so it no longer implies an action you have to take.
+
+### `[Fix]` Daemon no longer crashes when the Electrum connection drops mid-session
+
+The Electrum (electrs/Fulcrum) client dropped its socket's error handler right after connecting, so if the Electrum server restarted or dropped an idle connection while the daemon was mid-request - common during a payout backfill, or when Umbrel's Electrs app bounces - the next write hit a broken pipe with no listener and Node escalated it to an uncaughtException ("write EPIPE"), crashing the whole daemon (systemd then restarted it). The socket now keeps a persistent error handler for its whole life: a dropped connection cleanly fails the in-flight Electrum calls (already treated as best-effort, retried next tick with a fresh connection) instead of taking the process down.
+
+## 2026-07-17
+
+### `[Release]` v1.17.3
+
+Bug-fix release. Deduced Lightning payouts recorded the full pre-drop unpaid balance rather than the actual balance decrease, over-counting a partial sweep where Ocean leaves a freshly-credited block unpaid (#343, diagnosed by regenerous); the amount is now the decrease, multi-step drops fold into one payout, and already-stored amounts self-correct on the next scan. Also fixes the Bitaxe miners card ignoring the number-format locale (#347).
+
+### `[Fix]` Deduced Lightning payouts no longer overcount a partial sweep (#343)
+
+A deduced Lightning payout recorded the full unpaid balance from just before the drop as its amount. That over-counts whenever Ocean credits a freshly found block and then pays out only the older balance, leaving that new credit unpaid: the payout is the balance decrease, not the whole pre-drop reading (diagnosed by regenerous). The daemon now records the decrease (pre-drop minus the residual left behind), a multi-step drop folds into one payout spanning the whole group, and already-stored deduced amounts self-correct on the next scan - no hard reset needed.
+
+## 2026-07-16
+
+### `[Fix]` Bitaxe miners card respects the number-format locale (#347)
+
+The Bitaxe card formatted every value with a hard-coded period decimal (hashrate, power, rejection rate, efficiency, temperatures, best difficulty), so operators with comma-decimal locales saw "1.02 TH/s" on the card next to a stats bar correctly saying "1,02". All card values now go through the locale-aware formatter, and best difficulty is re-formatted from its exact numeric so its decimal separator matches too.
+
+## 2026-07-15
+
+### `[Release]` v1.17.2
+
+Focused follow-up to v1.17.0/1.17.1's Lightning P&L work. Ocean's payout API turns out not to report Lightning payouts at all (confirmed by Ocean support), so the daemon now deduces them from confirmed drops of unpaid earnings to zero with no matching ledger entry (#343) - history backfilled on upgrade, deduced records superseded automatically if the real settlement ever appears, ghost gems + explanatory tooltips on the chart. Also fixes Timeline notes being erased by the P&L hard reset (#346).
+
+### `[Fix]` Timeline notes survive the P&L hard reset (#343, #336)
+
+The hard reset rebuilds the payout store by deleting and re-fetching every payout, which gave each one a new internal id - and Timeline notes are attached to those ids, so every note on a payout silently vanished. Notes are now snapshotted before the wipe and re-attached to the rebuilt payouts afterwards (matched by their stable identity), a note on a payout that doesn't come back is kept rather than destroyed, and a deduced payout that gets replaced by the real ledger record passes its note along to the replacement.
+
+### `[Feature]` Lightning payouts are deduced from unpaid earnings - P&L "collected" no longer misses them (#343)
+
+Ocean's payout API turns out not to report Lightning payouts at all (confirmed by Ocean support), so operators paid over Lightning saw a too-low "collected" figure and an inflated loss rate. The daemon now deduces those payouts: a confirmed sharp drop of your unpaid earnings to zero (two consecutive readings, so a brief API glitch can't fake one) with no matching entry in Ocean's ledger is recorded as a deduced payout - first as "type not known yet" for 24 hours (a late-arriving on-chain record replaces it automatically), then as "probably Lightning". Historical drops are backfilled on upgrade, deduced records survive the P&L rebuild/hard-reset controls, and if Ocean's API ever starts reporting Lightning payouts the real records take over seamlessly. On the chart, deduced payouts render as a ghost gem (dashed outline) whose tooltip explains the deduction and marks the amount as approximate.
+
 ## 2026-07-14
 
 ### `[Infra]` StartOS package tracks upstream v1.17.1

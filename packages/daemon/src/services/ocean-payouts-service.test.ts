@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { closeDatabase, openDatabase, type DatabaseHandle } from '../state/db.js';
+import { EventNotesRepo } from '../state/repos/event_notes.js';
 import { OceanPayoutsRepo } from '../state/repos/ocean_payouts.js';
 import { OceanPayoutsService } from './ocean-payouts-service.js';
 import type { OceanClient, OceanPayout } from './ocean.js';
@@ -180,6 +181,41 @@ describe('OceanPayoutsService.syncOnce (#323)', () => {
     await svc.hardReset(); // wipe + rebuild from the fresh fetch (A only)
     expect(await repo.sumNetUpTo(ADDR, 9999)).toBe(500); // stale B is gone
     expect(await repo.countForAddress(ADDR)).toBe(1);
+  });
+
+  it('#343 follow-up: hardReset() re-keys Timeline payout notes to the rebuilt row ids', async () => {
+    const clock = 1_700_000_000_000;
+    const notesRepo = new EventNotesRepo(handle.db, () => clock);
+    const svc = new OceanPayoutsService({
+      // Same two payouts before and after the reset; only the row ids change.
+      oceanClient: rangeAwareClient(
+        [[p(1000, 'a', 500), p(2000, null, 65_536)]],
+        [],
+      ),
+      repo,
+      eventNotesRepo: notesRepo,
+      getAddress: () => ADDR,
+      now: () => clock,
+    });
+    await svc.syncOnce();
+    const before = await repo.listForAddressSince(ADDR, 0);
+    expect(before).toHaveLength(2);
+    await notesRepo.set(`payout:${before[0]!.id}`, 'first payout, checked on explorer');
+    await notesRepo.set(`payout:${before[1]!.id}`, 'lightning one');
+
+    await svc.hardReset();
+
+    const after = await repo.listForAddressSince(ADDR, 0);
+    expect(after).toHaveLength(2);
+    // Delete-and-reinsert must have produced fresh AUTOINCREMENT ids.
+    expect(after.map((r) => r.id)).not.toEqual(before.map((r) => r.id));
+    // ...and the notes followed their payouts (matched via dedup_key).
+    const onchain = after.find((r) => r.on_chain_txid === 'a')!;
+    const lightning = after.find((r) => r.on_chain_txid === null)!;
+    expect(await notesRepo.get(`payout:${onchain.id}`)).toBe('first payout, checked on explorer');
+    expect(await notesRepo.get(`payout:${lightning.id}`)).toBe('lightning one');
+    // The stale keys are gone - exactly two note rows remain.
+    expect(Object.keys(await notesRepo.all())).toHaveLength(2);
   });
 
   it('#343: hardReset() is fetch-before-delete: an Ocean outage keeps the data', async () => {

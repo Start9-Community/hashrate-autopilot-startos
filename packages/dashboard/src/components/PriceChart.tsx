@@ -3113,14 +3113,19 @@ export const PriceChart = memo(function PriceChart({
                   pointerEvents="none"
                 />
                 <rect x={x - 9} y={PADDING.top - 13} width={18} height={18} fill="transparent" />
+                {/* #343: deduced payouts render as a "ghost" gem -
+                    dashed outline, near-hollow fill - so an inferred
+                    record reads differently from one out of Ocean's
+                    own ledger. Tooltip carries the full explanation. */}
                 <svg
                   x={x - 7} y={PADDING.top - 11}
                   width="14" height="14" viewBox="0 0 24 24"
                   fill="none" stroke={COLOR_PAYOUT_GEM} strokeWidth="2"
                   strokeLinecap="round" strokeLinejoin="round"
                   opacity="0.85"
+                  strokeDasharray={r.deduced ? '3 2' : undefined}
                 >
-                  <path d="M17 3a2 2 0 0 1 1.6.8l3 4a2 2 0 0 1 .013 2.382l-7.99 10.986a2 2 0 0 1-3.247 0l-7.99-10.986A2 2 0 0 1 2.4 7.8l2.998-3.997A2 2 0 0 1 7 3z" fill={COLOR_PAYOUT_GEM} fillOpacity="0.25" />
+                  <path d="M17 3a2 2 0 0 1 1.6.8l3 4a2 2 0 0 1 .013 2.382l-7.99 10.986a2 2 0 0 1-3.247 0l-7.99-10.986A2 2 0 0 1 2.4 7.8l2.998-3.997A2 2 0 0 1 7 3z" fill={COLOR_PAYOUT_GEM} fillOpacity={r.deduced ? 0.08 : 0.25} />
                   <path d="M2 9h20" />
                   <path d="M10.5 3 8 9l4 13 4-13-2.5-6" />
                 </svg>
@@ -3512,6 +3517,11 @@ function RewardEventTooltip({
   // there's nothing to open in a block explorer - only on-chain payouts
   // with a txid get a link.
   const isLightning = reward.rail === 'lightning';
+  // #343: deduced payouts. 'unknown' = still inside the 24h correction
+  // window where a matching record from Ocean's own ledger can replace
+  // this one; past it the rail resolves to 'lightning' by elimination.
+  const isUnknown = reward.rail === 'unknown';
+  const isDeduced = reward.deduced === true;
   const url =
     explorerTemplate && !isLightning && reward.txid
       ? applyExplorerTemplate(explorerTemplate, {
@@ -3545,7 +3555,11 @@ function RewardEventTooltip({
     >
       <div className="flex items-start justify-between gap-3">
         <span className="font-semibold uppercase tracking-wider text-emerald-400">
-          {isLightning ? (
+          {isUnknown ? (
+            <Trans>PAYOUT · TYPE NOT KNOWN YET</Trans>
+          ) : isLightning && isDeduced ? (
+            <Trans>PROBABLY LIGHTNING PAYOUT</Trans>
+          ) : isLightning ? (
             <Trans>LIGHTNING PAYOUT</Trans>
           ) : (
             <>
@@ -3572,9 +3586,32 @@ function RewardEventTooltip({
       <div className="text-slate-500 text-[10px]">{formatTimestampUtc(reward.detected_at)}</div>
 
       <div className="mt-2 flex justify-between gap-3 text-slate-300">
-        <span className="text-slate-500"><Trans>amount</Trans></span>
+        <span className="text-slate-500">
+          {isDeduced ? <Trans>amount (approx.)</Trans> : <Trans>amount</Trans>}
+        </span>
         <span className="font-mono tabular-nums">{valueText}</span>
       </div>
+
+      {isDeduced && (
+        <div className="mt-2 max-w-[230px] whitespace-normal text-[10px] leading-snug text-slate-400">
+          {isUnknown ? (
+            <Trans>
+              Deduced from your unpaid earnings dropping to zero. Ocean's
+              payout ledger doesn't report Lightning payouts; if a matching
+              payout shows up there within 24 hours, this record is replaced
+              by the real one - otherwise it becomes a Lightning payout.
+            </Trans>
+          ) : (
+            <Trans>
+              Deduced from your unpaid earnings dropping to zero. Ocean's
+              payout ledger doesn't report Lightning payouts and no matching
+              on-chain payout appeared, so this can only be a Lightning
+              payout. The amount is the last unpaid balance seen before the
+              drop, so it's approximate.
+            </Trans>
+          )}
+        </div>
+      )}
 
       {(url || pinned) && (
         <div className="mt-3 pt-2 border-t border-slate-800 flex flex-col gap-1.5">

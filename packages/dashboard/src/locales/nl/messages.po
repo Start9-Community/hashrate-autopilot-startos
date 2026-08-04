@@ -481,6 +481,10 @@ msgstr "Altijd live (voor vertrouwde installaties)"
 msgid "amount"
 msgstr "bedrag"
 
+#: src/components/PriceChart.tsx
+msgid "amount (approx.)"
+msgstr "bedrag (ca.)"
+
 #: src/pages/Config.tsx
 msgid "Any active owned bid reports fee_rate_pct > 0."
 msgstr "Een actief eigen bod rapporteert fee_rate_pct > 0."
@@ -1661,6 +1665,14 @@ msgstr "Beslissingenlogboek - gebeurtenisloos"
 msgid "decrease"
 msgstr "verlagen"
 
+#: src/components/PriceChart.tsx
+msgid "Deduced from your unpaid earnings dropping to zero. Ocean's payout ledger doesn't report Lightning payouts and no matching on-chain payout appeared, so this can only be a Lightning payout. The amount is the last unpaid balance seen before the drop, so it's approximate."
+msgstr "Afgeleid uit je onbetaalde verdiensten die naar nul zakten. Oceans uitbetalingsgrootboek rapporteert geen Lightning-uitbetalingen en er verscheen geen bijpassende on-chain uitbetaling, dus dit kan alleen een Lightning-uitbetaling zijn. Het bedrag is het laatst geziene onbetaalde saldo vóór de daling en is dus bij benadering."
+
+#: src/components/PriceChart.tsx
+msgid "Deduced from your unpaid earnings dropping to zero. Ocean's payout ledger doesn't report Lightning payouts; if a matching payout shows up there within 24 hours, this record is replaced by the real one - otherwise it becomes a Lightning payout."
+msgstr "Afgeleid uit je onbetaalde verdiensten die naar nul zakten. Oceans uitbetalingsgrootboek rapporteert geen Lightning-uitbetalingen; als daar binnen 24 uur een bijpassende uitbetaling verschijnt, wordt dit record vervangen door het echte - anders wordt het een Lightning-uitbetaling."
+
 #: src/pages/History.tsx
 msgid "default"
 msgstr "standaard"
@@ -2002,8 +2014,8 @@ msgid "Every restart resets to DRY_RUN. You explicitly flip to LIVE from the das
 msgstr "Elke herstart reset naar DRY_RUN. Je schakelt expliciet over naar LIVE vanuit het dashboard."
 
 #: src/pages/Status.tsx
-msgid "Everything Ocean has actually paid you, from Ocean's own payout ledger - both on-chain payouts and Lightning payouts. Counts what you were paid, even if you've since spent it."
-msgstr "Alles wat Ocean je daadwerkelijk heeft uitbetaald, uit Ocean's eigen uitbetalingsgrootboek - zowel on-chain- als Lightning-uitbetalingen. Telt wat je is uitbetaald, ook als je het inmiddels hebt uitgegeven."
+msgid "Everything Ocean has actually paid you: on-chain payouts from Ocean's own payout ledger, plus Lightning payouts deduced from your unpaid earnings dropping to zero (Ocean's ledger doesn't report those). Counts what you were paid, even if you've since spent it."
+msgstr "Alles wat Ocean je daadwerkelijk heeft uitbetaald: on-chain uitbetalingen uit Oceans eigen uitbetalingsgrootboek, plus Lightning-uitbetalingen afgeleid uit je onbetaalde verdiensten die naar nul zakten (Oceans grootboek rapporteert die niet). Telt wat je uitbetaald kreeg, ook als je het inmiddels hebt uitgegeven."
 
 #: src/components/TilesBar.tsx
 msgid "exa"
@@ -3469,6 +3481,10 @@ msgstr "Gepauzeerd - er worden geen biedingen geplaatst of bewerkt totdat de run
 msgid "payout"
 msgstr "uitbetaling"
 
+#: src/components/PriceChart.tsx
+msgid "PAYOUT · TYPE NOT KNOWN YET"
+msgstr "UITBETALING · TYPE NOG NIET BEKEND"
+
 #: src/pages/Setup.tsx
 msgid "Payout address"
 msgstr "Uitbetaaladres"
@@ -3733,6 +3749,10 @@ msgstr "Prijsstelling"
 #: src/pages/Config.tsx
 msgid "Primary owned bid has been Paused by Braiins for at least this many minutes."
 msgstr "Primaire bid staat al ten minste dit aantal minuten op Paused bij Braiins."
+
+#: src/components/PriceChart.tsx
+msgid "PROBABLY LIGHTNING PAYOUT"
+msgstr "WAARSCHIJNLIJK LIGHTNING-UITBETALING"
 
 #. placeholder {0}: candidates.length
 #: src/pages/Config.tsx
@@ -4514,8 +4534,8 @@ msgid "The part of collected that settled on-chain (has a transaction on the blo
 msgstr "Het deel van geïnd dat on-chain is afgewikkeld (heeft een transactie op de blockchain)."
 
 #: src/pages/Status.tsx
-msgid "The part of collected that settled over Lightning (off-chain, no blockchain transaction)."
-msgstr "Het deel van geïnd dat via Lightning is afgewikkeld (off-chain, geen blockchain-transactie)."
+msgid "The part of collected that settled over Lightning (off-chain, no blockchain transaction). Ocean's payout ledger doesn't report Lightning payouts, so these are deduced from your unpaid earnings dropping to zero - amounts are approximate."
+msgstr "Het deel van geïnd dat via Lightning is afgewikkeld (off-chain, geen blockchain-transactie). Oceans uitbetalingsgrootboek rapporteert geen Lightning-uitbetalingen, dus deze zijn afgeleid uit je onbetaalde verdiensten die naar nul zakten - bedragen zijn bij benadering."
 
 #. placeholder {0}: cs.cheap_target_hashrate_ph
 #: src/components/TilesBar.tsx

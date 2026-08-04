@@ -20,8 +20,8 @@ import { useLingui } from '@lingui/react';
 import { useQuery } from '@tanstack/react-query';
 
 import { api, type SoloMinerSnapshotEntry } from '../lib/api';
-import { formatAge, formatTemperature } from '../lib/format';
-import { useTemperatureUnit } from '../lib/locale';
+import { formatAge } from '../lib/format';
+import { useFormatters, useTemperatureUnit } from '../lib/locale';
 
 const REFRESH_INTERVAL_MS = 5_000;
 
@@ -50,6 +50,7 @@ function AsicChipBadge({ model }: { model: string | null }) {
 export function SoloMinersCard() {
   const { i18n } = useLingui();
   void i18n;
+  const fmt = useFormatters();
   const tempUnit = useTemperatureUnit();
 
   const query = useQuery({
@@ -106,9 +107,9 @@ export function SoloMinersCard() {
           widths. */}
       <div className="sm:hidden space-y-2">
         {entries.map((e) => (
-          <DeviceMobileCard key={e.device.id} entry={e} tempUnit={tempUnit} />
+          <DeviceMobileCard key={e.device.id} entry={e} fmt={fmt} tempUnit={tempUnit} />
         ))}
-        <FleetMobileSummary fleet={fleet} entries={entries} />
+        <FleetMobileSummary fleet={fleet} entries={entries} fmt={fmt} />
       </div>
 
       <div className="hidden sm:block bg-slate-900 border border-slate-800 rounded-lg overflow-x-auto">
@@ -128,7 +129,7 @@ export function SoloMinersCard() {
           </thead>
           <tbody className="text-slate-200">
             {entries.map((e) => (
-              <DeviceRow key={e.device.id} entry={e} tempUnit={tempUnit} />
+              <DeviceRow key={e.device.id} entry={e} fmt={fmt} tempUnit={tempUnit} />
             ))}
             <tr className="border-t border-slate-700 bg-slate-950/40 font-semibold">
               <td className="py-1.5 px-3 text-slate-300">
@@ -139,19 +140,19 @@ export function SoloMinersCard() {
               </td>
               <td className="py-1.5 px-3 text-right font-mono">
                 {fleet.total_hashrate_ghs !== null
-                  ? `${formatGhs(fleet.total_hashrate_ghs)}`
+                  ? `${formatGhs(fleet.total_hashrate_ghs, fmt)}`
                   : '-'}
               </td>
               <td className="py-1.5 px-3 text-right font-mono">
-                {fleet.best_diff_text ?? '-'}
+                {formatBestDiff(fleet.best_diff_numeric, fleet.best_diff_text, fmt) ?? '-'}
               </td>
               <td colSpan={2} className="py-1.5 px-3 text-right text-slate-500 text-[10px]">
                 {fleet.efficiency_j_per_th !== null
-                  ? `${fleet.efficiency_j_per_th.toFixed(1)} J/TH`
+                  ? `${fixed(fmt, fleet.efficiency_j_per_th, 1)} J/TH`
                   : ''}
               </td>
               <td className="py-1.5 px-3 text-right font-mono">
-                {fleet.total_power_w !== null ? `${fleet.total_power_w.toFixed(1)} W` : '-'}
+                {fleet.total_power_w !== null ? `${fixed(fmt, fleet.total_power_w, 1)} W` : '-'}
               </td>
               <td colSpan={3}></td>
             </tr>
@@ -168,6 +169,8 @@ interface FleetTotals {
   readonly efficiency_j_per_th: number | null;
   readonly active_count: number;
   readonly best_diff_text: string | null;
+  /** #347: exact numeric behind best_diff_text, for locale-aware re-formatting. */
+  readonly best_diff_numeric: number | null;
 }
 
 /**
@@ -236,6 +239,7 @@ function aggregateFleet(entries: ReadonlyArray<SoloMinerSnapshotEntry>): FleetTo
     efficiency_j_per_th,
     active_count: active,
     best_diff_text: bestDiffText,
+    best_diff_numeric: bestDiffText !== null ? bestDiffNum : null,
   };
 }
 
@@ -271,9 +275,11 @@ function parseMagnitudeSuffixed(s: string | number): number | null {
 
 function DeviceRow({
   entry,
+  fmt,
   tempUnit,
 }: {
   entry: SoloMinerSnapshotEntry;
+  fmt: ReturnType<typeof useFormatters>;
   tempUnit: 'C' | 'F';
 }) {
   if (!entry.reachable) {
@@ -331,7 +337,7 @@ function DeviceRow({
       <td className={`py-1.5 px-3 text-right font-mono ${entry.halted ? 'text-rose-300' : ''}`}>
         {(() => {
           const v = liveHashrateGhs(entry);
-          return v !== null ? formatGhs(v) : '-';
+          return v !== null ? formatGhs(v, fmt) : '-';
         })()}
       </td>
       <td
@@ -342,10 +348,10 @@ function DeviceRow({
             : undefined
         }
       >
-        {entry.best_diff_text ?? '-'}
+        {formatBestDiff(entry.best_diff_numeric, entry.best_diff_text, fmt) ?? '-'}
       </td>
       <td className={`py-1.5 px-3 text-right font-mono ${asicTempClass(entry.temp_c)}`}>
-        {formatTemperature(entry.temp_c, tempUnit)}
+        {fmt.temperature(entry.temp_c, tempUnit)}
       </td>
       <td
         className={`py-1.5 px-3 text-right font-mono ${vrTempClass(entry.vr_temp_c)}`}
@@ -361,14 +367,14 @@ function DeviceRow({
             flag. Avoids the visually-alarming "your VR is freezing"
             misread. */}
         {entry.vr_temp_c !== null && entry.vr_temp_c !== 0
-          ? formatTemperature(entry.vr_temp_c, tempUnit)
+          ? fmt.temperature(entry.vr_temp_c, tempUnit)
           : '-'}
       </td>
       <td className="py-1.5 px-3 text-right font-mono">
-        {entry.power_w !== null ? `${entry.power_w.toFixed(1)} W` : '-'}
+        {entry.power_w !== null ? `${fixed(fmt, entry.power_w, 1)} W` : '-'}
       </td>
       <td className={`py-1.5 px-3 text-right font-mono ${rejectionClass(rejectionPct)}`}>
-        {rejectionPct !== null ? `${rejectionPct.toFixed(2)} %` : '-'}
+        {rejectionPct !== null ? `${fixed(fmt, rejectionPct, 2)} %` : '-'}
       </td>
       <td className="py-1.5 px-3 text-right text-slate-400">
         {entry.uptime_seconds !== null ? formatUptime(entry.uptime_seconds) : '-'}
@@ -380,10 +386,46 @@ function DeviceRow({
   );
 }
 
-function formatGhs(ghs: number): string {
-  if (ghs >= 1_000_000) return `${(ghs / 1_000_000).toFixed(2)} PH/s`;
-  if (ghs >= 1_000) return `${(ghs / 1_000).toFixed(2)} TH/s`;
-  return `${ghs.toFixed(1)} GH/s`;
+// #347: every numeric in this card goes through the locale-aware
+// `fmt` (decimal separator follows the operator's number-format
+// preference) - raw `.toFixed()` rendered "1.02 TH/s" for nl-NL
+// operators while the Bitaxe stats-bar tiles correctly said "1,02".
+type Fmt = ReturnType<typeof useFormatters>;
+
+function fixed(fmt: Fmt, v: number, digits: number): string {
+  return fmt.number(v, { minimumFractionDigits: digits, maximumFractionDigits: digits });
+}
+
+function formatGhs(ghs: number, fmt: Fmt): string {
+  if (ghs >= 1_000_000) return `${fixed(fmt, ghs / 1_000_000, 2)} PH/s`;
+  if (ghs >= 1_000) return `${fixed(fmt, ghs / 1_000, 2)} TH/s`;
+  return `${fixed(fmt, ghs, 1)} GH/s`;
+}
+
+/**
+ * #347: best difficulty with a locale-aware decimal separator.
+ * Formats locally from the exact numeric (#260) using the same SI
+ * suffixes AxeOS uses; falls back to the daemon's pre-formatted text
+ * for older snapshots that lack the numeric field.
+ */
+function formatBestDiff(
+  numeric: number | null,
+  text: string | null,
+  fmt: Fmt,
+): string | null {
+  if (numeric === null || !Number.isFinite(numeric)) return text;
+  const SUFFIXES: Array<[number, string]> = [
+    [1e18, 'E'],
+    [1e15, 'P'],
+    [1e12, 'T'],
+    [1e9, 'G'],
+    [1e6, 'M'],
+    [1e3, 'K'],
+  ];
+  for (const [scale, suffix] of SUFFIXES) {
+    if (numeric >= scale) return `${fixed(fmt, numeric / scale, 2)}${suffix}`;
+  }
+  return fmt.number(numeric);
 }
 
 function formatUptime(seconds: number): string {
@@ -472,9 +514,11 @@ function computeRejectionPct(
 
 function DeviceMobileCard({
   entry,
+  fmt,
   tempUnit,
 }: {
   entry: SoloMinerSnapshotEntry;
+  fmt: ReturnType<typeof useFormatters>;
   tempUnit: 'C' | 'F';
 }) {
   const rejectionPct = computeRejectionPct(entry.shares_accepted, entry.shares_rejected);
@@ -514,33 +558,33 @@ function DeviceMobileCard({
           )}
           <MobileStat
             label={t`Hashrate`}
-            value={liveGhs !== null ? formatGhs(liveGhs) : '-'}
+            value={liveGhs !== null ? formatGhs(liveGhs, fmt) : '-'}
           />
           <MobileStat
             label={t`Best diff`}
-            value={entry.best_diff_text ?? '-'}
+            value={formatBestDiff(entry.best_diff_numeric, entry.best_diff_text, fmt) ?? '-'}
           />
           <MobileStat
             label={t`Temp`}
-            value={formatTemperature(entry.temp_c, tempUnit)}
+            value={fmt.temperature(entry.temp_c, tempUnit)}
             valueClass={asicTempClass(entry.temp_c)}
           />
           <MobileStat
             label={t`VR temp`}
             value={
               entry.vr_temp_c !== null && entry.vr_temp_c !== 0
-                ? formatTemperature(entry.vr_temp_c, tempUnit)
+                ? fmt.temperature(entry.vr_temp_c, tempUnit)
                 : '-'
             }
             valueClass={vrTempClass(entry.vr_temp_c)}
           />
           <MobileStat
             label={t`Power`}
-            value={entry.power_w !== null ? `${entry.power_w.toFixed(1)} W` : '-'}
+            value={entry.power_w !== null ? `${fixed(fmt, entry.power_w, 1)} W` : '-'}
           />
           <MobileStat
             label={t`Rejected`}
-            value={rejectionPct !== null ? `${rejectionPct.toFixed(2)} %` : '-'}
+            value={rejectionPct !== null ? `${fixed(fmt, rejectionPct, 2)} %` : '-'}
             valueClass={rejectionClass(rejectionPct)}
           />
           <MobileStat
@@ -577,9 +621,11 @@ function MobileStat({
 function FleetMobileSummary({
   fleet,
   entries,
+  fmt,
 }: {
   fleet: FleetTotals;
   entries: ReadonlyArray<SoloMinerSnapshotEntry>;
+  fmt: Fmt;
 }) {
   return (
     <div className="bg-slate-950/40 border border-slate-700 rounded-lg p-3 text-xs">
@@ -593,22 +639,22 @@ function FleetMobileSummary({
         <MobileStat
           label={t`Hashrate`}
           value={
-            fleet.total_hashrate_ghs !== null ? formatGhs(fleet.total_hashrate_ghs) : '-'
+            fleet.total_hashrate_ghs !== null ? formatGhs(fleet.total_hashrate_ghs, fmt) : '-'
           }
         />
         <MobileStat
           label={t`Best diff`}
-          value={fleet.best_diff_text ?? '-'}
+          value={formatBestDiff(fleet.best_diff_numeric, fleet.best_diff_text, fmt) ?? '-'}
         />
         <MobileStat
           label={t`Power`}
-          value={fleet.total_power_w !== null ? `${fleet.total_power_w.toFixed(1)} W` : '-'}
+          value={fleet.total_power_w !== null ? `${fixed(fmt, fleet.total_power_w, 1)} W` : '-'}
         />
         <MobileStat
           label={t`Efficiency`}
           value={
             fleet.efficiency_j_per_th !== null
-              ? `${fleet.efficiency_j_per_th.toFixed(1)} J/TH`
+              ? `${fixed(fmt, fleet.efficiency_j_per_th, 1)} J/TH`
               : '-'
           }
         />
