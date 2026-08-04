@@ -2,10 +2,11 @@
 
 > **STATUS: PREPARATION ONLY — NOT READY FOR THE INITIAL EMAIL.** The clean Task 9 local rerun and
 > fresh artifact build/inspection/checksum/commitment gates passed. Keep the initial email unsent
-> until the required physical-device validation has also passed. After Start9 responds and creates the
+> until the reviewed source is publicly reachable at an exact verified branch or commit URL and the
+> required physical-device validation has also passed. After Start9 responds and creates the
 > Start9-Community fork, the fork pull request and merge follow Start9's feedback and review. Request
-> production promotion only after a successful beta install, soak, and resolution of every beta
-> finding. Evidence snapshot: **2026-08-04**.
+> production promotion only after a successful beta install, soak, and resolution of every beta finding.
+> Evidence snapshot: **2026-08-04**.
 
 This document is a maintainer handoff and evidence record. It does not authorize publishing, device
 changes, marketplace activity, or any other external mutation.
@@ -325,6 +326,11 @@ enable LIVE or create, edit, or cancel a marketplace bid during automated prepar
 ### Before the initial email
 
 - [ ] At the initial-email stage, reconfirm the corrected Task 9 evidence and local artifacts are still current.
+- [ ] Push the reviewed preparation branch (or an explicitly approved successor) to the public package repository,
+      or merge it to the public default branch. The local preparation branch currently has no tracking branch; do
+      not treat local commits as publicly reviewable evidence.
+- [ ] Open and verify the exact public branch or commit URL for the reviewed source, then include that URL in the
+      initial email.
 - [ ] Complete every physical StartOS gate above in DRY-RUN, including active-bid safety and backup/restore.
 - [ ] Replace every email-draft placeholder with the completed local, package, device, and safety results.
 - [ ] Send the initial submission email. Later fork, beta, and promotion gates are not prerequisites for this email.
@@ -383,6 +389,8 @@ Hello Start9 team,
 
 Please consider Hashrate Autopilot for the Start9 Community Registry:
 https://github.com/mdubore/hashrate9
+
+Reviewed public branch or commit URL: [replace with the exact verified public URL before sending]
 
 Package ID: hashrate-autopilot-9
 Purpose: monitor and safely control an operator's Braiins Hashpower marketplace bid while routing rented hashrate to an operator-selected pool destination.

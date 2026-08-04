@@ -26,16 +26,6 @@ export const manifest = setupManifest({
       arch: ['x86_64', 'aarch64'],
     },
   },
-  alerts: {
-    install:
-      'Hashrate Autopilot can place and edit live Braiins marketplace bids after you enable LIVE mode. Complete setup in DRY-RUN first and verify your pool destination before enabling LIVE mode.',
-    update: null,
-    uninstall:
-      'Uninstalling deletes the StartOS data volume, including configuration, secrets, tick history, bid history, and alerts.',
-    restore: null,
-    start: null,
-    stop: null,
-  },
   dependencies: {
     bitcoind: {
       description:

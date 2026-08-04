@@ -60,6 +60,12 @@ for path in "${required_files[@]}"; do
     assert_file "$path"
 done
 
+assert_absent .github/workflows/startos-artifacts.yml
+assert_no_match \
+    '^[[:space:]]*alerts[[:space:]]*:' \
+    "SDK 2 manifest source must not declare the removed alerts field" \
+    startos/manifest/index.ts
+
 assert_active_line \
     startos/versions/current.ts \
     "^[[:space:]]*version:[[:space:]]*'1\\.17\\.4:0'[[:space:]]*,?[[:space:]]*$" \

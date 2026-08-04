@@ -15,7 +15,7 @@ record is the [Community Registry submission checklist](startos-community-regist
 
 ## Local package files
 
-- `startos/manifest/index.ts` - package identity, dependency declarations, alerts, volumes, and image build.
+- `startos/manifest/index.ts` - package identity, dependency declarations, volumes, and image build.
 - `startos/manifest/i18n.ts` - StartOS short and long descriptions.
 - `startos/dependencies.ts` - dependency configuration and health integration.
 - `startos/backups.ts` - backup and restore behavior for persistent state.
@@ -91,40 +91,14 @@ pnpm run release:verify -- --download
 The wrapper delegates to the reusable `publishing-github-releases` Codex skill. Override
 `GITHUB_RELEASE_SKILL_DIR` only when testing a local copy of that skill.
 
-## Optional manual CI artifact path
-
-The manual `StartOS Artifacts` workflow can build the same release bundle in GitHub Actions without publishing a
-GitHub Release or the Community Registry. It is optional and distinct from the reusable Community workflows.
-
-1. Run the `StartOS Artifacts` workflow manually.
-2. Download the uploaded `startos-artifacts` bundle.
-3. Verify it locally with `sha256sum -c SHA256SUMS`.
-4. Inspect both package manifests:
-   ```bash
-   start-cli s9pk inspect hashrate-autopilot-9_x86_64.s9pk manifest
-   start-cli s9pk inspect hashrate-autopilot-9_aarch64.s9pk manifest
-   ```
-5. Move or unpack the verified `.s9pk` files and `SHA256SUMS` into the repo root.
-6. Publish a draft GitHub release using those existing files:
-   ```bash
-   ./scripts/release-github.sh publish
-   ```
-7. Run release download verification:
-   ```bash
-   pnpm run release:verify -- --download
-   ```
-
-Use `./scripts/release-github.sh publish` for downloaded CI bundles because it uploads the artifacts already present
-in the repo root. `pnpm run release:github` is the local release path; it rebuilds artifacts before publishing.
+This repository does not provide a separate manual CI artifact workflow. Its checked-in StartOS workflows are the
+thin official Community Registry workflows; use the local/manual release profile and wrapper above for an expressly
+authorized standalone GitHub draft release.
 
 The SDK 2 Makefile's `make clean` target also deletes `node_modules`. The active local/manual release wrapper avoids
 that broad cleanup and removes only the exact generated `.s9pk` artifact paths before rebuilding, preserving the
 installed SDK include at `node_modules/@start9labs/start-sdk/s9pk.mk`. Reserve `make clean` for a deliberately clean
 Task 9-style rebuild followed by dependency reinstallation.
-
-Release-grade CI artifacts require the GitHub secret `STARTOS_DEVELOPER_KEY_PEM`. If CI and local builds use
-different signing keys, their `.s9pk` checksums will differ. `SHA256SUMS` verifies the artifact bundle it was
-generated with, not a separately signed rebuild.
 
 ## Expected warnings
 
