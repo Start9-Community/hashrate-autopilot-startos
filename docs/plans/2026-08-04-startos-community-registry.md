@@ -33,10 +33,15 @@ Run:
 ```bash
 git status --short --branch
 git merge-base --is-ancestor v1.17.1 HEAD
-git tag --verify v1.17.4
+git rev-parse --verify refs/tags/v1.17.4
+test "$(git rev-parse 'refs/tags/v1.17.4^{}')" = dcd98b1d6dca8922a91fa1c939831ed19e7455b3
+test "$(git show-ref --hash refs/tags/v1.17.4)" = "$(git ls-remote upstream refs/tags/v1.17.4 | awk '{print $1}')"
+test "$(git rev-parse 'refs/tags/v1.17.4^{}')" = "$(git ls-remote upstream 'refs/tags/v1.17.4^{}' | awk '{print $1}')"
 ```
 
-Expected: clean `sync-upstream-v1.17.1`; both ancestry/tag commands exit 0.
+Expected: clean `sync-upstream-v1.17.1`; the ancestry and tag-reference checks exit 0; the local annotated-tag
+object and peeled commit match upstream, and the peeled commit is
+`dcd98b1d6dca8922a91fa1c939831ed19e7455b3`.
 
 **Step 2: Rename the integration branch**
 
