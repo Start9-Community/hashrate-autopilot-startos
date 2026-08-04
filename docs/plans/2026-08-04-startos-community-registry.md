@@ -421,7 +421,7 @@ git commit -m "build: migrate package to StartOS SDK 2"
 
 **Step 1: Add the pull-request build entry point**
 
-Create `.github/workflows/build.yml` from the official thin workflow, targeting `main`, calling `Start9Labs/start-technologies/.github/workflows/build.yml@master`, and forwarding optional `DEV_KEY`.
+Create `.github/workflows/build.yml` from the official thin workflow, targeting `main` and calling `Start9Labs/start-technologies/.github/workflows/build.yml@master`. Deliberately harden the canonical template by subscribing to `opened`, `synchronize`, `reopened`, and `ready_for_review`, so a draft receives a build when marked ready, and by forwarding no `DEV_KEY` or other persistent secret. The reusable workflow's signing-key secret is optional and falls back to an ephemeral key; omitting it prevents PR-controlled `npm ci` lifecycle scripts and `make` targets from accessing the persistent developer key.
 
 **Step 2: Add the merge-to-beta entry point**
 
@@ -459,7 +459,7 @@ node -e "const fs=require('fs'); const YAML=require('yaml'); for (const f of fs.
 pnpm run check:startos-submission
 ```
 
-Expected: all workflow files parse; the submission test advances to documentation assertions.
+Structurally assert that the build workflow has exactly the four pull-request event types above, has no `secrets` block or `DEV_KEY` reference, and retains the official reusable-workflow reference. Expected: all workflow files parse, ready non-draft PRs run while drafts remain skipped, no persistent secret reaches PR builds, and the submission test advances to documentation assertions.
 
 **Step 6: Commit**
 
