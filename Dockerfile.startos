@@ -8,17 +8,15 @@ WORKDIR /app
 ARG TARGETARCH
 ARG APP_VERSION=unknown
 
-RUN corepack enable
-
-COPY pnpm-lock.yaml pnpm-workspace.yaml package.json .npmrc ./
+COPY package-lock.json package.json .npmrc ./
 COPY packages/braiins-client/package.json packages/braiins-client/
 COPY packages/bitcoind-client/package.json packages/bitcoind-client/
 COPY packages/daemon/package.json packages/daemon/
 COPY packages/dashboard/package.json packages/dashboard/
 COPY packages/shared/package.json packages/shared/
 
-RUN --mount=type=cache,id=pnpm-startos-${TARGETARCH},target=/root/.local/share/pnpm/store,sharing=locked \
-    pnpm install --frozen-lockfile --prod
+RUN --mount=type=cache,id=npm-startos-${TARGETARCH},target=/root/.npm,sharing=locked \
+    npm ci --omit=dev --workspace @hashrate-autopilot/daemon --include-workspace-root=false
 
 COPY packages/bitcoind-client/dist packages/bitcoind-client/dist
 COPY packages/braiins-client/dist packages/braiins-client/dist

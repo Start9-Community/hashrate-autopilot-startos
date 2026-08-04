@@ -2,8 +2,7 @@
 !BUILD_NUMBER
 !.npmrc
 !package.json
-!pnpm-lock.yaml
-!pnpm-workspace.yaml
+!package-lock.json
 !packages/
 !packages/bitcoind-client/
 !packages/bitcoind-client/package.json
