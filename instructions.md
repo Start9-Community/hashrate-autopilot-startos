@@ -12,9 +12,9 @@ The Dashboard opens Hashrate Autopilot's setup wizard and, after setup, its moni
 interface. Your configuration, application secrets, SQLite state, and retained history persist in the
 service data volume and are included together when you back up the service.
 
-Bitcoin, Electrs, and Datum are required services. The package uses their internal StartOS addresses,
-selects Electrs for payout tracking, uses the local Bitcoin node address for RPC features, and uses
-Datum for dashboard statistics.
+Bitcoin, Electrs, and Datum are required services. At startup, the package supplies their internal
+StartOS addresses and selects Electrs for payout tracking. Datum provides the local gateway and
+dashboard statistics; it receives rented hashrate only when your public pool destination routes to it.
 
 ## Getting set up
 
@@ -25,10 +25,14 @@ Datum for dashboard statistics.
    internal Datum statistics address as the pool destination. Confirm the hostname, port forwarding,
    worker identity, and Ocean payout address before continuing.
 3. Confirm that the wizard shows the expected StartOS dependency values and Electrs payout tracking.
-   The package reapplies those internal addresses and the Electrs backend when the daemon starts, so
-   changes to those fields do not alter the packaged runtime.
+   The package applies those values when the daemon starts. Some saved edits can affect a running
+   process, but the payout backend, Electrs endpoint, and Bitcoin client keep their startup settings.
+   Do not rely on dashboard route edits as durable package configuration; a restart rebuilds boot-time
+   integrations from the package values.
 4. Complete the wizard and leave the controller in **DRY-RUN**. Check the Status page, service health,
-   proposed decisions, price ceilings, target hashrate, and destination routing without executing bids.
+   proposed decisions, price ceilings, target hashrate, and destination routing without issuing new bid
+   mutations. Inspect the Braiins marketplace separately and confirm any existing bid is inactive if you
+   expect delivery and spend to be stopped.
 5. Verify independently that the public Datum/pool destination accepts traffic for the intended Ocean
    worker. Switch to **LIVE** only after the DRY-RUN decisions and the public destination are correct.
 
@@ -38,17 +42,19 @@ Use the Dashboard to monitor marketplace, Datum, Ocean, and payout information; 
 review proposed or executed bid decisions; and select DRY-RUN, LIVE, or PAUSED. The package adds no
 separate StartOS actions.
 
-Keep DRY-RUN as the boot mode until the setup is proven. LIVE permits the controller to create, edit,
-and cancel real Braiins bids with real funds. PAUSED prevents bid changes until you choose another run
-mode.
+Keep DRY-RUN as the boot mode until the setup is proven. DRY-RUN and PAUSED prevent the controller from
+issuing new create, edit, or cancel API mutations. Switching modes does not cancel an already-active
+Braiins bid or stop its ongoing delivery and spend. Inspect and cancel existing marketplace bids
+separately, then confirm they are inactive. LIVE permits real bid mutations with real funds.
 
 Back up the service before uninstalling if you need to retain its configuration or history. Restoring
 that backup restores the complete service data volume.
 
 ## Limitations
 
-- The package fixes the internal dependency addresses and Electrs payout backend at runtime. Dashboard
-  changes to those values do not override the package, and Bitcoin RPC credentials are not included.
+- Package integration values override saved configuration at daemon startup. Live behavior is mixed,
+  and a restart reconstructs boot-time clients with the package values. Bitcoin RPC credentials are not
+  included.
 - The internal Datum address is for statistics only. Public Stratum ingress, router forwarding, and
   dynamic DNS remain your responsibility.
 - Initial setup is not protected by the application password until you complete the wizard; use a
