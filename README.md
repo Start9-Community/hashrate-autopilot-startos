@@ -8,7 +8,7 @@ setup.
 This fork tracks upstream Hashrate Autopilot v1.17.4 and adds the StartOS service wrapper, dependency
 declarations, persistent data volume, backup hooks, web interface wiring, and `.s9pk` build flow. Upstream
 application behavior is intentionally kept close to `rdouma/hashrate-autopilot`; StartOS-specific work lives in
-`startos/`, `instructions.md`, `Makefile`, and `s9pk.mk`.
+`startos/`, `instructions.md`, and `Makefile`.
 
 > 💬 **New here, or something not behaving as expected?** The **[FAQ](FAQ.md)** covers the common setup and Profit & Loss questions - how the pieces fit together, what to put in the Stratum host field (and why a LAN IP won't work), and why your Profit & Loss can read as a loss early on.
 

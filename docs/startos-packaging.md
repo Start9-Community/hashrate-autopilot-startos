@@ -16,7 +16,7 @@ published packaging documentation at `https://docs.start9.com/packaging/`.
 - `startos/backups.ts` - backup and restore behavior for persistent state.
 - `startos/init/index.ts` - runtime initialization before the daemon starts.
 - `instructions.md` - install-time operator instructions shown by StartOS.
-- `Makefile` and `s9pk.mk` - convenience targets around `start-cli s9pk pack`.
+- `Makefile` - convenience targets provided by the StartOS SDK around `start-cli s9pk pack`.
 - `.github/release-profile.env` - GitHub release profile consumed by the local `publishing-github-releases` Codex skill.
 - `scripts/release-github.sh` - wrapper around the reusable release skill for StartOS package releases.
 

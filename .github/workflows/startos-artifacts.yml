@@ -57,7 +57,7 @@ jobs:
 
       - name: Build release inputs
         run: |
-          make clean
+          rm -f hashrate-autopilot-9_x86_64.s9pk hashrate-autopilot-9_aarch64.s9pk
           pnpm run build:release-inputs
 
       - name: Build signed artifacts
