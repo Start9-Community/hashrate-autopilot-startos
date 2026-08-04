@@ -82,36 +82,143 @@ a substitute for the final clean Task 9 rerun.
 | Workflow tag guards | `npm run check:startos-submission` | PASS; Community tags are `v*_*`, and StartOS underscore tags are excluded from the upstream Docker job |
 | Clean application/release-input build | `rm -rf javascript packages/*/dist && npm run build` | PASS; StartOS JavaScript, daemon, dashboard, and workspace outputs regenerated |
 
-## Final clean local rerun — Task 9
+## Task 9 executable command sequence
 
-Run these from a clean dependency tree in Task 9. Do not mark this block complete from the historical
-results above.
+Run this block in order from the clean repository root. It removes only named/generated dependency,
+build-output, checksum, and package paths before reinstalling; it deliberately does not invoke
+`make clean`, because the SDK 2 target deletes `node_modules` and therefore removes the included
+`s9pk.mk`. If a maintainer invokes `make clean` outside this sequence, run `npm ci` immediately
+afterward and before the next `make` command.
 
-- [ ] Remove only generated dependency/build outputs, then run `npm ci`.
-- [ ] Run `npm run format:check`.
-- [ ] Run `npm run check` and record the fresh lint, typecheck, and test totals.
-- [ ] Run `npm run check:startos-submission`.
-- [ ] Parse every `.github/workflows/*.yml` file and recheck both tag guards.
-- [ ] Run `git diff --check`.
-- [ ] Run the clean release-input build and confirm every required output exists.
+The installed `start-cli 1.1.0` has no `s9pk verify` or `s9pk sign` subcommand. The supported read-only
+signature evidence surface is `s9pk inspect ... commitment`, which displays the package root signature
+hash and maximum size. Record that output without calling it independent cryptographic verification.
+Manifest inspection and checksum verification are separate commands below.
 
-## Package artifact gates — Task 9
+The SDK expects the signing key at the user-level path `~/.startos/developer.key.pem`. This block only
+checks that the file already exists, is owned by the current user, and has mode `0600`. If it is absent,
+the block stops and names the supported `start-cli init-key` generation command. Never copy the key into
+the repository, print its contents, or commit it.
 
-The expected generated files are ignored, uncommitted release artifacts:
+```bash
+set -euo pipefail
 
-- `hashrate-autopilot-9_x86_64.s9pk`
-- `hashrate-autopilot-9_aarch64.s9pk`
+test "$(git rev-parse --show-toplevel)" = "$PWD"
+test -z "$(git status --porcelain)"
+source_commit="$(git rev-parse HEAD)"
+execution_timestamp="$(date --iso-8601=seconds)"
+printf 'tested source commit: %s\nexecution timestamp: %s\n' "$source_commit" "$execution_timestamp"
 
-Pre-existing or stale files with these names are not evidence. Task 9 must rebuild and inspect both from
-the final clean commit. Do not attach or describe either package as available before these gates pass.
+rm -rf \
+  node_modules \
+  packages/bitcoind-client/node_modules \
+  packages/braiins-client/node_modules \
+  packages/daemon/node_modules \
+  packages/dashboard/node_modules \
+  packages/shared/node_modules \
+  javascript \
+  packages/bitcoind-client/dist \
+  packages/braiins-client/dist \
+  packages/daemon/dist \
+  packages/dashboard/dist \
+  packages/shared/dist
+rm -f \
+  packages/bitcoind-client/tsconfig.tsbuildinfo \
+  packages/braiins-client/tsconfig.tsbuildinfo \
+  packages/daemon/tsconfig.tsbuildinfo \
+  packages/dashboard/tsconfig.tsbuildinfo \
+  packages/shared/tsconfig.tsbuildinfo \
+  hashrate-autopilot-9_x86_64.s9pk \
+  hashrate-autopilot-9_aarch64.s9pk \
+  SHA256SUMS
 
-- [ ] Build fresh `hashrate-autopilot-9_x86_64.s9pk` from the final clean commit.
-- [ ] Build fresh `hashrate-autopilot-9_aarch64.s9pk` from the final clean commit.
-- [ ] Inspect the x86_64 manifest and record ID, ExVer, SDK, git hash, dependencies, interface, and architecture.
-- [ ] Inspect the aarch64 manifest and record ID, ExVer, SDK, git hash, dependencies, interface, and architecture.
-- [ ] Generate and verify checksums for the same two freshly built files.
-- [ ] Confirm and record the expected signing identity/signature for both fresh artifacts without exposing private key material.
-- [ ] Confirm the generated artifacts, checksum file, build outputs, and `.startos/` workspace material remain uncommitted.
+npm ci
+npm run format:check
+npm run check
+npm run check:startos-submission
+node node_modules/@start9labs/start-sdk/lint.mjs
+node -e "const fs=require('fs'); const YAML=require('yaml'); for (const f of fs.readdirSync('.github/workflows')) if (f.endsWith('.yml')) YAML.parse(fs.readFileSync('.github/workflows/'+f,'utf8'));"
+git diff --check
+start-cli --version
+
+developer_key="$HOME/.startos/developer.key.pem"
+if [ ! -f "$developer_key" ]; then
+  printf '%s\n' 'Missing user-level developer key. Run start-cli init-key, then restart Task 9.' >&2
+  exit 1
+fi
+test -O "$developer_key"
+test "$(stat -c '%a' "$developer_key")" = "600"
+printf 'developer key permissions: %s\n' "$(stat -c '%a' "$developer_key")"
+
+npm run build
+make x86
+make arm
+
+packages=(
+  hashrate-autopilot-9_x86_64.s9pk
+  hashrate-autopilot-9_aarch64.s9pk
+)
+for package in "${packages[@]}"; do
+  test -f "$package"
+  stat -c 'artifact: %n; size_bytes: %s' "$package"
+  start-cli s9pk inspect "$package" manifest \
+    | jq '{id, version, sdkVersion, gitHash, arches: ([.images[].arch[]] | unique), dependencies: (.dependencies | keys), interfaces: (.interfaces | keys)}'
+  start-cli s9pk inspect "$package" commitment
+done
+
+sha256sum "${packages[@]}" > SHA256SUMS
+sha256sum -c SHA256SUMS
+git status --short
+test -z "$(git status --porcelain)"
+test -z "$(git ls-files -- "${packages[@]}" SHA256SUMS)"
+```
+
+Pre-existing or stale files with these names are not evidence. Task 9 must rebuild both from the tested
+source commit. Do not attach or describe either package as available before the sequence passes and the
+evidence below is recorded.
+
+## Task 9 result and evidence record
+
+Leave every field blank and every gate unchecked until the exact sequence above has run from the final
+clean commit.
+
+| Run evidence | Result |
+| --- | --- |
+| Tested source commit |  |
+| Execution timestamp, including time zone |  |
+| `start-cli --version` |  |
+| User-level developer key ownership/mode preflight |  |
+| `npm ci` |  |
+| Format check |  |
+| Full lint/typecheck/test check and totals |  |
+| Submission contract |  |
+| SDK lint |  |
+| Workflow parse and tag guards |  |
+| `git diff --check` |  |
+| Clean release-input build |  |
+| Final tracked-worktree status |  |
+
+| Artifact evidence | x86_64 | aarch64 |
+| --- | --- | --- |
+| Filename |  |  |
+| Size in bytes |  |  |
+| SHA-256 |  |  |
+| Commitment/signature inspection result |  |  |
+| Manifest package ID |  |  |
+| Manifest version |  |  |
+| Manifest SDK version |  |  |
+| Manifest git hash |  |  |
+| Manifest architecture |  |  |
+| Manifest dependency IDs |  |  |
+| Manifest interface IDs |  |  |
+
+- [ ] Exact Task 9 sequence completed from the recorded clean source commit.
+- [ ] User-level developer key preflight passed without copying, printing, or committing the key.
+- [ ] Fresh x86_64 and aarch64 packages built and match the recorded filenames.
+- [ ] Both manifests inspected and every requested field recorded.
+- [ ] Both commitment/signature inspection results recorded without overstating verification.
+- [ ] Both artifact sizes and SHA-256 values recorded; `sha256sum -c SHA256SUMS` passed.
+- [ ] Generated artifacts, checksum file, and build outputs remain uncommitted.
 
 ## Package compliance
 
@@ -119,7 +226,7 @@ These repository-level checks were established before the final Task 9 rerun:
 
 - [x] Version metadata uses ExVer `1.17.4:0`; the intended tag follows `v{upstream}_{downstream}` as `v1.17.4_0`.
 - [x] `.github/workflows/build.yml`, `tagAndRelease.yml`, and `release.yml` call the official Start9 reusable workflows.
-- [x] Pull-request builds do not receive the persistent developer key; the Community release workflows retain their required configured secrets.
+- [x] The pull-request workflow declares no persistent developer-key mapping; the release workflow files declare the required variable and secret mappings. Repository files do not prove that those external values are configured in a future Start9-Community fork.
 - [x] The Community tag trigger accepts `v*_*`, while the upstream Docker workflow excludes underscore tags.
 - [x] `README.md` follows the official package README role, documents runtime/image, volumes, interface, health, dependencies, backup/restore, limitations, and contains no release version.
 - [x] `instructions.md` is an operator quick-start, begins after installation, names real UI surfaces, contains no release version or secret, and keeps the operator in DRY-RUN until routing and decisions are verified.
@@ -140,31 +247,32 @@ enable LIVE or create, edit, or cancel a marketplace bid during automated prepar
 - [ ] Uninstall and reinstall cleanly.
 - [ ] Back up, restore, and verify persistent configuration/state.
 
-## Community beta and production gates
+## Stage gates
 
-The following are external actions in the official process and remain pending:
+### Before the initial email
 
-- [ ] Send the initial submission email only after every required local, artifact, and physical-device gate is complete.
-- [ ] Receive the Start9-Community fork and any review feedback from Start9.
+- [ ] Complete the exact Task 9 sequence and fill every Task 9 evidence field.
+- [ ] Complete every physical StartOS gate above in DRY-RUN, including active-bid safety and backup/restore.
+- [ ] Replace every email-draft placeholder with the completed local, package, device, and safety results.
+- [ ] Send the initial submission email. Later fork, beta, and promotion gates are not prerequisites for this email.
+
+### After Start9 responds: fork, pull request, merge, and beta
+
+- [ ] Receive the Start9-Community fork and address Start9's initial review feedback.
+- [ ] Confirm the future Start9-Community fork has the required release variables and secrets configured; the repository proves only that workflow mappings are declared.
 - [ ] Open the submission pull request against the Start9-Community fork.
 - [ ] Receive a passing Community pull-request build and review; do not claim this before the external run completes.
 - [ ] Have Start9 merge the pull request and verify that automation builds, tags, and deploys the package to `community-beta`.
 - [ ] Install the package from `community-beta` and repeat the physical StartOS checks in DRY-RUN.
-- [ ] Soak in beta for at least a couple of days, with maintainer/tester observation as recommended by Start9.
-- [ ] Resolve any beta findings through another pull request and repeat the beta cycle.
+
+### Before production promotion
+
+- [ ] Soak the successful beta installation for at least a couple of days, with maintainer/tester observation as recommended by Start9.
+- [ ] Resolve every beta finding through another pull request and repeat the beta install/soak cycle as needed.
 - [ ] Request production promotion by emailing `submissions@start9.com` or opening an issue on the Start9-Community fork.
 - [ ] Verify Start9 promoted the tested beta build to the production `community` registry.
 
-## Blockers and known non-blocking warnings
-
-### Blocking submission
-
-- Fresh Task 9 dependency, format, check, contract, workflow, and clean-build reruns are not recorded.
-- Fresh x86_64 and aarch64 package builds, manifest inspections, checksums, and signatures are not recorded.
-- Every physical StartOS gate is untested in this evidence snapshot.
-- The beta soak and production-promotion gates have not started.
-
-### Known non-blocking warnings
+## Known non-blocking warnings
 
 - Lint reports warnings from generated Lingui locale catalogs. Generated locale warnings are not lint
   failures, but any new warning outside the known generated files must be investigated.
