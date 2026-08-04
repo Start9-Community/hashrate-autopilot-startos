@@ -262,7 +262,7 @@ clean commit.
 | `start-cli --version` | `start-cli 1.1.0` |
 | Workspace package-signing key ownership/mode preflight | PASS; nearest SDK 2 workspace `build.key.pem`, owner `missydog` (current user), mode `0600`; no key contents printed or copied |
 | Host arm64 build support | PASS; host `qemu-aarch64` binfmt handler enabled and default builder advertised `linux/arm64`; Task 10 did not re-register binfmt |
-| Full lint/typecheck/test check and totals | Not rerun for Task 10; the fresh baseline at `0787dc7c970f40536ec14fae82b37745af9ac003` passed 80 test files and 746 tests plus recorded skips. Task 10 ran the focused contract/typecheck/lint/build gates below. |
+| Full lint/typecheck/test check and totals | Not rerun for Task 10; the authoritative clean Task 9 run at source `404ad198ba242806a0042e4873df54636f1a6c64` passed 78 test files with 1 skipped and 739 tests with 1 skipped. Task 10 used the focused submission contract, TypeScript check, SDK lint, and build gates below. |
 | Focused TypeScript check | PASS; `npx tsc --noEmit` |
 | Submission contract | PASS |
 | SDK lint | PASS |
