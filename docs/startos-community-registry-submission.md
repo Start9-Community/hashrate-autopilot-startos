@@ -1,8 +1,11 @@
 # StartOS Community Registry Submission Checklist
 
-> **STATUS: PREPARATION ONLY — NOT READY TO SUBMIT.** Do not send the email, open the
-> Start9-Community pull request, create or push a tag, or request promotion until every required
-> unchecked gate below has passed. Evidence snapshot: **2026-08-04**.
+> **STATUS: PREPARATION ONLY — NOT READY FOR THE INITIAL EMAIL.** Keep the initial email
+> unsent until the clean Task 9 local rerun, fresh artifact build/inspection/checksum/signature gates,
+> and required physical-device validation have passed. After Start9 responds and creates the
+> Start9-Community fork, the fork pull request and merge follow Start9's feedback and review. Request
+> production promotion only after a successful beta install, soak, and resolution of every beta
+> finding. Evidence snapshot: **2026-08-04**.
 
 This document is a maintainer handoff and evidence record. It does not authorize publishing, device
 changes, marketplace activity, or any other external mutation.
@@ -174,7 +177,9 @@ The following are external actions in the official process and remain pending:
 
 ## UNSENT email draft
 
-> **UNSENT — send only after all required local, package, physical-device, and safety gates above are complete.**
+> **UNSENT — DO NOT SEND until every placeholder below is replaced and the clean Task 9 local,
+> fresh-package, signature, inspection, checksum, physical-device, and safety prerequisites are
+> complete.**
 
 ```text
 To: submissions@start9.com
@@ -189,14 +194,17 @@ Package ID: hashrate-autopilot-9
 Purpose: monitor and safely control an operator's Braiins Hashpower marketplace bid while routing rented hashrate to an operator-selected pool destination.
 Architectures: x86_64 and aarch64.
 
-Local lint, typecheck, test, submission-contract, workflow, clean-build, dual-package, manifest, checksum, signature, and physical StartOS results:
-[INSERT THE COMPLETED FINAL EVIDENCE SUMMARY HERE BEFORE SENDING]
+Local validation: [replace with completed lint, typecheck, test, submission-contract, workflow, and clean-build results before sending]
+Package validation: [replace with completed dual-package, manifest, checksum, and signature results before sending]
+Physical StartOS validation: [replace with completed device results before sending]
+Safety validation: [replace with completed DRY-RUN and active-bid safety results before sending]
 
-The service starts in DRY-RUN. LIVE bidding was not enabled during automated preparation, and the physical safety checks confirmed the documented active-bid behavior.
+The service is configured to start in DRY-RUN. [Confirm here before sending that physical validation remained in DRY-RUN and did not mutate bids.]
 
 Regards,
 [MAINTAINER NAME]
 ```
 
-No package attachments are claimed or included by this draft. If any required box remains unchecked,
-leave this draft unsent.
+No package attachments are claimed or included by this draft. Leave it unsent until every placeholder
+is replaced and the initial-email prerequisites named above have passed. Fork/PR, beta, and promotion
+items will remain pending until their later stages of the official process.
