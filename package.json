@@ -27,6 +27,7 @@
     "test": "pnpm run prepare:checks && vitest run",
     "test:watch": "vitest",
     "check": "pnpm -w run lint && pnpm -w run typecheck && pnpm -w run test",
+    "check:startos-submission": "bash tests/startos/test-community-registry.sh",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
