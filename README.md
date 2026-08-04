@@ -87,11 +87,11 @@ The package also sets the following process environment variables in
 | `BHA_DATUM_API_URL` | Supplies the internal statistics URL for the required `datum` service. |
 | `BHA_ELECTRS_HOST` | Supplies the internal hostname for the required `electrs` service. |
 | `BHA_ELECTRS_PORT` | Supplies the Electrum protocol port for `electrs`. |
-| `BHA_PAYOUT_SOURCE` | Selects Electrs as the default payout-tracking backend. |
+| `BHA_PAYOUT_SOURCE` | Fixes the payout-tracking backend to Electrs. |
 
 These variables contain routing and runtime values, not operator credentials. Hashrate Autopilot stores
 wizard and dashboard configuration in SQLite, but the five `BHA_*` dependency values above are runtime
-overrides: they take precedence over stored endpoint and payout-backend choices whenever the packaged
+overrides: they take precedence over stored endpoint and payout-backend settings whenever the packaged
 daemon starts. Changing those fields in the dashboard does not change the effective StartOS runtime.
 
 ## Network Access and Interfaces
@@ -105,9 +105,9 @@ The package defines one interface:
 StartOS publishes `ui` as the Dashboard interface and prefers the standard external HTTP port. The
 daemon serves the dashboard and API from the same listener.
 
-The `BHA_DATUM_API_URL` default is an internal statistics connection. It is not the public Stratum
-destination that Braiins needs. The pool URL entered in Hashrate Autopilot must resolve to a Datum or
-other pool endpoint reachable from the public internet.
+The package-enforced `BHA_DATUM_API_URL` is an internal statistics connection. It is not the public
+Stratum destination that Braiins needs. The pool URL entered in Hashrate Autopilot must resolve to a
+Datum or other pool endpoint reachable from the public internet.
 
 ## Actions (StartOS UI)
 
@@ -204,5 +204,13 @@ startos_managed_env_vars:
   - BHA_ELECTRS_HOST
   - BHA_ELECTRS_PORT
   - BHA_PAYOUT_SOURCE
+package_enforced_runtime_routing:
+  variables:
+    - BHA_BITCOIND_RPC_URL
+    - BHA_DATUM_API_URL
+    - BHA_ELECTRS_HOST
+    - BHA_ELECTRS_PORT
+    - BHA_PAYOUT_SOURCE
+  payout_backend: electrs
 default_run_mode: DRY-RUN
 ```

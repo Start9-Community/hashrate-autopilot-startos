@@ -19,7 +19,8 @@ Datum for dashboard statistics.
 ## Getting set up
 
 1. Open the Dashboard and complete the setup wizard. Enter your Braiins owner token, a dashboard
-   password, hashrate targets, price limits, Ocean payout address, and payout-tracking choice.
+   password, hashrate targets, price limits, public pool destination, Ocean worker identity, and payout
+   address. The optional read-only Braiins token can also be entered here.
 2. Set the pool destination to the public Datum Stratum endpoint that Braiins can reach. Do not use the
    internal Datum statistics address as the pool destination. Confirm the hostname, port forwarding,
    worker identity, and Ocean payout address before continuing.
