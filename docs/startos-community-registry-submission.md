@@ -250,20 +250,20 @@ inspection remained a read-only report of `rootSighash` and `rootMaxsize`, not a
 verification. `SHA256SUMS` was generated only after both fresh package builds completed and was then
 verified with `sha256sum -c`.
 
-## Task 10 result and evidence record
+## Current bridge-migration build result and evidence record
 
-Leave every field blank and every gate unchecked until the current procedure above has run from the final
-clean commit.
+This record covers the clean rebuild after replacing legacy service addressing with SDK-managed bridge
+resolution. The evidence-only documentation commit follows the tested source commit.
 
 | Run evidence | Result |
 | --- | --- |
-| Tested source commit | `b82884b089de8b41384ac47385c2efa83e9d0244` — clean source-fix commit; the evidence-only documentation commit follows it |
-| Execution timestamp, including time zone | `2026-08-04T08:12:09-07:00` |
+| Tested source commit | `b11a747bd6b595b4d57e9766505ce7a3d0884aea` — clean bridge-migration source commit; the evidence-only documentation commit follows it |
+| Execution timestamp, including time zone | `2026-08-04T21:08:33-07:00` |
 | `start-cli --version` | `start-cli 1.1.0` |
 | Workspace package-signing key ownership/mode preflight | PASS; nearest SDK 2 workspace `build.key.pem`, owner `missydog` (current user), mode `0600`; no key contents printed or copied |
-| Host arm64 build support | PASS; host `qemu-aarch64` binfmt handler enabled and default builder advertised `linux/arm64`; Task 10 did not re-register binfmt |
-| Full lint/typecheck/test check and totals | Not rerun for Task 10; the authoritative clean Task 9 run at source `404ad198ba242806a0042e4873df54636f1a6c64` passed 78 test files with 1 skipped and 739 tests with 1 skipped. Task 10 used the focused submission contract, TypeScript check, SDK lint, and build gates below. |
-| Focused TypeScript check | PASS; `npx tsc --noEmit` |
+| Host arm64 build support | PASS; host `qemu-aarch64` binfmt handler enabled and default builder advertised `linux/arm64`; the bridge rebuild did not re-register binfmt |
+| Full lint/typecheck/test check and totals | PASS at the tested source commit; 81 test files passed with 1 skipped, and 752 tests passed with 1 skipped. Lint reported 0 errors and the 6 known generated-catalog warnings. |
+| Focused TypeScript check | PASS; root StartOS TypeScript and all workspace typechecks completed successfully |
 | Submission contract | PASS |
 | SDK lint | PASS |
 | Workflow parse and tag guards | PASS; every remaining workflow YAML file parsed, and the submission contract passed its tag guards |
@@ -276,14 +276,14 @@ clean commit.
 | Artifact evidence | x86_64 | aarch64 |
 | --- | --- | --- |
 | Filename | `hashrate-autopilot-9_x86_64.s9pk` | `hashrate-autopilot-9_aarch64.s9pk` |
-| Size in bytes | `79058760` | `76822347` |
-| SHA-256 | `6a0cb6d4b7953e9b7989f15d53d687c1e3ce673c83d4343151b2ad8c9b9a55f9` | `f5e7a5e84a8407767f256d3221efd1694474a08b4f311756775bccacd0de6a24` |
-| Commitment/signature inspection result | `rootSighash: faCsnKQP9n4CXQ0MMCKj3qtz4s6xFZ7OGOZJfEcQGsI`; `rootMaxsize: 445` | `rootSighash: q0BGX5YQaa9CPlNoGmeojMdH3k0GflSX2tfmXH/D1Gw`; `rootMaxsize: 445` |
+| Size in bytes | `79063008` | `76826595` |
+| SHA-256 | `c89ea61c389c0c61c01c25b71f728b0c3984b8406a4a739dba9b2ee7f84c31f9` | `5d4deae9f16e17197afc3489edfb4ee3db0bf110a4073f2b9b058726af44e391` |
+| Commitment/signature inspection result | `rootSighash: 4mO1zhj1pvYNcJ0G0rgUFHvhIZBnwbot4lG9y7Qxw24`; `rootMaxsize: 445` | `rootSighash: ruWf1T9aYnuAhmwOxGDPKB9IHulQoZsxg6DomS72X2w`; `rootMaxsize: 445` |
 | Manifest package ID | `hashrate-autopilot-9` | `hashrate-autopilot-9` |
 | Manifest title | `Hashrate Autopilot for StartOS` | `Hashrate Autopilot for StartOS` |
 | Manifest version | `1.17.4:0` | `1.17.4:0` |
 | Manifest SDK version | `2.0.9` | `2.0.9` |
-| Manifest git hash | `b82884b089de8b41384ac47385c2efa83e9d0244` | `b82884b089de8b41384ac47385c2efa83e9d0244` |
+| Manifest git hash | `b11a747bd6b595b4d57e9766505ce7a3d0884aea` | `b11a747bd6b595b4d57e9766505ce7a3d0884aea` |
 | Manifest architecture | `x86_64` | `aarch64` |
 | Manifest image summary | `main`: packed; `arch: [x86_64]`; `emulateMissingAs: x86_64`; `nvidiaContainer: false` | `main`: packed; `arch: [aarch64]`; `emulateMissingAs: x86_64`; `nvidiaContainer: false` |
 | Manifest dependency IDs | `bitcoind`, `datum`, `electrs` | `bitcoind`, `datum`, `electrs` |
@@ -292,7 +292,7 @@ clean commit.
 | Manifest interface IDs | Not present: SDK 2 package manifests have no `interfaces` field | Not present: SDK 2 package manifests have no `interfaces` field |
 | Manifest release notes (`en_US`) | Upstream v1.17.4 update covering Ocean payout deductions/corrections, Timeline-note persistence, Electrum socket error handling, Bitaxe number formatting, Telegram 2FA-note removal, and the user FAQ; includes the upstream v1.17.4 release URL | Same as x86_64 |
 
-- [x] Task 10 rebuild completed from the recorded clean source commit.
+- [x] Bridge-migration rebuild completed from the recorded clean source commit.
 - [x] Workspace package-signing key preflight passed without copying, printing, or committing the key.
 - [x] Fresh x86_64 and aarch64 packages built and match the recorded filenames.
 - [x] Both manifests inspected and every requested field recorded, including absent SDK 2 alerts and interface fields.
@@ -300,20 +300,21 @@ clean commit.
 - [x] Both artifact sizes and SHA-256 values recorded; `sha256sum -c SHA256SUMS` passed.
 - [x] Generated artifacts, checksum file, and build outputs remain uncommitted.
 
-### Task 10 execution notes
+### Bridge-migration rebuild notes
 
-- The prior package files and checksum were preserved through the source-fix commit, then only those three
-  exact ignored paths were unlinked before rebuilding. No `make clean` or broader cleanup ran.
+- The prior ignored ARM package and checksum were unlinked by exact path before rebuilding. The prior
+  root-level x86 sideload package was replaced only after the corrected package passed inspection and
+  checksum verification. No `make clean` or broader cleanup ran.
 - The inherited workspace host was `dev-vm.local`, which did not resolve. A command-scoped loopback shim
   allowed local `s9pk` operations without editing shared config or contacting a device.
 - The host `qemu-aarch64` binfmt handler was already enabled and the builder advertised `linux/arm64` before
-  packaging. Both architecture builds succeeded sequentially; Task 10 performed no privileged registration.
+  packaging. Both architecture builds succeeded sequentially; the rebuild performed no privileged registration.
 - Commitment inspection reports the package root signature hash and maximum size. It is recorded as the
   supported read-only evidence surface, not as independent cryptographic verification.
 
 ## Package compliance
 
-These repository-level checks were reconfirmed for the final Task 10 rebuild:
+These repository-level checks were reconfirmed for the bridge-migration rebuild:
 
 - [x] Version metadata uses ExVer `1.17.4:0`; the intended tag follows `v{upstream}_{downstream}` as `v1.17.4_0`.
 - [x] `.github/workflows/build.yml`, `tagAndRelease.yml`, and `release.yml` call the official Start9 reusable workflows.
@@ -321,6 +322,8 @@ These repository-level checks were reconfirmed for the final Task 10 rebuild:
 - [x] The Community tag trigger accepts `v*_*`, while the upstream Docker workflow excludes underscore tags.
 - [x] `README.md` follows the official package README role, documents runtime/image, volumes, interface, health, dependencies, backup/restore, limitations, and contains no release version.
 - [x] `instructions.md` is an operator quick-start, begins after installation, names real UI surfaces, contains no release version or secret, and keeps the operator in DRY-RUN until routing and decisions are verified.
+- [x] Bitcoin RPC, Datum, and Electrs endpoints use `sdk.host.getBridgeAddress(...).const()`; runtime
+      wrapper source and dashboard guidance contain no deprecated `.startos` service names.
 - [x] The package ID, repository links, architecture declarations, version graph, and generated-artifact names agree.
 
 ## Physical StartOS gates
@@ -332,7 +335,7 @@ enable LIVE or create, edit, or cancel a marketplace bid during automated prepar
 - [ ] Start the service successfully.
 - [ ] Open the setup wizard and dashboard UI.
 - [ ] Confirm the StartOS health check becomes green.
-- [ ] Confirm required Bitcoin, Electrs, and Datum dependency behavior and routing.
+- [ ] Confirm Bitcoin, Electrs, and Datum use their StartOS-assigned bridge endpoints and remain healthy after restart.
 - [ ] Confirm DRY-RUN prevents new create, edit, and cancel API mutations.
 - [ ] Verify active-bid safety: changing to DRY-RUN or PAUSED does not itself cancel an existing bid; independently confirm no active bid is spending before treating spend as stopped.
 - [ ] Uninstall and reinstall cleanly.
@@ -342,7 +345,7 @@ enable LIVE or create, edit, or cancel a marketplace bid during automated prepar
 
 ### Before the initial email
 
-- [ ] At the initial-email stage, reconfirm the final Task 10 evidence and local artifacts are still current.
+- [ ] At the initial-email stage, reconfirm the final bridge-migration evidence and local artifacts are still current.
 - [ ] Push the reviewed preparation branch (or an explicitly approved successor) to the public package repository,
       or merge it to the public default branch. The local preparation branch currently has no tracking branch; do
       not treat local commits as publicly reviewable evidence.
