@@ -50,7 +50,11 @@ export type ChartColorKey =
   // their idle-state background bands.
   | 'events.mode_change'
   | 'events.bid_paused'
-  | 'events.bid_resumed';
+  | 'events.bid_resumed'
+  // #316/#318: one shared color for all alerted-condition bands + their
+  // onset/recovery markers (the label tells you which condition; a
+  // per-condition color was more settings than it was worth).
+  | 'events.alert_condition';
 
 export const CHART_COLOR_DEFAULTS: Record<ChartColorKey, string> = {
   // Hashrate left
@@ -84,6 +88,10 @@ export const CHART_COLOR_DEFAULTS: Record<ChartColorKey, string> = {
   'events.mode_change': '#c4b5fd',          // violet-300 — power glyph + DRY_RUN/PAUSED bands
   'events.bid_paused': '#f43f5e',           // rose-500 — pause glyph + Braiins-pause bands (operator pick: a pause is bad news, so it reads as a warning, not amber info)
   'events.bid_resumed': '#34d399',          // emerald-400 — play glyph
+  // #316/#318: one shared color for every alert-condition band + its
+  // onset/recovery markers. The band label says which condition; a
+  // per-condition palette was more settings than it was worth.
+  'events.alert_condition': '#fb923c',      // orange-400 — all alert-condition bands + onset/recovery markers
 };
 
 /** Curated swatches for the picker. Two brightness rows × six hues
@@ -120,6 +128,16 @@ const HEX_PATTERN = /^#[0-9a-f]{6}$/i;
  */
 const KEY_ALIASES: Record<string, ChartColorKey> = {
   'price.unpaid': 'price.marker_deposit',
+  // #316/#318: the six per-condition alert colors collapsed into one
+  // shared `events.alert_condition` slot. Any operator who customized a
+  // per-condition color keeps that choice — whichever legacy key resolves
+  // first (parseOverrides walks the saved blob) wins the shared slot.
+  'events.alert_below_floor': 'events.alert_condition',
+  'events.alert_zero_hashrate': 'events.alert_condition',
+  'events.alert_datum_unreachable': 'events.alert_condition',
+  'events.alert_api_unreachable': 'events.alert_condition',
+  'events.alert_wallet_runway': 'events.alert_condition',
+  'events.alert_solo_overheating': 'events.alert_condition',
 };
 
 /**

@@ -264,7 +264,7 @@ export const SAMPLE_BUILDERS: Record<
       body: c.payout_confirmed_body({
         payout_sat: formatInteger(1_062_144, fmt),
         payout_btc: formatBtc(1_062_144, fmt),
-        height: formatInteger(951_602, fmt),
+        is_lightning: false,
       }),
       is_recovery: false,
     };

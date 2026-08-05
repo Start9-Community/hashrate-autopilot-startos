@@ -37,6 +37,7 @@ export type DashboardTileId =
   | 'wallet_runway_days'
   | 'hashprice_now'
   | 'pool_blocks_30d'
+  | 'chain_tip_height'
   | 'pool_luck_24h'
   | 'pool_luck_7d'
   | 'pool_luck_30d'
@@ -96,6 +97,9 @@ export const TILE_CATALOGUE: ReadonlyArray<DashboardTileMeta> = [
 
   // Pool metrics.
   { id: 'pool_blocks_30d', group: 'Pool', labelKey: 'pool blocks 30d' },
+  // #335: current Bitcoin chain-tip height, marked when the tip is an
+  // Ocean block and/or signals BIP-110. Hidden without a Bitcoin node.
+  { id: 'chain_tip_height', group: 'Pool', labelKey: 'block height' },
   { id: 'pool_luck_24h', group: 'Pool', labelKey: 'pool luck 24h' },
   { id: 'pool_luck_7d', group: 'Pool', labelKey: 'pool luck 7d' },
   { id: 'pool_luck_30d', group: 'Pool', labelKey: 'pool luck 30d' },

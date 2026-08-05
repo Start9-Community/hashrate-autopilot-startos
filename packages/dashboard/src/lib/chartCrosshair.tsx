@@ -26,7 +26,7 @@
 
 import { t } from '@lingui/core/macro';
 import { useLingui } from '@lingui/react';
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type React from 'react';
 
 import { useFormatters } from './locale';
@@ -57,7 +57,11 @@ export interface CrosshairState {
 }
 
 export interface SharedCrosshair {
-  state: CrosshairState | null;
+  /** Read the current position without subscribing. Render-path
+   *  consumers should use `useCrosshairState` instead. */
+  getState: () => CrosshairState | null;
+  /** Subscribe to position changes; returns the unsubscriber. */
+  subscribe: (listener: () => void) => () => void;
   move: (source: string, tickAt: number, clientX: number, clientY: number) => void;
   leave: (source: string) => void;
   pin: (source: string, tickAt: number, clientX: number, clientY: number) => void;
@@ -68,49 +72,63 @@ export interface SharedCrosshair {
  * Page-level hook: owns the one crosshair position both charts
  * share. Lives in Status.tsx next to useChartViewport (same
  * "shared interaction state above the two charts" pattern).
+ *
+ * Implemented as an external store rather than useState so that
+ * pointer-move-frequency updates re-render only the small crosshair
+ * layers that subscribe via `useCrosshairState` - not Status and not
+ * the (memo'd) charts. The returned object is referentially stable
+ * for the lifetime of the page.
  */
 export function useSharedCrosshair(): SharedCrosshair {
-  const [state, setState] = useState<CrosshairState | null>(null);
-
-  const move = useCallback((source: string, tickAt: number, clientX: number, clientY: number) => {
-    setState((prev) => {
-      if (prev?.pinned) return prev;
-      // Snap-gated update: pointer moves within the same snapped tick
-      // don't produce a new state object. Both (memo'd) charts
-      // re-render per crosshair change, so updating only when the
-      // tick or source chart changes keeps hover cheap - the marker
-      // line can't move between ticks anyway.
-      if (prev && prev.tickAt === tickAt && prev.source === source) return prev;
-      return { tickAt, source, clientX, clientY, pinned: false };
-    });
-  }, []);
-
-  const leave = useCallback((source: string) => {
-    setState((prev) => {
-      if (!prev || prev.pinned) return prev;
-      return prev.source === source ? null : prev;
-    });
-  }, []);
-
-  const pin = useCallback((source: string, tickAt: number, clientX: number, clientY: number) => {
-    setState({ tickAt, source, clientX, clientY, pinned: true });
-  }, []);
-
-  const clear = useCallback(() => setState(null), []);
+  const [store] = useState(() => {
+    let state: CrosshairState | null = null;
+    const listeners = new Set<() => void>();
+    const set = (next: CrosshairState | null): void => {
+      state = next;
+      for (const l of listeners) l();
+    };
+    return {
+      getState: () => state,
+      subscribe: (listener: () => void) => {
+        listeners.add(listener);
+        return () => {
+          listeners.delete(listener);
+        };
+      },
+      move: (source: string, tickAt: number, clientX: number, clientY: number) => {
+        const prev = state;
+        if (prev?.pinned) return;
+        // Snap-gated update: pointer moves within the same snapped
+        // tick don't notify - the marker line can't move between
+        // ticks anyway.
+        if (prev && prev.tickAt === tickAt && prev.source === source) return;
+        set({ tickAt, source, clientX, clientY, pinned: false });
+      },
+      leave: (source: string) => {
+        const prev = state;
+        if (!prev || prev.pinned) return;
+        if (prev.source === source) set(null);
+      },
+      pin: (source: string, tickAt: number, clientX: number, clientY: number) => {
+        set({ tickAt, source, clientX, clientY, pinned: true });
+      },
+      clear: () => set(null),
+    };
+  });
 
   // Pinned dismissal: Esc anywhere, or a pointerdown outside any
   // element marked data-chart-crosshair (the two chart cards and the
-  // readout boxes carry the attribute).
-  const pinned = state?.pinned === true;
+  // readout boxes carry the attribute). Attached once; the handlers
+  // no-op unless a pin is active.
   useEffect(() => {
-    if (!pinned) return;
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setState(null);
+      if (e.key === 'Escape' && store.getState()?.pinned) store.clear();
     };
     const onDocPointerDown = (e: PointerEvent) => {
+      if (!store.getState()?.pinned) return;
       const target = e.target as Element | null;
       if (target?.closest('[data-chart-crosshair]')) return;
-      setState(null);
+      store.clear();
     };
     document.addEventListener('keydown', onKeyDown);
     document.addEventListener('pointerdown', onDocPointerDown);
@@ -118,11 +136,24 @@ export function useSharedCrosshair(): SharedCrosshair {
       document.removeEventListener('keydown', onKeyDown);
       document.removeEventListener('pointerdown', onDocPointerDown);
     };
-  }, [pinned]);
+  }, [store]);
 
-  return useMemo(
-    () => ({ state, move, leave, pin, clear }),
-    [state, move, leave, pin, clear],
+  return store;
+}
+
+const NOOP_SUBSCRIBE = () => () => {};
+const GET_NULL = () => null;
+
+/**
+ * Subscribe to the shared crosshair position. Only the component
+ * calling this re-renders on pointer moves - keep it on the smallest
+ * subtree that draws the line/dots/readout.
+ */
+export function useCrosshairState(crosshair: SharedCrosshair | undefined): CrosshairState | null {
+  return useSyncExternalStore(
+    crosshair?.subscribe ?? NOOP_SUBSCRIBE,
+    crosshair?.getState ?? GET_NULL,
+    GET_NULL,
   );
 }
 
@@ -303,10 +334,103 @@ export function useCrosshairPointer(opts: {
 export interface CrosshairReadoutRow {
   color: string;
   label: string;
-  value: string;
+  /** May be a plain string or JSX (e.g. a value plus a dimmed unit glyph). */
+  value: React.ReactNode;
   /** Render the swatch as a dashed line (reference series). */
   dashed?: boolean;
 }
+
+/** Chart-specific projection of a crosshair position: marker-line x,
+ *  per-series dots and readout rows at the snapped tick. */
+export interface CrosshairView {
+  state: CrosshairState;
+  x: number;
+  lineXFrac: number;
+  rows: CrosshairReadoutRow[];
+  dots: Array<{ cy: number; color: string }>;
+}
+
+/**
+ * Marker line + per-series dots, rendered inside the chart's <svg>.
+ * Subscribes to the crosshair store itself so pointer moves re-render
+ * only this layer, never the host chart. `computeView` is the chart's
+ * projection of a position onto its scales - keep it useCallback'd on
+ * the chart data so this memo holds between data refreshes.
+ */
+export const CrosshairSvgLayer = memo(function CrosshairSvgLayer({
+  crosshair,
+  computeView,
+  topY,
+  bottomY,
+}: {
+  crosshair: SharedCrosshair | undefined;
+  computeView: (cs: CrosshairState) => CrosshairView | null;
+  topY: number;
+  bottomY: number;
+}) {
+  const cs = useCrosshairState(crosshair);
+  const view = cs ? computeView(cs) : null;
+  if (!view) return null;
+  return (
+    <g pointerEvents="none">
+      <line
+        x1={view.x}
+        x2={view.x}
+        y1={topY}
+        y2={bottomY}
+        stroke="#94a3b8"
+        strokeWidth="1"
+        strokeDasharray={view.state.pinned ? undefined : '3 3'}
+        opacity={view.state.pinned ? 0.9 : 0.6}
+      />
+      {view.dots.map((d, di) => (
+        <circle
+          key={`xh-dot-${di}`}
+          cx={view.x}
+          cy={d.cy}
+          r="3"
+          fill={d.color}
+          stroke="#0f172a"
+          strokeWidth="1"
+        />
+      ))}
+    </g>
+  );
+});
+
+/**
+ * The floating readout, subscription-wrapped (same contract as
+ * CrosshairSvgLayer). `suppressed` mirrors the "markers win on direct
+ * hover" rule - true while a transient marker tooltip is open.
+ */
+export const CrosshairReadoutLayer = memo(function CrosshairReadoutLayer({
+  chartId,
+  crosshair,
+  computeView,
+  suppressed,
+  svgRef,
+}: {
+  chartId: string;
+  crosshair: SharedCrosshair | undefined;
+  computeView: (cs: CrosshairState) => CrosshairView | null;
+  suppressed: boolean;
+  svgRef: React.RefObject<SVGSVGElement | null>;
+}) {
+  const cs = useCrosshairState(crosshair);
+  const onClose = useCallback(() => crosshair?.clear(), [crosshair]);
+  const view = cs && !suppressed ? computeView(cs) : null;
+  if (!view) return null;
+  return (
+    <CrosshairReadout
+      chartId={chartId}
+      state={view.state}
+      svgEl={svgRef.current}
+      lineXFrac={view.lineXFrac}
+      rows={view.rows}
+      onClose={onClose}
+    />
+  );
+});
 
 /**
  * The floating per-chart value readout. Rendered by each chart (both

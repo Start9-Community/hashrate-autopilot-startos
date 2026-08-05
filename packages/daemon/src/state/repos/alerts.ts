@@ -17,12 +17,66 @@
 
 import type { Kysely } from 'kysely';
 
+import {
+  CONDITION_OPEN_CLASSES,
+  CONDITION_RECOVERY_CLASSES,
+} from '@hashrate-autopilot/shared';
+
 import type {
   AlertDeliveryStatus,
   AlertSeverity,
   AlertStatus,
   Database,
 } from '../types.js';
+
+/**
+ * A condition span derived from an open/recovery alert pair (#316).
+ * `end_ms` is null while the condition is still open. Used by the
+ * timeline band layer on both charts and the unified History feed.
+ */
+export interface AlertConditionSpan {
+  /** The opener alert's row id (stable key + jump target). */
+  readonly open_id: number;
+  readonly event_class: string;
+  readonly severity: AlertSeverity;
+  readonly title: string;
+  readonly body: string;
+  readonly start_ms: number;
+  /** Recovery timestamp, or null if the condition is still open. */
+  readonly end_ms: number | null;
+  /**
+   * #341: the moment the loud alert notification actually fired
+   * (opener.created_at). Distinct from `start_ms`, which is the
+   * condition onset (bad_since) when known. The gap between them is
+   * the sustained threshold the operator waited out before being
+   * paged; the drawer breaks the two apart.
+   */
+  readonly fired_at: number;
+  /**
+   * #341: true when the firing row recorded condition-onset
+   * (condition_started_at, migration 0119+). When true the threshold
+   * and total are EXACT (fired_at - start_ms / end_ms - start_ms).
+   * When false the onset is unknown (pre-0119 row) and the drawer
+   * estimates from `threshold_minutes` + a footnote.
+   */
+  readonly onset_known: boolean;
+  /**
+   * #341: current-config sustained threshold for this class, in
+   * minutes, used to ESTIMATE the pre-firing wait when onset_known is
+   * false. Null for classes with no minutes-based sustained threshold
+   * (wallet runway is day-based, overheating is temperature-based).
+   * Filled by the HTTP route from live config, not the repo.
+   */
+  readonly threshold_minutes: number | null;
+  /**
+   * #322: the paired recovery alert's body ("Hashrate back at or above
+   * floor - was below for 17m."), or null when the span was closed
+   * implicitly (next same-class episode / orphan bound) or is still
+   * open. Non-null recovery_body marks a REAL recovery moment - the
+   * Timeline renders those as their own rows at end_ms.
+   */
+  readonly recovery_body: string | null;
+}
 
 export interface AlertInsert {
   created_at: number;
@@ -36,6 +90,8 @@ export interface AlertInsert {
   delivery_attempts: number;
   next_retry_at_ms: number | null;
   paired_alert_id: number | null;
+  /** #341: condition-onset (bad_since) for firing rows; null otherwise. */
+  condition_started_at?: number | null;
 }
 
 export interface AlertRow {
@@ -54,6 +110,7 @@ export interface AlertRow {
   paired_alert_id: number | null;
   delivery_meta_json: string | null;
   acknowledged_at_ms: number | null;
+  condition_started_at: number | null;
 }
 
 export interface AlertListFilters {
@@ -110,6 +167,7 @@ export class AlertsRepo {
         paired_alert_id: args.paired_alert_id,
         delivery_meta_json: null,
         acknowledged_at_ms: null,
+        condition_started_at: args.condition_started_at ?? null,
       })
       .executeTakeFirstOrThrow();
     return Number(result.insertId);
@@ -348,5 +406,121 @@ export class AlertsRepo {
       .where('delivery_status', 'in', ['sent', 'failed', 'gave_up', 'muted'])
       .executeTakeFirst();
     return Number(result.numDeletedRows ?? 0);
+  }
+
+  /**
+   * #316: condition spans overlapping [sinceMs, untilMs], derived from
+   * open/recovery alert pairs. An opener (event_class in
+   * CONDITION_OPEN_CLASSES) is matched to its recovery via the recovery
+   * row's `paired_alert_id`. The alert volume is tiny (tens of openers
+   * over months), so we fetch both sides whole and pair in memory.
+   *
+   * Orphan openers (no recovery row) are the hazard: a daemon restart
+   * mid-condition, or a recovery that was never written, leaves an
+   * opener that naively reads as "still open" and would paint a band
+   * from its start to forever - empirically a 49-day-old solo_overheating
+   * orphan tiled the entire Hashrate chart (operator report 2026-06-30).
+   * So an orphan's end is bounded:
+   *   - by the NEXT same-class opener's start (a new episode means the
+   *     old one must have ended), else
+   *   - left open (end null = ongoing to now) only if it started within
+   *     ORPHAN_MAX_MS of now (plausibly the live condition), else
+   *   - capped at start + ORPHAN_MAX_MS (a stale orphan whose real end
+   *     we don't know; this keeps it from extending indefinitely).
+   * Recovered spans are trusted as-is at any length.
+   */
+  async conditionSpansSince(
+    sinceMs: number,
+    untilMs: number,
+    nowMs: number = Date.now(),
+  ): Promise<AlertConditionSpan[]> {
+    if (CONDITION_OPEN_CLASSES.length === 0) return [];
+
+    // How long an orphan opener (no recovery) is allowed to imply the
+    // condition is still open. Beyond this we treat it as a stale gap,
+    // not a live condition, and stop the band there.
+    const ORPHAN_MAX_MS = 6 * 60 * 60 * 1000;
+
+    const [openers, recoveries] = await Promise.all([
+      this.db
+        .selectFrom('alerts')
+        .selectAll()
+        .where('event_class', 'in', CONDITION_OPEN_CLASSES as string[])
+        .where('created_at', '<=', untilMs)
+        .orderBy('created_at', 'asc')
+        .execute() as Promise<AlertRow[]>,
+      this.db
+        .selectFrom('alerts')
+        .select(['paired_alert_id', 'created_at', 'body'])
+        .where('event_class', 'in', CONDITION_RECOVERY_CLASSES as string[])
+        .where('paired_alert_id', 'is not', null)
+        .execute(),
+    ]);
+
+    // Earliest recovery per opener id (a re-fired condition that
+    // somehow produced two recoveries should close on the first).
+    const recoveryByOpenId = new Map<number, { at: number; body: string }>();
+    for (const r of recoveries) {
+      const openId = r.paired_alert_id;
+      if (openId === null) continue;
+      const prev = recoveryByOpenId.get(openId);
+      if (prev === undefined || r.created_at < prev.at) {
+        recoveryByOpenId.set(openId, { at: r.created_at, body: r.body });
+      }
+    }
+
+    // Next same-class opener start, used to implicitly close an orphan.
+    const nextOpenerStartById = new Map<number, number>();
+    const lastStartByClass = new Map<string, { id: number; start: number }>();
+    // openers are ascending by created_at; walk descending so "next" is
+    // the most recently seen opener of the same class.
+    for (let i = openers.length - 1; i >= 0; i--) {
+      const o = openers[i]!;
+      if (o.event_class === null) continue;
+      const seen = lastStartByClass.get(o.event_class);
+      if (seen) nextOpenerStartById.set(o.id, seen.start);
+      lastStartByClass.set(o.event_class, { id: o.id, start: o.created_at });
+    }
+
+    const spans: AlertConditionSpan[] = [];
+    for (const o of openers) {
+      if (o.event_class === null) continue;
+      const recovery = recoveryByOpenId.get(o.id);
+      let endMs: number | null;
+      if (recovery !== undefined) {
+        endMs = recovery.at; // trust the recovery fully, any length.
+      } else {
+        const nextStart = nextOpenerStartById.get(o.id);
+        if (nextStart !== undefined) {
+          endMs = nextStart; // implicit close at the next episode.
+        } else if (nowMs - o.created_at <= ORPHAN_MAX_MS) {
+          endMs = null; // recent orphan -> plausibly still open.
+        } else {
+          endMs = o.created_at + ORPHAN_MAX_MS; // stale orphan -> bounded.
+        }
+      }
+      // Closed (or bounded) before the window opened -> no overlap.
+      if (endMs !== null && endMs < sinceMs) continue;
+      spans.push({
+        open_id: o.id,
+        event_class: o.event_class,
+        severity: o.severity,
+        title: o.title,
+        body: o.body,
+        // #341: span starts at condition-onset (bad_since) when the firing
+        // row recorded it, so Started/Duration cover the true outage and
+        // match the recovery body. Pre-0119 rows fall back to the fire time.
+        start_ms: o.condition_started_at ?? o.created_at,
+        end_ms: endMs,
+        // #341: keep the fire time and the onset distinct so the drawer can
+        // show "threshold / fired / duration / total" separately. Onset is
+        // known iff the row recorded condition_started_at.
+        fired_at: o.created_at,
+        onset_known: o.condition_started_at !== null,
+        threshold_minutes: null, // enriched by the HTTP route from live config
+        recovery_body: recovery !== undefined ? recovery.body : null,
+      });
+    }
+    return spans;
   }
 }

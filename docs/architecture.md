@@ -1,4 +1,4 @@
-# Hashrate Autopilot - Architecture (v1.15)
+# Hashrate Autopilot - Architecture (v1.16)
 
 > Concretion of `docs/spec.md` into module boundaries, data flow, deployment shape, and a
 > milestone-ordered build plan.
@@ -32,7 +32,7 @@
 > equivalent). Mutation gate gains a new `FEE_THRESHOLD_EXCEEDED` denial reason that blocks CREATE /
 > EDIT / EDIT_SPEED when any active bid's `fee_rate_pct` exceeds `config.max_acceptable_fee_pct`;
 > CANCEL_BID remains allowed.
-> **v1.14** (this revision, 2026-06-02) covers the v1.11.0 release window. Migration 0101 adds two
+> **v1.14** (2026-06-02) covers the v1.11.0 release window. Migration 0101 adds two
 > notify-on-payout config toggles (`notify_on_payout_initiated`, `notify_on_payout_confirmed`) for
 > Ocean payout-lifecycle Telegram alerts (#226); 0102 adds `display_number_locale` and
 > `display_date_layout` config columns so Telegram render path reads operator-set formatting (#227
@@ -80,7 +80,7 @@
 > lifecycle kinds (#287): `MODE_CHANGE` (operator/boot run-mode switches), `BID_PAUSED` and
 > `BID_RESUMED` (Braiins-side bid status flips observed per tick, with Braiins'
 > `last_pause_reason` in `reason`). The three are excluded from the Stats page `mutation_count`
-> and never inherit a bid id from the orphan-CREATE coalesce; they render as History rows,
+> and never inherit a bid id from the orphan-CREATE coalesce; they render as Timeline rows,
 > always-visible price-chart markers, and feed the idle-state background bands on both charts
 > (run-mode bands from per-tick `tick_metrics.run_mode`, now exposed raw + worst-in-bucket via
 > `/api/metrics`; bid-pause bands from BID_PAUSED→BID_RESUMED event pairs).
@@ -90,6 +90,16 @@
 > retarget, IP-change, on-chain payout, and Braiins deposit markers; the parser carries a one-key
 > alias (`price.unpaid → price.marker_deposit`) so saved overrides under the old name transparently
 > migrate.
+> Migration 0112 adds `tick_metrics.max_overpay_vs_hashprice_sat_per_eh_day` (#312), snapshotting
+> the dynamic-cap premium in effect at each tick so the price chart's effective-cap line is drawn
+> from per-tick history instead of re-applying the current config value backwards across all of it.
+> Migration 0113 (#312 follow-up) backfills the leading block of pre-0112 NULL rows - which still
+> fell back to live config - with the earliest premium ever recorded (the value in effect when
+> per-tick recording began), carried backward; no-op when the dynamic cap was never enabled.
+> Migration 0114 (#318) adds `system_events` (config changes + daemon boots) for the unified
+> Timeline log: `config_change` rows (one per changed field, written by the config-save route via
+> `SystemEventsRepo`) and `daemon_started` rows (written on boot). Served by `GET /api/system-events`;
+> `GET /api/retargets` (#317) derives difficulty retargets from `tick_metrics.network_difficulty`.
 
 ## 1. High-level shape
 
@@ -126,7 +136,7 @@ v1.5 (#100) - via **Telegram notifications**. The notification subsystem is buil
 interface (currently only `TelegramSink`; future Nostr / ntfy / email backends can slot in). An `AlertEvaluator`
 detects state transitions each tick, the `AlertManager` writes rows to the `alerts` table with a retry ladder, and
 a `TelegramReceiver` long-polls `getUpdates` to process inline-keyboard acknowledgements from the operator's phone.
-Alerts and their delivery state are also surfaced on a dedicated `/alerts` dashboard page.
+Alerts and their delivery state are also surfaced on a dedicated `/alerts` dashboard page. **#316:** alert openers that arrive as open/recovery pairs (`hashrate_below_floor`, `zero_hashrate`, `datum_unreachable`, `api_unreachable`, `wallet_runway`, `solo_overheating`) are also exposed as timeline spans via `GET /api/alert-spans` (`AlertsRepo.conditionSpansSince`): each opener is matched to its recovery via the recovery row's `paired_alert_id` (the span carries the recovery alert's body as `recovery_body`, #322 - null for implicit closes - so the Timeline can render recoveries as their own rows), and an orphan opener with no recovery is bounded - closed at the next same-class opener, kept open-ended only if it started within 6 h of now, else capped at start + 6 h - so a stale alert can't render as an infinite band. The shared `CONDITION_SPAN_CLASSES` taxonomy (in `packages/shared`) names each class, its chart target(s), and its color slot. These spans feed both the chart background bands and the Timeline-feed alert rows.
 
 ## 2. Repository layout
 
@@ -166,15 +176,21 @@ hashrate-autopilot/
 │   │   ├── src/state/
 │   │   │   ├── db.ts               (better-sqlite3 + migrations)
 │   │   │   ├── migrations/
-│   │   │   └── repos/              (config, decisions, owned_bids, runtime_state, tick_metrics + braiinsRejectionPctSince, ip_change_events, reward_events, deposits, solo_miners, pool_blocks, alerts)
+│   │   │   ├── repos/              (config, secrets, decisions, owned_bids, runtime_state, tick_metrics + braiinsRejectionPctSince, bid_events, ip_change_events, reward_events, ocean_payouts, braiins_deposits, solo_miners, pool_blocks, closed_bids_cache, alerts, system_events)
+│   │   │   └── stale-bid-prune.ts  (#295 - marks active ledger bids absent from a confirmed-successful Braiins list as cancelled)
 │   │   ├── src/services/
 │   │   │   ├── braiins-service.ts
-│   │   │   ├── payout-observer.ts  (Electrs-preferred; bitcoind fallback)
+│   │   │   ├── payout-observer.ts  (Electrs-preferred; bitcoind fallback; on-chain corroboration only since #323)
+│   │   │   ├── ocean-payouts-service.ts (#323 - syncs Ocean earnpay payouts into ocean_payouts; source of truth for P&L collected)
+│   │   │   ├── deduced-payouts.ts  (#343 - deduces Lightning payouts, which earnpay omits, from confirmed unpaid-series drops; runs after each successful earnpay sync)
 │   │   │   ├── pool-health.ts      (TCP probe of Datum Gateway :23334)
 │   │   │   ├── ocean.ts            (Ocean pool REST client: stats, blocks, earnings)
 │   │   │   ├── datum.ts            (optional Datum stats poller - gateway-measured hashrate + workers)
 │   │   │   ├── hashprice-cache.ts  (in-memory hashprice cache, fed from Ocean)
+│   │   │   ├── hashprice-refresher.ts (#33 - in-daemon 10-min Ocean hashprice poll; the cache no longer depends on dashboard traffic)
+│   │   │   ├── pool-luck.ts        (per-tick pool-luck computation - 24h/7d/30d gap-based luck)
 │   │   │   ├── btc-price.ts        (BTC/USD oracle - CoinGecko / Coinbase / Bitstamp / Kraken)
+│   │   │   ├── btc-price-refresher.ts (in-daemon 4-min oracle poll so tick_metrics.btc_usd_price stays live with the dashboard closed)
 │   │   │   ├── account-spend.ts    (whole-account spend ledger from /v1/account/transaction)
 │   │   │   ├── notifier.ts         (#100 - NotificationSink interface + TelegramSink)
 │   │   │   ├── alert-manager.ts    (#100 - alerts table writer; retry ladder; recovery pairing)
@@ -185,6 +201,15 @@ hashrate-autopilot/
 │   │   │   ├── axeos-scanner.ts    (#149 / #156 - /24 subnet sweep with operator-supplied CIDR override for docker / Umbrel installs)
 │   │   │   ├── public-ip.ts        (#250 - polls api.ipify.org every 60 s; emits onIpChange to DDNS updater + writes ip_change_events row)
 │   │   │   ├── ddns-updater.ts     (#221 - No-IP / DuckDNS / dyndns2 push; hourly heartbeat + immediate on IP change)
+│   │   │   ├── telegram-receiver.ts (#109 - long-poll getUpdates; inline-keyboard ack buttons)
+│   │   │   ├── solo-hashing.ts     (#291 - halted-Bitaxe detection heuristic: flag + GH/s-per-watt plausibility)
+│   │   │   ├── block-version.ts    (block-header version lookups backing the BIP-110 markers; block_version_cache)
+│   │   │   ├── electrs-client.ts   (Electrum-protocol TCP client for the payout observer)
+│   │   │   ├── gap-backfill.ts     (boot-time tick_metrics gap fill - see §3 boot sequence)
+│   │   │   ├── pool-luck-recompute.ts (boot-time luck recompute after gap fill)
+│   │   │   ├── pool-blocks-backfill.ts (#108 - boot-time Ocean /v1/blocks history backfill)
+│   │   │   ├── network-difficulty-backfill.ts (#230 - boot-time difficulty backfill from bitcoind)
+│   │   │   ├── ocean-unpaid-cleanup.ts (one-shot scrub of bogus reconstructed ocean_unpaid_sat rows)
 │   │   │   └── retention.ts        (hourly pruner for tick_metrics + decisions + alerts)
 │   │   ├── src/controller/
 │   │   │   ├── loop.ts             (tick driver)
@@ -195,12 +220,17 @@ hashrate-autopilot/
 │   │   │   └── execute.ts          (calls Braiins API with dry-run/live split)
 │   │   └── src/http/               (Fastify; dashboard API)
 │   │       ├── server.ts
-│   │       └── routes/             (status, config, decisions, actions, metrics, run-mode,
-│   │                                finance, stats, storage-estimate, bid-events, ocean, payouts, btc-price,
-│   │                                bip110-scan, bitcoind-test, electrs-test, block-found-sound, build,
-│   │                                reward-events, deposits, alerts, notifications-test, notifications-test-event,
-│   │                                ddns, ddns-test, datum-test, pool-url-test, stale-urls,
-│   │                                solo-miners, debug-dump)
+│   │       └── routes/             (status, config, security [#332 - /api/security/state,
+│   │                                /api/security/password, /api/security/braiins-token],
+│   │                                decisions, actions, metrics [+ /api/retargets +
+│   │                                /api/system-events], run-mode, finance, stats, storage-estimate,
+│   │                                bid-events [+ /api/bid-history, /api/bid-history/:order_id/events,
+│   │                                /api/bid-history-events - the #256 v2 flat Timeline feed], ocean,
+│   │                                payouts, btc-price, bip110-scan, bitcoind-test, electrs-test,
+│   │                                block-found-sound, build, reward-events, payout-ledger, deposits, ip-changes,
+│   │                                alerts [+ /api/alert-spans], notifications-test,
+│   │                                notifications-test-event, ddns, ddns-test, datum-test, pool-url-test,
+│   │                                stale-urls, solo-miners, debug-dump, diagnostics [#272 support bundle])
 │   │
 │   └── dashboard/                  React SPA
 │       ├── src/main.tsx
@@ -259,7 +289,7 @@ done.
 - `/v1/spot/bid/current` + per-bid `/v1/spot/bid/detail/{id}` - our active bids.
 - `/v1/account/balance` - wallet (and reward income via Electrs/bitcoind separately).
 - Pool reachability (TCP connect to Datum Gateway:23334).
-- Payout observer: recent coinbase outputs to the BTC payout address since the last check.
+- Payout observer: recent on-chain payout transactions to the BTC payout address since the last check (Ocean settles via batched sweep transactions, not coinbase-direct).
 - Local DB: ownership ledger, config, last-decrease timestamps, run mode, manual-override windows.
 
 ### 3.3 Config reload without restart
@@ -289,7 +319,7 @@ Core tables, WAL-mode, single file at `data/state.db`. Migration scripts live in
 
 ```sql
 -- Live-editable configuration (single-row pattern)
--- Reflects the current schema after all migrations through 0040+.
+-- Reflects the current schema after all migrations through 0117.
 CREATE TABLE config (
   id INTEGER PRIMARY KEY CHECK (id = 1),
   -- Hashrate targets
@@ -313,7 +343,7 @@ CREATE TABLE config (
   pool_outage_blip_tolerance_seconds INTEGER NOT NULL,
   api_outage_alert_after_minutes INTEGER NOT NULL,
   -- Manual override
-  handover_window_minutes INTEGER NOT NULL,
+  -- handover_window_minutes dropped by 0115 (retired §7.3 manual-override system)
   -- Cheap-mode opportunistic scaling
   cheap_target_hashrate_ph REAL NOT NULL DEFAULT 0,
   cheap_threshold_pct INTEGER NOT NULL DEFAULT 0,
@@ -452,7 +482,9 @@ CREATE TABLE owned_bids (
   amount_sat INTEGER,
   speed_limit_ph REAL,
   last_price_decrease_at INTEGER,
-  abandoned INTEGER NOT NULL DEFAULT 0
+  abandoned INTEGER NOT NULL DEFAULT 0,
+  amount_consumed_sat INTEGER NOT NULL DEFAULT 0, -- migration 0017: lifetime consumed budget per bid (feeds finance spent)
+  dest_url TEXT                            -- migration 0069 (#113): the dest_upstream.url the bid was created with, for stale-URL detection
 );
 
 -- Decision log (every tick produces a row)
@@ -482,6 +514,7 @@ CREATE TABLE tick_metrics (
   fillable_ask_sat_per_eh_day INTEGER,    -- depth-aware ask at target (controller anchor)
   hashprice_sat_per_eh_day INTEGER,       -- Ocean break-even hashprice
   max_bid_sat_per_eh_day INTEGER,         -- snapshot of config cap used this tick
+  max_overpay_vs_hashprice_sat_per_eh_day INTEGER, -- snapshot of dynamic-cap premium this tick (migration 0112, #312); null = disabled
   available_balance_sat INTEGER,
   total_balance_sat INTEGER,              -- available + blocked; migration 0095; null pre-0095
   datum_hashrate_ph REAL,                 -- gateway-measured hashrate (null if not configured)
@@ -496,7 +529,7 @@ CREATE TABLE tick_metrics (
   -- #89 (migrations 0053-0054): extended capture from already-polled sources
   network_difficulty INTEGER,              -- Ocean /pool_stat
   estimated_block_reward_sat INTEGER,     -- subsidy + fees, sat
-  pool_hashrate_ph REAL,                  -- Ocean total pool hashrate, PH/s
+  pool_hashrate_ph INTEGER,               -- Ocean total pool hashrate, PH/s (INTEGER in 0053; SQLite affinity makes this cosmetic)
   pool_active_workers INTEGER,            -- Ocean active worker count
   braiins_total_deposited_sat INTEGER,    -- Braiins lifetime deposits; spike marks a top-up
   braiins_total_spent_sat INTEGER,        -- Braiins lifetime settled spend
@@ -564,6 +597,30 @@ CREATE TABLE reward_events (
   reorged INTEGER NOT NULL DEFAULT 0,
   UNIQUE (txid, vout)
 );
+
+-- Ocean payout ledger from the /v1/earnpay endpoint (#323, migration
+-- 0116). Source of truth for P&L "collected" - covers BOTH on-chain
+-- (on_chain_txid set) and Lightning (on_chain_txid null) settlements,
+-- which reward_events (on-chain scanner) structurally cannot. Written
+-- by OceanPayoutsService (full backfill on first run per address, then
+-- a slow trailing-window refresh). dedup_key is the idempotency key:
+-- `<address>|oc:<txid>` for on-chain, `<address>|ln:<ts>:<net_sat>` for
+-- Lightning (a UNIQUE on on_chain_txid can't dedup null-txid Lightning
+-- rows). enriched_alert gates the stage-2 payout_confirmed Telegram.
+CREATE TABLE ocean_payouts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  address TEXT NOT NULL,
+  ts INTEGER NOT NULL,                 -- settlement time, ms epoch
+  on_chain_txid TEXT,                  -- null = Lightning
+  net_sat INTEGER NOT NULL,            -- total_satoshis_net_paid
+  is_generation INTEGER NOT NULL DEFAULT 0,
+  rail TEXT NOT NULL,                  -- 'onchain' | 'lightning'
+  dedup_key TEXT NOT NULL,
+  enriched_alert INTEGER NOT NULL DEFAULT 0,
+  first_seen_at INTEGER NOT NULL
+);
+CREATE UNIQUE INDEX idx_ocean_payouts_dedup ON ocean_payouts (dedup_key);
+CREATE INDEX idx_ocean_payouts_addr_ts ON ocean_payouts (address, ts);
 
 -- Alerts. v1.6 (#100) added external delivery via Telegram; the
 -- columns below cover both the v1.0 audit trail and the channel-
@@ -783,7 +840,7 @@ concern (not by order; the file names are authoritative):
   switched to per-tick deltas of that counter (settled cost from Braiins under
   pay-your-bid), and `spend_sat` is no longer written. The column is retained
   for schema continuity. See spec §11.1.
-- **Post-v1.4.8 feature work (0052-0060):** block-found sound config + custom
+- **Post-v1.4.8 feature work (0052-0058; 0059-0060 were never created, the sequence jumps to 0061):** block-found sound config + custom
   blob (0052, #88); extended per-tick capture from existing data sources
   (0053-0054, #89 - adds `network_difficulty`, `estimated_block_reward_sat`,
   `pool_hashrate_ph`, `pool_active_workers`, `braiins_total_deposited_sat`,
@@ -889,6 +946,32 @@ concern (not by order; the file names are authoritative):
   with NULL on bid-rotation ticks (counter reset → negative
   Δpurchased) and on ticks where Δpurchased ≤ 0.
 
+- **Post-1.14 window (0107-0117):** 0107 (#243) scrubs orphan May 5-6 rows
+  left in the share-counter columns by the reverted #90 migration reusing
+  the same names. 0108 (#244) adds the reserved/dormant `dashboard_card_order` column, 0109 (#250) creates `ip_change_events`, 0110 (#266) adds `dashboard_tiles`. 0111
+  (#287) rebuilds `bid_events` to widen the kind CHECK constraint for
+  MODE_CHANGE / BID_PAUSED / BID_RESUMED. 0112 (#312) historizes
+  `max_overpay_vs_hashprice_sat_per_eh_day` per tick (effective-cap line
+  reconstruction); 0113 backfills it. 0114 (#318) creates `system_events`
+  (config_change + daemon_started rows behind `GET /api/system-events`).
+  0115 (2026-07-02 audit) drops `config.handover_window_minutes` - the
+  retired §7.3 manual-override knob nothing read. 0116 (#323) creates the
+  `ocean_payouts` table, synced from Ocean's `/v1/earnpay` endpoint
+  (per-address backfill + trailing-window refresh). It holds both on-chain
+  payouts (has `on_chain_txid`) and Lightning payouts (`on_chain_txid IS
+  NULL`), and is the source of truth for the Profit & Loss "collected"
+  figure and its on-chain/Lightning rail split. 0117 (GHSA-x8x9) scrubs
+  credential values that a v1.16.0 config-change audit-log feature had
+  written in cleartext into `system_events` rows (`telegram_bot_token`,
+  `bitcoind_rpc_user`, `bitcoind_rpc_password`, `ddns_username`,
+  `ddns_credential`); the daemon also redacts these at write time going
+  forward. 0120 (#343) adds `ocean_payouts.deduced` - earnpay turned out
+  NOT to return Lightning payouts (Ocean support confirmed), so the
+  DeducedPayoutsScanner infers them from confirmed drops of
+  `tick_metrics.ocean_unpaid_sat` to ~zero and stores them here with
+  `deduced = 1` and rail `'unknown'` -> `'lightning'` (superseded by the
+  real settlement if one ever matches).
+
 - **Gap-backfill + boot-time payout refresh (0104-0105):** 0104 (#241)
   adds `tick_metrics.synthetic INTEGER NOT NULL DEFAULT 0` marking rows
   inserted by `runGapBackfill` to reconstruct offline-period state.
@@ -933,11 +1016,25 @@ Reconciliation pass: periodic full scan to catch anything real-time detection mi
 
 ## 7. Secrets and config
 
-- **sops** with an **age** key. Single-file, no keyring faff, easy to rotate.
-- Decryption happens once at daemon startup. Decrypted values are held in memory, never re-written to disk; pino log
-  redaction on `braiins_owner_token`, `braiins_read_only_token`, `bitcoind_rpc_password`, `dashboard_password`.
-- The age private key lives on the always-on box at a fixed path with chmod 600; operator is responsible for a
-  backup (printed or encrypted USB).
+- **Layered secret resolution** (first available wins): `BHA_*` environment variables > the SOPS-encrypted file
+  (`.env.sops.yaml`) > the encrypted `secrets` table in `state.db` (populated by the first-run web onboarding
+  wizard). Any one source can satisfy a given secret.
+- **Secrets-at-rest (#331).** The database-stored secrets - Braiins owner + read-only tokens, bitcoind RPC
+  password, Telegram bot token, DDNS credential - are AES-256-GCM encrypted at rest. Each value is stored as an
+  envelope `enc:v1:<b64 iv>:<b64 ciphertext+tag>`, with the field name bound in as the AAD. The dashboard password
+  is stored as a one-way scrypt hash (never recoverable, only verifiable).
+- **Encryption key resolution** (first available wins): `BHA_SECRET_KEY` env var (on Umbrel this is the
+  device-derived `APP_SEED`) > `BHA_SECRET_KEY_FILE` > a generated `secret.key` file (mode 0600) written next to
+  `state.db`. The resolved key is run through HKDF-SHA256 to derive the per-field encryption key.
+- A decrypt failure is handled gracefully - the secret is treated as unset rather than crashing the daemon into a
+  restart loop. Legacy plaintext rows (from before #331) are encrypted or hashed in place on the next boot; the
+  migration is idempotent.
+- **Write-only credential API.** The config API is write-only for credential fields (`bitcoind_rpc_password`,
+  `telegram_bot_token`, `ddns_credential`): they are accepted on POST but never echoed back on GET, and a blank
+  value on save keeps the existing secret rather than clearing it.
+- Decrypted values are held in memory only, never re-written to disk in plaintext; pino log redaction covers
+  `braiins_owner_token`, `braiins_read_only_token`, `bitcoind_rpc_password`, `dashboard_password`. See
+  `docs/security-secrets-at-rest.md` for the full threat model and key-management details.
 - Live tunables (non-secret) live in SQLite `config` table, editable via the dashboard and `/config` HTTP route.
   Validation against a Zod schema on every write.
 
@@ -1030,3 +1127,4 @@ Remaining work is tracked in GitHub issues.
 | 1.13    | 2026-05-29 | v1.10.0 release window. §5 `config` schema gains `bid_edit_deadband_pct` and `max_acceptable_fee_pct` (migration 0099, #222) - the EDIT_PRICE deadband formula in `decide.ts` is now `max(tick_size, overpay × bid_edit_deadband_pct / 100)` with default 20 reproducing the legacy `overpay / 5`; the mutation gate gains a new `FEE_THRESHOLD_EXCEEDED` denial reason that blocks CREATE / EDIT / EDIT_SPEED when any active bid's `fee_rate_pct` exceeds `config.max_acceptable_fee_pct` (CANCEL_BID stays allowed). §5 `tick_metrics` gains `bid_edit_deadband_pct` (migration 0100, #224) - per-tick snapshot so EDIT_PRICE event tooltips render the deadband in effect at any historical edit; `DEFAULT 20` backfills existing rows. No other control-loop shape changes. |
 | 1.14    | 2026-05-30 | §5 `config` schema gains `notify_on_payout_initiated` and `notify_on_payout_confirmed` (migration 0101, #226) - two new opt-in INFO Telegram alerts for the Ocean payout lifecycle. payout_initiated fires the tick the daemon observes a one-tick `ocean_unpaid_sat` drop > 30% with residual below the 1,048,576-sat payout threshold (mirrors the dashboard's unpaidDropMarkers heuristic on PriceChart.tsx). payout_confirmed fires once per new `reward_events` row, with in-memory `lastNotifiedRewardEventId` watermark for idempotency, silent-baselined at boot from `rewardEventsRepo.maxId()` so a fresh install's backfill doesn't fire a flood. Both default off, gated by their own dedicated toggle each (same convention as `notify_on_pool_block_credit` / `notify_on_braiins_deposit`). No control-loop shape changes. |
 | 1.15    | 2026-06-02 | Consolidated catch-up covering #227-#239. §5 `config` schema gains `display_number_locale` and `display_date_layout` (migration 0102, #227 follow-up) - Display & Logging preferences promoted from browser-only localStorage so the Telegram render path can read them. `chart_color_overrides` added (migration 0103, #238) - JSON object keyed by canonical series name with `#RRGGBB` values; the dashboard's `parseOverrides` defensively drops malformed JSON, unknown keys, and non-hex values so a stray browser write can't break the chart. Eighteen named series resolve through `getChartColor` on both HashrateChart and PriceChart (every left/right-axis line plus the four bid-event marker hues). New boot-time service `runNetworkDifficultyBackfill` (#230) walks NULL `tick_metrics.network_difficulty` rows and fills them from bitcoind block headers (two batched RPC calls per epoch boundary), with `IS NULL` guard on every UPDATE so live observations stay canonical. AlertEvaluator gains `lastPoolBlockUnpaidSat` in-memory field (#239) - single-block-per-tick pool_block_credited alerts now report Ocean's actual TIDES credit as the unpaid-delta against the previous fire; multi-block ticks and post-restart / post-payout fires fall back to the `~share_log_pct × reward` estimate with leading `~` to mark uncertainty. Bip110Deployment carries `since` (sourced from `bip9.since` in bitcoind's `getdeploymentinfo`) so the deployment-status badge tooltip distinguishes MASF vs UASF activation in ACTIVE state. Project-wide source sweep removed all em dashes (-) from `.ts` / `.tsx`. No control-loop shape changes. |
+| 1.16    | 2026-07-02 | Code-vs-code-comment/doc audit sweep. §2 tree: +12 services (hashprice/btc-price refreshers, pool-luck, boot backfills, telegram-receiver, solo-hashing, block-version, electrs-client, ocean-unpaid-cleanup), repos list completed (bid_events, secrets, system_events, closed_bids_cache, stale-bid-prune), routes listing gains diagnostics, ip-changes, bid-history trio, and the metrics/alerts-registered extras. §5: migration summary extended 0107-0115, owned_bids DDL gains amount_consumed_sat + dest_url, config DDL notes the 0115 handover drop, pool_hashrate_ph type corrected to INTEGER, stale "through 0040+" header fixed. |

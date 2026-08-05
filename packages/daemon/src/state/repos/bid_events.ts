@@ -178,7 +178,13 @@ export class BidEventsRepo {
     beforeId?: number;
     kinds?: ReadonlyArray<BidEventKind>;
     source?: BidEventSource;
-    orderIdContains?: string;
+    /**
+     * #342: free-text search, matched case-insensitively against the bid
+     * id, the reason, AND the row's personal note (event_notes keyed
+     * `event:<id>`). Was a bid-id-only substring; widened so the Timeline
+     * search finds a hit in any of the three across the full history.
+     */
+    textSearch?: string;
     sinceMs?: number;
     untilMs?: number;
     /** Absolute |new_price_sat - old_price_sat| in sat/EH/day. EDIT_PRICE only. */
@@ -201,18 +207,49 @@ export class BidEventsRepo {
     >
   > {
     const where: string[] = [];
+    // Bound parameters for the free-text search (#342). Everything else in
+    // this hand-written query interpolates validated numbers/enums; the
+    // free-text term is the one untrusted string, so it goes through
+    // positional `?` binding instead. These are the ONLY placeholders in
+    // the statement, so they bind in push order.
+    const params: unknown[] = [];
     if (args.beforeId !== undefined && Number.isFinite(args.beforeId)) {
       where.push(`e.id < ${Math.floor(args.beforeId)}`);
     }
-    if (args.kinds && args.kinds.length > 0) {
-      const list = args.kinds.map((k) => `'${k}'`).join(',');
-      where.push(`e.kind IN (${list})`);
+    // #318 follow-up: `kinds` is now an opt-out selector from the
+    // Timeline. undefined = no filter (all kinds); a non-empty list =
+    // only those kinds; an EXPLICIT empty list = the operator hid every
+    // action, so return no bid events (distinct from "no filter").
+    if (args.kinds !== undefined) {
+      if (args.kinds.length === 0) {
+        where.push('0 = 1');
+      } else {
+        const list = args.kinds.map((k) => `'${k}'`).join(',');
+        where.push(`e.kind IN (${list})`);
+      }
     }
     if (args.source) {
       where.push(`e.source = '${args.source}'`);
     }
-    if (args.orderIdContains && /^[A-Za-z0-9._-]+$/.test(args.orderIdContains)) {
-      where.push(`e.braiins_order_id LIKE '%${args.orderIdContains}%'`);
+    const term = args.textSearch?.trim();
+    if (term) {
+      // Escape LIKE wildcards so a literal % / _ / \ in the query matches
+      // itself; bound as a parameter so quotes/arrows/spaces are safe.
+      const pat = `%${term.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+      // Match the EFFECTIVE order id, not the raw column: a CREATE row is
+      // recorded before Braiins echoes its id back, so `braiins_order_id`
+      // is NULL on creates and the id the operator sees (and searches for)
+      // is the forward-filled `effective_order_id` from the CTE. Matching
+      // the raw column made creates unfindable by id (#342 follow-up).
+      // effective = COALESCE(raw, forward-filled), so this also covers
+      // every row whose raw id is set.
+      where.push(
+        `(e.effective_order_id LIKE ? ESCAPE '\\'` +
+          ` OR e.reason LIKE ? ESCAPE '\\'` +
+          ` OR EXISTS (SELECT 1 FROM event_notes n` +
+          ` WHERE n.event_key = 'event:' || e.id AND n.note LIKE ? ESCAPE '\\'))`,
+      );
+      params.push(pat, pat, pat);
     }
     if (args.sinceMs !== undefined && Number.isFinite(args.sinceMs)) {
       where.push(`e.occurred_at >= ${Math.floor(args.sinceMs)}`);
@@ -247,7 +284,11 @@ export class BidEventsRepo {
     // Coalesce window widened from 5 min to 1 hour so older orphan
     // CREATEs whose next event sits further in the future still
     // surface their order id.
-    const whereClauseRebased = whereClause.replace(/\be\./g, 'e.');
+    // The outer query (below) is `FROM events_with_effective_id e`, and
+    // the CTE selects `e.*`, so every `e.<col>` reference the where-clause
+    // was built with already resolves against the CTE - no alias rebase
+    // is needed. (A prior `.replace(/\be\./g, 'e.')` here was a no-op and
+    // CodeQL js/identity-replacement flagged it; removed.)
     const sqlText = `
       WITH events_with_effective_id AS (
         SELECT
@@ -300,14 +341,14 @@ export class BidEventsRepo {
           ORDER BY e4.occurred_at DESC
           LIMIT 1) AS effective_last_price_sat
         FROM events_with_effective_id e
-        ${whereClauseRebased}
+        ${whereClause}
         ORDER BY e.id DESC
         LIMIT ${Math.floor(args.limit)}
     `;
     // Kysely raw passthrough.
     const result = await this.db.executeQuery({
       sql: sqlText,
-      parameters: [],
+      parameters: params,
       query: { kind: 'RawNode' as never },
     } as never);
     type Row = BidEventRow & {

@@ -10,12 +10,15 @@
 // handlers - the tooltip lives outside the SVG so the chart owns the
 // hovered-state machinery.
 
-import { useLayoutEffect, useRef, useState } from 'react';
+import { memo, useLayoutEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 import { t } from '@lingui/core/macro';
 import { Trans, useLingui } from '@lingui/react/macro';
 
 import { useFormatters } from '../lib/locale';
+import { formatAgeMinutes } from '../lib/format';
+import { MarkerBeacon } from './MarkerBeacon';
 
 export interface IpChangeMarkerEvent {
   readonly id: number;
@@ -34,7 +37,11 @@ export interface IpChangeTooltipState {
 
 const DEFAULT_COLOR = '#38bdf8'; // sky-400: distinct from retarget purple / block gold
 
-export function IpChangeMarkers({
+// memo: the parent chart re-renders at crosshair/poll frequency; the
+// marker layer only needs to when its events or scales change.
+export const IpChangeMarkers = memo(IpChangeMarkersImpl);
+
+function IpChangeMarkersImpl({
   events,
   xScale,
   dataMinX,
@@ -42,6 +49,7 @@ export function IpChangeMarkers({
   topY,
   bottomY,
   color = DEFAULT_COLOR,
+  focusId = null,
   onMarkerEnter,
   onMarkerLeave,
   onMarkerClick,
@@ -57,6 +65,9 @@ export function IpChangeMarkers({
   /** Operator-configurable marker color (Config → Chart colors →
    *  marker.ip_change). Defaults to the sky-400 hex when no override. */
   color?: string;
+  /** #318 follow-up: id of the IP-change jumped to from a History row;
+   *  that marker pulses a sonar beacon. */
+  focusId?: number | null;
   /** Hover handler: chart owns the hovered-state; tooltip renders
    *  outside the SVG. Receives the event + viewport coords. */
   onMarkerEnter?: (
@@ -118,6 +129,9 @@ export function IpChangeMarkers({
                 <path d="M17.84 7.17a4 4 0 0 0-5.66 0" />
                 <path d="M20.66 4.34a8 8 0 0 0-11.31 0" />
               </svg>
+              {focusId !== null && e.id === focusId && (
+                <MarkerBeacon cx={x} cy={topY - 4} color={color} />
+              )}
             </g>
           );
         })}
@@ -145,6 +159,7 @@ export function IpChangeTooltip({
   const { i18n } = useLingui();
   void i18n;
   const fmt = useFormatters();
+  const navigate = useNavigate();
   const { event, pinned } = tip;
   const ref = useRef<HTMLDivElement | null>(null);
   const [pos, setPos] = useState<{ left: number; top: number; ready: boolean }>({
@@ -195,8 +210,19 @@ export function IpChangeTooltip({
         {event.new_ip}
       </div>
       <div className="text-slate-500 text-[11px] mt-1">
-        {fmt.timestamp(event.occurred_at)}
+        {fmt.timestamp(event.occurred_at)}{' '}
+        <span className="text-slate-600">({formatAgeMinutes(event.occurred_at)})</span>
       </div>
+      {pinned && (
+        <button
+          type="button"
+          onClick={() => navigate(`/history?focus=ip:${event.id}&ts=${event.occurred_at}`)}
+          className="mt-2 text-amber-300 hover:text-amber-200 inline-flex items-center gap-1 text-[11px]"
+        >
+          <Trans>View in timeline</Trans>
+          <span aria-hidden="true">→</span>
+        </button>
+      )}
     </div>
   );
 }

@@ -64,7 +64,7 @@ services:
     # publish `v`-prefixed mirrors (`v1.4.2`, `v1.4`, `v1`) for safety,
     # but the canonical pin stays bare-semver to match what GHCR shows
     # in its UI.
-    image: ghcr.io/rdouma/hashrate-autopilot:1.15.0
+    image: ghcr.io/rdouma/hashrate-autopilot:1.17.4
     restart: on-failure
     stop_grace_period: 1m
     volumes:
@@ -74,6 +74,14 @@ services:
       HTTP_HOST: 0.0.0.0
       DB_PATH: /app/data/state.db
       DASHBOARD_STATIC: packages/dashboard/dist
+      # #331: at-rest encryption key for the DB-stored secrets. APP_SEED
+      # is a per-app secret Umbrel derives from the device master seed -
+      # stable across restarts and stored OUTSIDE this app's data dir, so
+      # a state.db / app-data backup no longer contains the key needed to
+      # decrypt the secrets. Zero user action. (Generic Docker / bare
+      # metal set BHA_SECRET_KEY themselves; if unset the daemon falls
+      # back to a generated keyfile beside state.db.)
+      BHA_SECRET_KEY: "${APP_SEED}"
       # Bitcoin RPC auto-config (see note at top of file). Umbrel
       # injects APP_BITCOIN_* because `bitcoin` is a declared
       # dependency. The daemon's detectBitcoindEnv() picks these up

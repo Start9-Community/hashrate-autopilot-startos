@@ -21,7 +21,7 @@
  */
 
 import { useLingui } from '@lingui/react';
-import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
 import { api, UnauthorizedError } from './api';
 
@@ -31,6 +31,7 @@ import {
   formatNumber as formatNumberRaw,
   formatSatPerPH as formatSatPerPHRaw,
   formatSats as formatSatsRaw,
+  formatTemperature as formatTemperatureRaw,
   formatTimestamp as formatTimestampRaw,
   type DateLayout,
 } from './format';
@@ -305,7 +306,7 @@ export function useLocaleState(): LocaleContextValue {
   // local state + localStorage. The localStorage write happens in
   // the existing effects above; this side-effect handles the daemon
   // round-trip.
-  const setNumberLocale = (code: string) => {
+  const setNumberLocale = useCallback((code: string) => {
     setNumberLocaleState(code);
     void (async () => {
       try {
@@ -318,8 +319,8 @@ export function useLocaleState(): LocaleContextValue {
         // Best-effort; local state remains authoritative for this session.
       }
     })();
-  };
-  const setDateLayout = (layout: DateLayout) => {
+  }, []);
+  const setDateLayout = useCallback((layout: DateLayout) => {
     setDateLayoutState(layout);
     void (async () => {
       try {
@@ -332,18 +333,24 @@ export function useLocaleState(): LocaleContextValue {
         // Best-effort.
       }
     })();
-  };
+  }, []);
 
-  return {
-    numberLocale,
-    dateLayout,
-    temperatureUnit,
-    intlLocale: resolveNumberLocale(numberLocale),
-    numberGrouping: numberLocale !== 'no-grouping',
-    setNumberLocale,
-    setDateLayout,
-    setTemperatureUnit: setTemperatureUnitState,
-  };
+  // Memoized: this object is the LocaleContext.Provider value. A fresh
+  // object per provider render would re-render every useLocale /
+  // useFormatters / useDenomination consumer app-wide.
+  return useMemo(
+    () => ({
+      numberLocale,
+      dateLayout,
+      temperatureUnit,
+      intlLocale: resolveNumberLocale(numberLocale),
+      numberGrouping: numberLocale !== 'no-grouping',
+      setNumberLocale,
+      setDateLayout,
+      setTemperatureUnit: setTemperatureUnitState,
+    }),
+    [numberLocale, dateLayout, temperatureUnit, setNumberLocale, setDateLayout],
+  );
 }
 
 /**
@@ -409,6 +416,9 @@ export function useFormatters() {
       satPerPH: (n: number | null | undefined) => formatSatPerPHRaw(n, intlLocale),
       sats: (n: number | null | undefined) => formatSatsRaw(n, intlLocale),
       hashratePH: (n: number | null | undefined) => formatHashratePHRaw(n, intlLocale),
+      /** #347: locale-aware temperature (decimal separator follows the number-format preference). */
+      temperature: (c: number | null | undefined, unit: 'C' | 'F', digits?: number) =>
+        formatTemperatureRaw(c, unit, digits, intlLocale),
       timestamp: (ms: number | null | undefined) =>
         formatTimestampRaw(ms, { uiLocale: dateTimeLocale, layout: dateLayout }),
       age: formatAgeRaw,

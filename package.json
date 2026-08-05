@@ -12,20 +12,26 @@
   },
   "homepage": "https://github.com/mdubore/hashrate9#readme",
   "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
   "type": "module",
   "packageManager": "pnpm@10.33.0",
   "engines": {
     "node": ">=22.0.0"
   },
   "scripts": {
-    "build": "pnpm -r run build",
-    "build:workspace-libs": "pnpm --filter @hashrate-autopilot/shared --filter @hashrate-autopilot/bitcoind-client --filter @hashrate-autopilot/braiins-client run build",
+    "build": "./scripts/build-release-inputs.sh",
+    "build:release-inputs": "./scripts/build-release-inputs.sh",
+    "build:workspace-libs": "npm run build --workspace @hashrate-autopilot/shared && npm run build --workspace @hashrate-autopilot/bitcoind-client && npm run build --workspace @hashrate-autopilot/braiins-client",
     "build:startos": "rm -rf ./javascript && ncc build startos/index.ts -o ./javascript && node -e \"require('fs').writeFileSync('javascript/package.json', '{\\\"type\\\":\\\"commonjs\\\"}\\n')\"",
-    "prepare:checks": "pnpm run build:workspace-libs && pnpm --filter @hashrate-autopilot/dashboard run lingui:compile",
-    "typecheck": "pnpm run prepare:checks && pnpm -r run typecheck",
-    "test": "pnpm run prepare:checks && vitest run",
+    "prepare:checks": "npm run build:workspace-libs && npm run lingui:compile --workspace @hashrate-autopilot/dashboard",
+    "typecheck": "npm run prepare:checks && npm run typecheck --workspaces --if-present",
+    "test": "npm run prepare:checks && vitest run",
     "test:watch": "vitest",
-    "check": "pnpm -w run lint && pnpm -w run typecheck && pnpm -w run test",
+    "check": "npm run check:lock-consistency && npm run lint && npm run typecheck && npm run test",
+    "check:lock-consistency": "node scripts/check-lock-consistency.mjs",
+    "check:startos-submission": "bash tests/startos/test-community-registry.sh",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
@@ -34,37 +40,36 @@
     "release:artifacts": "./scripts/release-github.sh build",
     "release:checksums": "./scripts/release-github.sh checksums",
     "release:dry-run": "./scripts/release-github.sh dry-run",
+    "release:verify": "./scripts/release-github.sh verify",
     "release:github": "./scripts/release-github.sh release",
     "smoke": "tsx scripts/smoke-braiins.ts",
     "setup": "tsx scripts/setup.ts",
     "daemon": "tsx packages/daemon/src/main.ts"
   },
+  "dependencies": {
+    "@start9labs/start-sdk": "2.0.9"
+  },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@hashrate-autopilot/braiins-client": "workspace:*",
-    "@hashrate-autopilot/daemon": "workspace:*",
-    "@hashrate-autopilot/shared": "workspace:*",
+    "@hashrate-autopilot/braiins-client": "*",
+    "@hashrate-autopilot/daemon": "*",
+    "@hashrate-autopilot/shared": "*",
     "@inquirer/prompts": "^8.5.2",
-    "@start9labs/start-sdk": "0.4.0-beta.62",
-    "@types/node": "^25.9.2",
+    "@types/node": "^26.1.0",
     "@vercel/ncc": "0.38.4",
-    "eslint": "^10.4.1",
-    "playwright": "^1.60.0",
-    "prettier": "^3.8.3",
-    "tsx": "^4.22.4",
+    "eslint": "^10.7.0",
+    "playwright": "^1.61.1",
+    "prettier": "^3.9.5",
+    "tsx": "^4.23.1",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.61.0",
-    "vitest": "^4.1.8",
+    "typescript-eslint": "^8.64.0",
+    "vitest": "^4.1.10",
     "yaml": "^2.9.0"
   },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "better-sqlite3",
-      "esbuild"
-    ],
-    "overrides": {
-      "fast-uri": ">=3.1.2",
-      "esbuild": ">=0.28.1"
-    }
+  "overrides": {
+    "@start9labs/start-sdk": "$@start9labs/start-sdk",
+    "fast-uri": ">=3.1.2",
+    "esbuild": ">=0.28.1",
+    "js-yaml": "4.3.0"
   }
 }

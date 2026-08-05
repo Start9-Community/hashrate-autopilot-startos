@@ -41,6 +41,7 @@ export interface MetricPoint {
   readonly fillable_ask_sat_per_ph_day: number | null;
   readonly hashprice_sat_per_ph_day: number | null;
   readonly max_bid_sat_per_ph_day: number | null;
+  readonly max_overpay_vs_hashprice_sat_per_ph_day: number | null;
   readonly available_balance_sat: number | null;
   readonly total_balance_sat: number | null;
   /**
@@ -190,6 +191,59 @@ export async function registerMetricsRoute(
       return { points: rows.map(toMetricPoint), range };
     },
   );
+
+  // #317: difficulty-retarget events for the unified History log, derived
+  // from tick_metrics.network_difficulty epochs (>0.5% jump = retarget,
+  // matching the Hashrate chart's marker threshold). Defaults to a 1-year
+  // look-back. Tiny result set (retargets are ~2 weeks apart).
+  app.get<{ Querystring: { since_ms?: string; until_ms?: string } }>(
+    '/api/retargets',
+    async (req): Promise<{ retargets: Array<{ tick_at: number; difficulty: number; previous: number }> }> => {
+      const now = Date.now();
+      const untilMs = req.query.until_ms ? Number(req.query.until_ms) : now;
+      const sinceMs = req.query.since_ms
+        ? Number(req.query.since_ms)
+        : untilMs - 365 * 24 * 60 * 60 * 1000;
+      if (!Number.isFinite(sinceMs) || !Number.isFinite(untilMs)) return { retargets: [] };
+      const epochs = await deps.tickMetricsRepo.difficultyEpochsSince(sinceMs);
+      const out: Array<{ tick_at: number; difficulty: number; previous: number }> = [];
+      let prev: number | null = null;
+      for (const e of epochs) {
+        if (prev !== null && Math.abs(e.difficulty - prev) / prev > 0.005) {
+          if (e.first_tick_at <= untilMs) {
+            out.push({ tick_at: e.first_tick_at, difficulty: e.difficulty, previous: prev });
+          }
+        }
+        prev = e.difficulty;
+      }
+      return { retargets: out };
+    },
+  );
+
+  // #318: config-change + daemon-boot events for the unified History log.
+  app.get<{ Querystring: { since_ms?: string; until_ms?: string } }>(
+    '/api/system-events',
+    async (req): Promise<{
+      events: Array<{
+        id: number;
+        occurred_at: number;
+        kind: string;
+        field: string | null;
+        old_value: string | null;
+        new_value: string | null;
+        detail: string | null;
+      }>;
+    }> => {
+      const now = Date.now();
+      const untilMs = req.query.until_ms ? Number(req.query.until_ms) : now;
+      const sinceMs = req.query.since_ms
+        ? Number(req.query.since_ms)
+        : untilMs - 365 * 24 * 60 * 60 * 1000;
+      if (!Number.isFinite(sinceMs) || !Number.isFinite(untilMs)) return { events: [] };
+      const events = await deps.systemEventsRepo.listSince(sinceMs, untilMs);
+      return { events };
+    },
+  );
 }
 
 function toMetricPoint(r: {
@@ -203,6 +257,7 @@ function toMetricPoint(r: {
   fillable_ask_sat_per_eh_day: number | null;
   hashprice_sat_per_eh_day: number | null;
   max_bid_sat_per_eh_day: number | null;
+  max_overpay_vs_hashprice_sat_per_eh_day: number | null;
   available_balance_sat: number | null;
   total_balance_sat: number | null;
   datum_hashrate_ph: number | null;
@@ -255,6 +310,10 @@ function toMetricPoint(r: {
     max_bid_sat_per_ph_day:
       r.max_bid_sat_per_eh_day !== null
         ? r.max_bid_sat_per_eh_day / EH_PER_PH
+        : null,
+    max_overpay_vs_hashprice_sat_per_ph_day:
+      r.max_overpay_vs_hashprice_sat_per_eh_day !== null
+        ? r.max_overpay_vs_hashprice_sat_per_eh_day / EH_PER_PH
         : null,
     available_balance_sat: r.available_balance_sat,
     total_balance_sat: r.total_balance_sat,

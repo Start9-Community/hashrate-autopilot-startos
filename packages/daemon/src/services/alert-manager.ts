@@ -41,6 +41,13 @@ export interface RecordAlertArgs {
   readonly event_class: string;
   /** When set, marks this alert as the recovery for an earlier alert id. */
   readonly paired_alert_id?: number;
+  /**
+   * #341: ms-epoch when the underlying condition first went bad
+   * (bad_since). Set on firing rows so the condition span covers the
+   * true outage window; the row's created_at stays the fire time (for
+   * delivery scheduling + Alerts-list ordering).
+   */
+  readonly condition_started_at?: number;
 }
 
 export interface AlertManagerOptions {
@@ -101,6 +108,7 @@ export class AlertManager {
       delivery_attempts: 0,
       next_retry_at_ms: firstRetryAt,
       paired_alert_id: args.paired_alert_id ?? null,
+      condition_started_at: args.condition_started_at ?? null,
     };
     const id = await this.alertsRepo.insert(insert);
 

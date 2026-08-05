@@ -1,14 +1,618 @@
 # Changelog
 
+## 2026-08-04
+
+### `[Docs]` StartOS package guidance follows the registry format
+
+The package README is now a concise StartOS wrapper reference with a machine-readable inventory, while the
+in-service instructions provide a DRY-RUN-first operator flow and link to upstream documentation instead of
+duplicating the upstream manual.
+
+### `[Infra]` StartOS package tracks upstream v1.17.4
+
+The StartOS wrapper now tracks upstream Hashrate Autopilot v1.17.4 and publishes canonical SDK 2.x version metadata as `1.17.4:0`, with the corresponding `v1.17.4_0` release tag.
+
+### `[Infra]` StartOS package uses the SDK 2 build wrapper
+
+The StartOS package now includes SDK 2's installed `s9pk.mk` directly; release builds clean only generated `.s9pk` artifacts so installed build tooling remains available.
+
+### `[Infra]` Community Registry releases use isolated StartOS tags
+
+StartOS pull requests and main-branch updates now use the official Start9 build and Community Registry release automation. StartOS releases use underscore tags such as `vX.Y.Z_N`, keeping them out of the upstream Docker image publication path.
+
+## 2026-07-23
+
+### `[Release]` v1.17.4
+
+Stability + docs patch since v1.17.3. The headline fix reaches users here: the daemon no longer crash-loops when the Electrum connection drops mid-session (v1.17.3 still had that bug). Also removes a misleading "Telegram 2FA tap required" note from bid creation - the autopilot bids via Braiins' API with the owner token, which needs no Telegram confirmation - and adds a user-facing FAQ covering setup, payouts, bidding, and requirements.
+
+## 2026-07-19
+
+### `[Fix]` Remove the misleading "Telegram 2FA tap required" note from bid-create
+
+The Timeline note stamped on every bid creation claimed a Telegram 2FA tap was required. That's not true for the way the autopilot places bids: it uses the account owner token via Braiins' API, which does not need the Telegram confirmation (that confirmation is part of Braiins' web interface). The note is dropped so it no longer implies an action you have to take.
+
+### `[Fix]` Daemon no longer crashes when the Electrum connection drops mid-session
+
+The Electrum (electrs/Fulcrum) client dropped its socket's error handler right after connecting, so if the Electrum server restarted or dropped an idle connection while the daemon was mid-request - common during a payout backfill, or when Umbrel's Electrs app bounces - the next write hit a broken pipe with no listener and Node escalated it to an uncaughtException ("write EPIPE"), crashing the whole daemon (systemd then restarted it). The socket now keeps a persistent error handler for its whole life: a dropped connection cleanly fails the in-flight Electrum calls (already treated as best-effort, retried next tick with a fresh connection) instead of taking the process down.
+
+## 2026-07-17
+
+### `[Release]` v1.17.3
+
+Bug-fix release. Deduced Lightning payouts recorded the full pre-drop unpaid balance rather than the actual balance decrease, over-counting a partial sweep where Ocean leaves a freshly-credited block unpaid (#343, diagnosed by regenerous); the amount is now the decrease, multi-step drops fold into one payout, and already-stored amounts self-correct on the next scan. Also fixes the Bitaxe miners card ignoring the number-format locale (#347).
+
+### `[Fix]` Deduced Lightning payouts no longer overcount a partial sweep (#343)
+
+A deduced Lightning payout recorded the full unpaid balance from just before the drop as its amount. That over-counts whenever Ocean credits a freshly found block and then pays out only the older balance, leaving that new credit unpaid: the payout is the balance decrease, not the whole pre-drop reading (diagnosed by regenerous). The daemon now records the decrease (pre-drop minus the residual left behind), a multi-step drop folds into one payout spanning the whole group, and already-stored deduced amounts self-correct on the next scan - no hard reset needed.
+
+## 2026-07-16
+
+### `[Fix]` Bitaxe miners card respects the number-format locale (#347)
+
+The Bitaxe card formatted every value with a hard-coded period decimal (hashrate, power, rejection rate, efficiency, temperatures, best difficulty), so operators with comma-decimal locales saw "1.02 TH/s" on the card next to a stats bar correctly saying "1,02". All card values now go through the locale-aware formatter, and best difficulty is re-formatted from its exact numeric so its decimal separator matches too.
+
+## 2026-07-15
+
+### `[Release]` v1.17.2
+
+Focused follow-up to v1.17.0/1.17.1's Lightning P&L work. Ocean's payout API turns out not to report Lightning payouts at all (confirmed by Ocean support), so the daemon now deduces them from confirmed drops of unpaid earnings to zero with no matching ledger entry (#343) - history backfilled on upgrade, deduced records superseded automatically if the real settlement ever appears, ghost gems + explanatory tooltips on the chart. Also fixes Timeline notes being erased by the P&L hard reset (#346).
+
+### `[Fix]` Timeline notes survive the P&L hard reset (#343, #336)
+
+The hard reset rebuilds the payout store by deleting and re-fetching every payout, which gave each one a new internal id - and Timeline notes are attached to those ids, so every note on a payout silently vanished. Notes are now snapshotted before the wipe and re-attached to the rebuilt payouts afterwards (matched by their stable identity), a note on a payout that doesn't come back is kept rather than destroyed, and a deduced payout that gets replaced by the real ledger record passes its note along to the replacement.
+
+### `[Feature]` Lightning payouts are deduced from unpaid earnings - P&L "collected" no longer misses them (#343)
+
+Ocean's payout API turns out not to report Lightning payouts at all (confirmed by Ocean support), so operators paid over Lightning saw a too-low "collected" figure and an inflated loss rate. The daemon now deduces those payouts: a confirmed sharp drop of your unpaid earnings to zero (two consecutive readings, so a brief API glitch can't fake one) with no matching entry in Ocean's ledger is recorded as a deduced payout - first as "type not known yet" for 24 hours (a late-arriving on-chain record replaces it automatically), then as "probably Lightning". Historical drops are backfilled on upgrade, deduced records survive the P&L rebuild/hard-reset controls, and if Ocean's API ever starts reporting Lightning payouts the real records take over seamlessly. On the chart, deduced payouts render as a ghost gem (dashed outline) whose tooltip explains the deduction and marks the amount as approximate.
+
+## 2026-07-14
+
+### `[Infra]` StartOS package tracks upstream v1.17.1
+
+The StartOS wrapper now points at upstream Hashrate Autopilot v1.17.1, adds the `1.17.1:0` package version to the StartOS version graph, refreshes downstream README/package metadata, keeps the clean prebuilt release-input path, forces daemon dist regeneration after clean release builds, and preserves runtime `APP_VERSION` for `/api/build` and the Braiins user agent.
+
+## 2026-07-13
+
+### `[Release]` v1.17.1
+
+Feature + polish release since v1.17.0. New: a current-block-height stats tile that names the pool/miner and crowns your own blocks (#335); personal notes on Timeline events (#336); a full-text Timeline search across id, reason, notes, and identifiers (#342); a Profit & Loss "hard reset" control (#343). Improved: the alert-condition drawer breaks an outage into threshold / fired / recovered / duration / total with nearest-unit rounding (#341, #340); the P&L "collected" figure self-heals from a partial payout backfill (#343). Fixes: DDNS test push sends the daemon's detected IP (#339). Infra: @fastify/static v10, @fastify/cors, and dev-tooling bumps (#344, #345). Umbrel gallery screenshots refreshed.
+
+### `[Infra]` Dependency bumps: @fastify/static v10, @fastify/cors, dev tooling (#344, #345)
+
+Merged the grouped Dependabot updates. `@fastify/static` went from 9 to 10 (major): its `setHeaders` callback now receives a Fastify reply instead of the raw Node response, so the dashboard's HTML no-cache headers were updated to `reply.header(...)`; static asset serving and the immutable-asset/no-cache-HTML behavior are unchanged. Also `@fastify/cors` 11.2 to 11.3, and dev-only bumps (eslint, prettier, tsx, typescript-eslint, vite). No user-visible behavior change.
+
+### `[UI]` Durations round to the nearest unit instead of truncating (#341)
+
+Duration labels (alert drawer total, chart tooltips, "was open for Xm") rounded down: a 15m56s total showed "15m" even though the recovery text correctly said "was zero for 16m". Durations now round to the nearest displayed unit - 30s and up rounds a minute up - so the numbers match and no longer read a whole minute short.
+
+### `[UI]` Alert drawer shows threshold + duration + total, not just the fire window (#341)
+
+An alert-condition drawer used to show a single "Duration" that was really the window from the loud alert *firing* to recovery (e.g. "56s") - misleadingly small when the underlying problem lasted far longer (the alert fires only after a sustained threshold). The drawer now breaks it into rows: the threshold waited out before firing, when the alert fired, when it recovered, the alert duration, and a **total condition time** (onset to recovery) - the number you actually care about. When the firing row recorded the exact onset, these are exact; for older rows that predate onset-recording, the threshold and total are estimated from your current alert settings and marked with `≈` plus a footnote, since historical config changes aren't stored. No stored data is changed - this is purely how the drawer reads it.
+
+### `[UI]` Timeline pool-block drawer numbers and units line up in columns (#340)
+
+Follow-up to the unit sweep: numbers in the block/payout/deposit drawer now right-align to a shared edge with the unit (Satoshi glyph, `%`, `T`) in its own fixed column to the right, so both the digits and the units line up straight down regardless of how wide each value is.
+
+### `[UI]` Timeline drawer units muted + aligned for % and difficulty (#340)
+
+Continuing the unit-consistency sweep: the pool-block drawer's share-log `%` and the difficulty-retarget drawer's `T` and `%` now render in the same muted grey, space-separated style as the Satoshi glyph, so numbers and units line up down the column. The difficulty and change also follow your number format now (they were using a period decimal regardless of locale).
+
+### `[UI]` P&L rebuild/hard-reset move to the lifetime card + confirm what they did (#343)
+
+The "rebuild" and "hard reset" controls now live on the Profit & Loss **lifetime** card, where the data they rebuild (collected + spent) actually is, instead of the per-day card. And they now confirm the outcome: after running, a short line reports how many payouts were pulled and the resulting collected total (e.g. "hard reset done · 604 payouts · collected 0,0188 ₿"), so you're not left guessing whether it finished.
+
+### `[Feature]` Profit & Loss "hard reset" button (#343)
+
+Next to "rebuild" on the Profit & Loss panel there's now a "hard reset" - the nuclear option. Where "rebuild" re-fetches and fills gaps, "hard reset" DELETES the stored Ocean payout history and the Braiins spend cache outright and rebuilds both from scratch, so nothing stale can survive. It's safe: the payout wipe is fetch-before-delete (an Ocean outage aborts it and leaves your data intact), re-pulled payouts are marked already-notified so it won't re-alert you about old ones, and no other data references the payout store. The "collected" figure briefly shows 0 while it re-pulls. Use it only if "rebuild" didn't resolve a wrong figure.
+
+### `[Fix]` Timeline search finds CREATE rows by their bid id (#342)
+
+The new Timeline search returned nothing when you searched a bid id and had the Action filter narrowed to "create" only. A CREATE event is recorded before Braiins echoes back the order id, so its stored id is null and the id shown on the row is forward-filled from the next event. The search matched the raw (null) column instead of that forward-filled id, so creates were unfindable by id. It now matches the effective id, so searching a bid id surfaces its create too.
+
+### `[Fix]` Profit & Loss "collected" self-heals when the payout store is incomplete (#343)
+
+The P&L "collected" figure comes from a local store of Ocean's earnpay payout history. That store was full-backfilled exactly once (only when empty), so if that single fetch ever came back partial - a transient Ocean hiccup during the upgrade would do it - collected stayed permanently short, inflating the loss rate (one operator jumped from ~7% to ~32%), with no way to recover. The daemon now re-runs the full backfill periodically (and on every restart), which re-fetches the complete history and fills any gaps - a full earnpay fetch returns everything, and re-storing rows you already have is a no-op, so it's safe. The Profit & Loss "rebuild" button now also forces this payout re-fetch (not just the spend cache), for an instant fix. Unpaid earnings and spend were never affected.
+
+### `[Feature]` Timeline "Bid id" box is now a smart full-text search (#342)
+
+The Timeline's "Bid id contains" filter is now a general "Search" box that matches, case-insensitively, across the bid id, the Reason text, your personal note on the row, and the identifiers a row shows (block height/hash, IP addresses, deposit tx ids, config-change values). It searches your entire history, not just the loaded rows: the daemon matches reason + note (via the event-notes join), so a hit in an old row that hasn't paged in yet still surfaces. The merged extra rows (blocks, payouts, IP changes, difficulty retargets, config changes, alerts) are filtered client-side against their summary + identifiers + note. It ANDs with the type chips and date range as before. The free-text term is now a bound SQL parameter with LIKE-wildcard escaping.
+
+## 2026-07-12
+
+### `[Fix]` Alert duration now reflects the true outage window (#341)
+
+An alert's detail drawer showed a "Duration" that contradicted its own body - e.g. Duration `56s` under a body reading "was zero for 16m", or Duration `30m` next to "unreachable for 5m". The cause: alerts fire only after a sustained-threshold delay, so the span was measured from the fire time, not from when the condition actually went bad. The daemon now stamps the condition-onset on the firing alert, and the Timeline span (its row position, duration badge, detail-drawer Started/Recovered/Duration, and chart band) covers the full outage from onset to recovery - so Duration matches the recovery body. The alert row's own timestamp stays the fire time for delivery and Alerts-list ordering. Applies to newly-fired alerts; historical alerts keep their previous behaviour.
+
+### `[UI]` Consistent number/unit/colour formatting across Timeline drawers (#340)
+
+Swept a batch of formatting inconsistencies in the event detail drawers. The Pool Block drawer's height now carries a thousand separator (`957.746`, not `957746`). Units are uniformly muted-grey with the Satoshi glyph: the CREATE drawer's speed (`PH/s`) and budget (sat) rows, the block-reward/subsidy/fee/earnings rows, and the Edit-speed dialog all match the rate rows now, instead of baking a full-intensity unit into the number. The Edit-price `delta` is sign-coloured - green when it drops (you pay less), red when it rises (you pay more) - like the rest of the app. The Mode-change drawer shows localized run-mode labels (`Dry Run → Live`) instead of the raw enum keys (`DRY_RUN → LIVE`). Percentages (share log) follow the configured number format too.
+
+### `[Fix]` DDNS "Test connection" pushes the box's real IP, not the request's source (#339)
+
+The DDNS Test connection button did a real provider update but omitted the IP parameter (`myip=` for No-IP/dyndns2, `ip=` for DuckDNS). Per those protocols, when the IP is left out the provider records the source IP of the update request - so testing while a machine on the path was connected to a VPN wrote the VPN exit IP to the hostname, pointing your pool URL at the wrong place. The test now sends the daemon's own detected public IP explicitly, exactly like the periodic updater, so a test can only ever assert the box's real IP (and harmlessly returns `nochg` when it already matches).
+
+### `[UI]` Block-height tile names the pool from a curated database (#335)
+
+The block-height tile used a heuristic on the raw coinbase to name the pool, which mangled real tags - Foundry's coinbase reads "(/Foundry USA Pool #dropgold/", so the tile showed a stray "(", the "#dropgold" slogan as a fake "worker", and wrapped over three lines. It now identifies the pool the same way every block explorer does: the daemon bundles mempool's curated pool database and matches the coinbase output address (or a known coinbase tag) to the canonical name - so the tile reads a clean "Foundry USA" on one line. The worker line (with the corrected hard-hat icon) now appears only for Ocean and your own blocks, where the coinbase carries a genuine per-miner identity; public pools show just the pool name. The database ships in the image and can be refreshed from upstream without a code change.
+
+### `[UI]` Wider Timeline detail drawers on large screens (#338)
+
+The Timeline detail drawers (bid event, alert-condition span, and the log-extra drawer) were fixed at ~24rem, so Bitcoin addresses and transaction IDs wrapped and dropped their trailing characters even with empty space to spare. They now widen with the viewport (up to 40rem on extra-large screens) while staying full-width on mobile, so long identifiers fit on one line.
+
+### `[Fix]` Timeline now shows events that happen while the page is open (#337)
+
+The Timeline's merged event sources (daemon boots, payouts, pool blocks, alerts, deposits, difficulty retargets) used to freeze at the moment you opened the page - anything that happened afterwards only appeared after a manual reload. The daemon was recording everything correctly; the frontend had captured its window's end time once at page-load and never advanced it. A run of restarts, for example, would stop adding boot rows even though each restart was logged. The window's live edge now advances with every background refresh, so new events flow in on their own (and "following" mode works as intended again).
+
+### `[Feature]` Add your own notes to Timeline events (#336)
+
+Every event in the Timeline now has an optional note. Open any event's detail drawer and there's a text field where you can jot a personal note ("wired funds here", "switched pools", "this is the outage I was chasing") - it saves automatically when you click away, and clearing it removes it. Notes work on every event type (payouts, deposits, pool blocks, IP changes, retargets, config changes, boots, bid actions, and alert conditions) and are included as a "Note" column in the Excel export.
+
+## 2026-07-11
+
+### `[Feature]` New "block height" stats tile, crowned when you found the block (#335)
+
+There's a new pickable stat tile showing the current Bitcoin block height. Clicking it opens that block in your configured block explorer in a new tab. Its caption names the pool that found the current tip (tidied toward the clean name, so "Powered by Luxor" reads "Luxor") plus the miner when the coinbase carries one. The caption splits the coinbase into the pool and the worker on two lines, each with its own icon (waves for the pool, hard-hat for the worker) - e.g. "ViaBTC" over "wmklasson". A leading icon mirrors the chart's pool-block markers and honors your Chart-colors settings: a gold crown (with a gold number) only when *you* found the block, a BIP 110 cube when the tip signals, a blue cube for any other Ocean block, and a muted grey cube otherwise. The tile needs a Bitcoin node (it reads the tip's coinbase and header from bitcoind), so it hides itself entirely on installs without one. Add it from the stats-bar tile picker. The daemon polls the tip each minute and only re-reads the full block when the height changes, so it's cheap.
+
+### `[Fix]` Timeline colors now follow your Chart colors settings (#334)
+
+The Timeline used to draw its row glyphs with the built-in default colors, ignoring any customizations you made in Config → Display & Logging → Chart colors. So a recolored marker showed correctly on the charts but not in the Timeline - which is exactly why a real Braiins deposit didn't jump out. Now every Timeline color resolves through your overrides: the deposit / payout / pool-block / IP-change / difficulty-retarget rows, the bid-event action glyphs (create / edit / cancel / mode change / paused / resumed), and the alert-condition rows and their pop-ups all match the chart. Colors with no configurable key (config-change, daemon-boot, generic alerts) are unchanged. This also corrects a pre-existing mismatch where the "bid paused" glyph was amber in the Timeline but rose on the chart.
+
+## 2026-07-09
+
+### `[UI]` Hashrate-chart tooltip units are dimmed to match the Price tooltip
+
+The Hashrate chart's tooltip now renders its units (`PH/s`, and the `×` on pool luck, `%`, `°C`, etc. on the right axis) in the same muted grey as the Price tooltip and the stat tiles, so every chart readout is consistent - the unit sits at lower intensity than the number.
+
+### `[UI]` Price-chart tooltip units use the Satoshi glyph and follow the currency toggle
+
+The Price chart's hover/pinned tooltip now renders its rate units with the Satoshi symbol instead of the word "sat" (e.g. `47.104 ꜱ/PH/day`), styled in the same muted grey as the stat tiles so the unit reads at lower intensity than the number. The right-axis readout drops the unit from its label - the row now just says "unpaid" (or "paid total", "lifetime", etc.) and carries the unit as a dimmed glyph on the value instead. All of it follows the global sats/BTC/USD toggle: the Satoshi glyph in sats, ₿ in BTC, and $ amounts in USD.
+
+## 2026-07-08
+
+### `[Infra]` StartOS artifact workflow verifies its packaging tool
+
+The manual StartOS artifact workflow now checksum-verifies the pinned `start-cli` binary and only materializes the release signing key during the packaging step, removing it before artifact upload.
+
+### `[Infra]` StartOS artifact workflow limits signing-key scope
+
+The manual StartOS artifact workflow now builds release inputs before the signing key is available, then unsets and removes the key as soon as the signed package files are built.
+
+### `[Infra]` CI can build StartOS package artifacts
+
+A manual GitHub Actions workflow can now build signed x86_64 and aarch64 StartOS `.s9pk` artifacts, generate checksums, verify them, and upload the bundle for release review.
+
+### `[Infra]` StartOS release artifacts prebuild inputs automatically
+
+The StartOS GitHub release profile now runs the clean release-input prebuild before packaging x86_64 and aarch64 `.s9pk` artifacts, so local release commands cannot accidentally package stale or mismatched generated assets.
+
+### `[Feature]` Change your password and rotate Braiins tokens from the dashboard (#332)
+
+Config → Pool & Payout now has a Security & credentials section. On installs whose secrets live in the database (the Umbrel/appliance path, where there's no shell or SOPS), you can change your dashboard password and rotate your Braiins owner and read-only tokens right from the browser. Changing the password takes effect immediately: the new one works on your next click and the old one stops instantly, which also boots anyone still holding it. A new token is test-called against Braiins before it's saved, so a typo can't silently break bidding; token rotations apply after the next daemon restart. Every change asks for your current password first. On env/SOPS installs the section shows a read-only notice pointing you to where those secrets are actually defined, rather than offering an editor that a reboot would quietly overwrite.
+
+## 2026-07-07
+
+### `[Infra]` StartOS packages use the prebuilt-input Dockerfile
+
+StartOS package manifests now build from `Dockerfile.startos`, so package images consume the prebuilt release inputs instead of repeating the app TypeScript/Vite build inside Docker.
+
+### `[Infra]` StartOS package image skips Docker rebuilds
+
+StartOS packaging now has a dedicated runtime Dockerfile that consumes prebuilt release inputs and keeps the package build context limited to manifests, dist outputs, and build metadata.
+
+### `[Infra]` Release inputs build from a clean prebuild
+
+StartOS release packaging now has a dedicated `build:release-inputs` script that cleans stale package and StartOS bundle outputs, exports the StartOS app version for the dashboard build, rebuilds workspace outputs, and regenerates the StartOS `javascript/` bundle.
+
+### `[Infra]` StartOS package builds work in Git worktrees
+
+The StartOS package make targets now resolve Git's HEAD and index paths through Git instead of assuming `.git` is a directory. Linked worktrees can dry-run and build packages again while still rebuilding packages when HEAD or the index changes.
+
+### `[Fix]` Security: DB-stored secrets are now encrypted at rest (#331)
+
+The credentials the daemon has to keep usable (Braiins tokens, bitcoind RPC password, Telegram token, DDNS credential) are now stored AES-256-GCM-encrypted in the database instead of plaintext, so a copied `state.db` or an app-data backup no longer hands over your secrets. The encryption key comes from `BHA_SECRET_KEY` if set (on Umbrel that's the device-derived `APP_SEED`, which lives outside the app's data folder), otherwise a generated key file next to the database. Existing installs encrypt in place on the next daemon start. If the key is ever lost the daemon degrades gracefully (treats the secret as unset and prompts you to re-enter it) rather than crash-looping. This does not - and by design cannot - protect against someone who already controls the running machine; it protects the data-leaves-the-box cases. Completes the GHSA-wvpp hardening. See `docs/security-secrets-at-rest.md` for the full threat model.
+
+### `[Fix]` Security: credential fields are now write-only in the API (#331)
+
+The config API used to return your saved Telegram bot token, bitcoind RPC password, and DDNS credential in full to any logged-in dashboard session. It now blanks those on read and treats a blank value on save as "keep the existing one," so the raw secrets never leave the daemon. The Config screen shows "leave blank to keep saved value" on those fields. Usernames and node URLs stay visible since they aren't secrets. Part of the GHSA-wvpp hardening.
+
+### `[Fix]` Security: the dashboard password is now stored as a hash, not plaintext (#331)
+
+The dashboard password is only ever checked, never recovered, so it's now stored as a one-way scrypt hash instead of plaintext in the database. Even someone who reads `state.db` can no longer recover the password itself (which matters because passwords get reused). Existing installs are upgraded automatically on the next daemon start, and operators who supply the password via environment variable / SOPS are unaffected. Part of the GHSA-wvpp hardening.
+
+### `[Fix]` Chart no longer shows a stale "bid paused" band after a paused bid is cancelled
+
+A paused-bid band on the Hashrate and Price charts only ended when the bid resumed. But when a bid is paused and then cancelled (for example the stop-spend protection cancelling after a Datum outage, then creating a fresh bid), it never resumes, so the band ran to "now" and made the new, active, delivering bid look paused. The band now also closes when the paused bid is cancelled or replaced by a new bid, so it reflects the real paused window only.
+
+### `[Fix]` Security: credential values are no longer stored or shown in the config-change audit log (GHSA-x8x9)
+
+Saving config in v1.16.0 recorded the raw old/new value of every changed field into the Timeline's system-events log, including credentials (Telegram bot token, bitcoind RPC user/password, DDNS username/credential). Those values were then reachable through the dashboard API, the Timeline, and the Excel export. The daemon now redacts these credential fields at write time - it still records that the field changed, just never the value - and a migration scrubs any values v1.16.0 already stored, so upgrading removes them from existing databases. Non-credential fields (payout address, node URL, hostnames) stay visible, since seeing those change is useful audit signal. Thanks to the reporter for the detailed writeup.
+
+## 2026-07-06
+
+### `[UI]` Config-change timeline entries for layout/color changes are now readable
+
+Changes to dashboard tiles, card order, muted alerts, and chart colors used to dump the raw JSON arrays in the timeline row and detail panel (`["uptime","pool_luck_24h",...] → [...]`). They now show a friendly semantic diff: the detail panel lists `+ Added` / `− Removed` items with their real names (or "Reordered · N items" when only the order changed), and chart-color changes show a color swatch and hex per series. The timeline row shows a compact summary like "Dashboard tiles changed (1 replaced)". Numeric/toggle config changes were already readable and are unchanged.
+
+### `[UI]` Pool blocks 30d tile is colored by pool luck
+
+The POOL BLOCKS 30D stat tile was always neutral, but a raw block count only means something relative to what's expected. It now colors by the 30-day pool luck (actual ÷ expected): green at or above par (>=1.0), amber in the 0.9-1.0 approach, red below 0.9.
+
+### `[UI]` Wallet runway tile turns amber later - a two-week runway is green now
+
+The WALLET RUNWAY stat tile now colors green at 3+ days (matching the default runway alert threshold), amber between 1 and 3 days, and red under a day. The previous 7/14-day thresholds painted a comfortable multi-week runway amber, which looked like a warning when nothing was wrong.
+
+### `[Fix]` Timeline shows earnpay payouts and the payout gem "View in timeline" jump highlights again (#323)
+
+The Timeline's payout rows now come from the same Ocean payout ledger (earnpay) as the Price chart's gems, so Lightning payouts appear in the Timeline too and a gem's "View in timeline" link highlights the matching row again. After the chart gems were repointed to the ledger, their row keys no longer matched the Timeline's on-chain-scanner rows, so the jump landed on nothing. Payout rows and the detail drawer are now rail-aware (on-chain vs Lightning; the transaction link and block-height row are shown only for on-chain payouts).
+
+## 2026-07-05
+
+### `[UI]` Price-chart payout gems now include Lightning payouts (#323)
+
+The payout markers on the Price chart come from Ocean's own payout ledger (earnpay) instead of the on-chain address scanner, so Lightning payouts finally appear on the timeline. On-chain gems keep their block-explorer link; Lightning gems show a "LIGHTNING PAYOUT" tooltip with no link (there's no on-chain transaction to open). Because the source no longer depends on an Electrum/Bitcoin node, operators without one now see their payout gems too. The legend label is now just "payout" since it covers both rails.
+
+### `[Fix]` "Payout confirmed" Telegram alert now fires for Lightning payouts too (#323)
+
+The second-stage "Ocean payout confirmed" notification used to come from the on-chain scanner, so a Lightning payout - which never touches the blockchain - never produced a confirmation message (only the rail-blind "payout initiated" heads-up). It now fires from Ocean's own payout ledger and states whether each payout settled on-chain or over Lightning. The alert's config label lost its "on-chain" qualifier accordingly. Existing payout history is baselined silently on first run so upgrading doesn't replay old payouts to your phone.
+
+### `[Feature]` Profit & Loss now counts Lightning payouts, with an on-chain vs Lightning split (#323)
+
+"Collected" in the Profit & Loss panel now comes from Ocean's own payout ledger (the earnpay endpoint) instead of the on-chain address scanner, so Lightning payouts finally count. Previously a Lightning payout dropped your unpaid-earnings but never showed up as collected, so net P&L silently understated by the full payout. When you have both rails, the panel shows the split ("on-chain X, Lightning Y"). Collected also no longer needs an Electrum/Bitcoin node configured - it works from your Ocean payout address alone. If you had set the manual pre-installation offset to compensate for missed Lightning payouts, the panel now flags that it may double-count so you can review it.
+
+### `[Infra]` Ocean earnpay payout store (groundwork for Lightning-aware P&L) (#323)
+
+Adds a daemon-internal sync of Ocean's authoritative payout list (the `/v1/earnpay` endpoint) into a new `ocean_payouts` table, covering both on-chain and Lightning settlements. It backfills the full history on first run for a payout address and refreshes a trailing window on a slow cadence. No user-visible change yet; this is the source of truth that the P&L "collected" figure and the chart payout gems switch onto in following commits, so Lightning payouts stop being invisible to accounting.
+
+### `[Fix]` Hero auto-fit uses real grid items so iPad Safari constrains the width (#325)
+
+Follow-up on the iPad hero clipping. The two hero columns were laid out with a Tooltip wrapper as the direct grid item, and its `display: contents` mis-sizes the grid track on iOS Safari - so the auto-fit measured a column wider than what actually rendered and never shrank, clipping the value on device while every headless engine measured it correctly. The columns are now real constrained `<div>` grid items. A temporary `?fitdebug=1` readout was added to surface the measured widths on-device.
+
+### `[Fix]` Hero price/delivered no longer clip the last digit on iPad Safari (#325)
+
+The auto-fitting hero values could measure their width before the text finished laying out on iOS Safari, compute that no shrinking was needed, and then overflow once the real width materialised - clipping the last digit and pushing the +/- spread badge out of view. The auto-fit now re-measures when the content itself resizes (not only when the column does), so the right scale is applied as soon as the true width is known, and iOS text auto-inflation is disabled. Desktop was unaffected. Reproduced and fixed against the WebKit (Safari) engine.
+
+## 2026-07-04
+
+### `[Infra]` StartOS package tracks upstream v1.16.0
+
+The StartOS wrapper now points at upstream Hashrate Autopilot v1.16.0, adds the `1.16.0:0` package version to the StartOS version graph, refreshes downstream README/spec/package metadata, and regenerates release catalogs and checksums.
+
+### `[Feature]` Pinch-to-zoom on charts for touch devices (#324)
+
+On iPad and iPhone you can now pinch the Hashrate and Price charts to zoom the time axis: spread two fingers to zoom in, bring them together to zoom out, anchored under the pinch midpoint. Zoom was previously mouse-wheel only, so touch devices could pan but not zoom.
+
+### `[Fix]` "Payout initiated" alert no longer promises an on-chain confirmation (#323)
+
+This alert fires when Ocean debits your unpaid balance, which is an off-chain signal that doesn't reveal whether the payout went out on-chain or via Lightning. It previously said "on-chain confirmation follows; you'll get a second message when the transaction lands" - a promise that never came true for Lightning payouts. It now simply states it reflects Ocean's own report of the debit, without claiming what happens next.
+
+### `[UI]` BTC amounts drop trailing zeros; hero values never clip the last digit
+
+BTC-denominated rates were padded to a fixed eight decimals, so the hero price and the avg-cost-vs-hashprice tile showed noise like "0,48108000" and "0,00921000". They now strip the trailing zeros ("0,48108", "0,00921") while still expanding to full satoshi precision for tiny values. Also tightened the hero auto-fit so a scaled value keeps a small margin from the column edge - the delivered number could otherwise lose its last digit to a one-pixel rounding clip in some unit combinations.
+
+### `[UI]` Hero price/delivered card looks right in every unit combination
+
+The big PRICE and DELIVERED numbers at the top of the Status page kept a fixed font size, so long values in some unit combinations overflowed and collided - USD in EH mode ("$30.259,60"), BTC in PH mode ("0,00048252"), and the spread badge that sits next to the price. The two numbers now auto-fit their columns and share one size, so any combination of hashrate unit (TH/PH/EH) and denomination (sats/BTC/USD) stays on one clean line with the values matched. Also fixed the spread badge showing a stray "/TH/day" (or "/EH/day") tail in USD mode - it only stripped the "/PH/day" form before.
+
+### `[UI]` All six default stat tiles fit one row on iPad
+
+On an iPad Pro in portrait the sixth tile (avg cost vs hashprice) wrapped onto a lonely second row. The tiles now shrink slightly so all six fit across one row at that width; wider screens are unchanged and narrower ones still reflow.
+
+### `[Fix]` Pool-block tooltip is fully interactive on touch, with a Timeline jump
+
+Tapping a pool-block marker on an iPad opened the tooltip in its hover state - no close button, no "View in timeline" jump, and the block-explorer link wasn't tappable - because iOS treats the first tap on a hover-revealing marker as a hover, not a click. A tap now pins the tooltip directly, so the full interactive panel (dismiss, block explorer, and the Timeline jump) is available on the first tap. Desktop click behavior is unchanged.
+
+### `[Perf]` Small chart pans reuse cached data instead of refetching
+
+Releasing a chart pan snapped the fetch window to a fixed 5-second grid, so even a tiny nudge produced a brand-new data request across five queries. The snap now scales with the visible span (about 1% of it), so small back-and-forth pans land on the same cached window and render instantly. The chart itself still draws at exact pixel positions - the snap only affects what gets fetched.
+
+### `[Perf]` One shared clock for ticking labels, snappier chart jumps, calmer catch-up refetches
+
+All per-second countdowns and "updated Xs ago" labels now share a single clock instead of each running its own timer, so their updates land in one render batch. Jumping from the Timeline to a chart marker (and back) scrolls immediately when the target is already on screen instead of waiting for the first poll tick. And the "refreshing…" catch-up loop stops hammering the API after ~20 seconds if the daemon doesn't come back, falling back to the normal poll interval.
+
+### `[Perf]` Smoother chart panning: heavy math no longer re-runs per drag frame
+
+Dragging a chart re-ran the price chart's full effective-rate accumulation (a nested loop over up to a million point-pair combinations) on every frame of the drag, because it lived in the same computation block as the viewport-dependent scales. It now only recomputes when new data actually arrives. The pool-luck block markers also swap a linear scan per block for a binary search, shaving another chunk off chart rebuilds when a luck axis is selected.
+
+### `[Perf]` Fewer duplicate requests: shared query cache and calmer refocus behavior
+
+The Timeline page fetched the Ocean, payout and deposit data under its own cache keys, so with it open the same endpoints were polled twice concurrently. It now shares one cache with the rest of the app. Queries also get a 15-second freshness window, so returning to the tab or switching pages refetches only data that has actually had a chance to change instead of refiring every query at once. The Config page additionally stops re-serializing the whole config three times per keystroke for its unsaved-changes check.
+
+### `[Perf]` Faster dashboard loads: compressed API responses and cached Ocean assembly
+
+All API responses over 2 KB are now gzip-compressed - the chart data endpoint returns multi-MB JSON that compresses about 10x, which is most of the chart load time on remote connections. The Ocean panel endpoint also stops re-running hundreds of database lookups on every poll: the assembled response is cached until the upstream Ocean snapshot refreshes. Two smaller cuts: the metrics endpoint no longer re-queries the first-tick timestamp per request, and the finance endpoint no longer fetches the lifetime-spend snapshot twice.
+
+### `[Perf]` Chart crosshair no longer re-renders the whole Status page per pointer move
+
+The shared crosshair position lived in Status-page React state, so every hover tick re-rendered the entire page - tiles, pipeline cards and both full chart SVGs - just to move a vertical line. The position now lives in a small subscription store; only the crosshair line, dots, value readout and the alert-band marker fade-in re-render as the pointer moves. Behaviour is unchanged: synced hover across both charts, click-to-pin, Esc/outside-click dismissal, touch long-press scrub.
+
+### `[Perf]` Status page stops re-rendering the charts on every hover and poll tick
+
+Both charts are wrapped in React.memo, but several props (pointer handlers, solo-mining arrays, event-kind filters, inline callbacks) got a fresh identity on every Status render, so the memo never hit and the heaviest chart transforms recomputed at pointer-move frequency. Those props are now referentially stable, Intl.NumberFormat instances are cached instead of rebuilt per axis label, the tiles bar and chart marker layers only re-render when their data changes, and the locale context no longer invalidates all consumers on unrelated renders. Hovering, panning and live polling on the Status page now do a fraction of the work per frame.
+
+## 2026-07-03
+
+### `[Release]` v1.16.0
+
+The Timeline release. One unified chronological event log (bid actions, alert spans with recovery rows, payouts, deposits, all pool blocks, retargets, IP changes, config edits, daemon restarts) with bidirectional chart jumps and sonar beacons; streaming denomination-aware Excel export with no row cap; follow live-tail; daemon-started chart markers; fully denomination-aware values everywhere including rewritten reason text. Controller safety: the #319 duplicate-bid guard and the stratum-probe datum-down cancel. Exact TIDES credits in pool-block alerts (#321). Migration 0115. Docs audited to spec v2.17 with a fresh screenshot set.
+
+### `[UI]` Unpaid-line block dots explain the balance step
+
+Clicking a dot on the unpaid-earnings (or lifetime-earnings) line showed only the pool-block tooltip - block reward, share, explorer link - but nothing about the thing the dot actually sits on: your balance. The tooltip now adds a "unpaid balance at this step" section with before, after, and the credited delta as Ocean observed it. The top-edge block cubes (which aren't balance events) keep the plain block tooltip.
+
+### `[UI]` BIP 110 scanner: reward and fees always show 8 decimals
+
+The block table stripped trailing zeros from the BTC amounts, so every row had a different width (3.132358 next to 3.13594278) and the reward/fees columns were hard to scan. Both now always render the full 8 decimals.
+
+### `[Feature]` Timeline: alert recoveries are rows too (#322)
+
+When an alert condition heals (hashrate back above floor, DATUM reachable again, ...), the Timeline now shows a second row at the recovery moment - emerald check glyph, "below floor resolved", with the recovery message ("Hashrate back at or above floor - was below for 17m") in the Reason column. Previously only the opening row existed and the recovery left no trace in the feed. Recovery rows toggle with the same condition chip as their opening row (no extra filter) and are included in the Excel export. Spans closed implicitly (a next episode, or a stale orphan bound) have no real recovery moment and get no fabricated row. Clicking a recovery row opens a recovery-flavored drawer (emerald "resolved" header, the recovery message), and its "View on chart" jumps to the band's closing edge and pulses the beacon there - not at the onset. The two log-only condition classes (marketplace empty, bid paused sustained) draw no chart band of their own - the fillable-gap and bid-pause hatches already cover them - so their jump used to land on nothing; they now get a beacon-plus-guide-line anchor on the price chart at the jumped-to moment.
+
+## 2026-07-02
+
+### `[Fix]` Pool-block-credited alert reports the exact credit, not the ~ estimate
+
+The "Credited to you" number in the pool-block Telegram/alert was falling back to the `~share × reward` estimate (consistently ~1% high) whenever the daemon had restarted since the previous block - which during active development was nearly always. The alert already waits for Ocean's unpaid balance to include the credit before firing, so the exact number was always available at that moment: it now uses the unpaid delta against the block's own noticing-time baseline, which needs no memory of any previous alert. The `~` estimate remains only for genuine unknowns (multiple blocks in one tick, or the payout-block failsafe where unpaid went down instead of up).
+
+### `[UI]` Timeline: all filters are now sticky; follow live-tails every source
+
+The Alerts and Events chip groups and the follow toggle now persist per browser like the rest of the toolbar filters (they used to reset to "all on"/off on every reload). And while following, the merged sources (payouts, deposits, blocks, IP changes, retargets, alerts, system events) poll at the same 15 s as the bid feed, so a fresh payout no longer lags up to a minute behind the rows around it.
+
+### `[Fix]` Config-layer cleanup from the code-vs-spec audit
+
+Three small config fixes. The dynamic hashprice cap's schema default now matches what fresh installs actually get (2,000,000 sat/EH/day, cap ON - the Zod default said "disabled" while first-run seeding enabled it; existing installs keep whatever they have, including an explicit "disabled"). The dead `handover_window_minutes` field is dropped (migration 0115) - it belonged to a manual-override system that was retired before it ever shipped. And `BHA_WALLET_RUNWAY_ALERT_DAYS` now accepts fractional days (e.g. `0.5`) via environment variable, matching what the dashboard and docs always allowed.
+
+### `[Fix]` Datum-down auto-cancel now keys on the stratum probe, not the optional stats API
+
+The stop-spend rule (cancel all bids after 3 consecutive ticks of Datum being unreachable, #199) was reading the optional Datum stats-API poller instead of the mandatory stratum TCP probe. Two failure modes fixed: with no stats API configured the protection could never fire during a real stratum outage, and a stats-API-only glitch (healthy share path) cancelled every bid. Found in a code-vs-spec audit; the spec always said "stratum".
+
+## 2026-07-01
+
+### `[UI]` "Daemon started" markers on the price chart (bidirectional jump)
+
+Daemon restarts now show up as an always-visible power-glyph marker on the price chart (emerald, with a dashed guide line), the same idiom as the run-mode / pause / resume markers. Clicking one opens a small tooltip with the build/version and a "View in timeline" jump; and the reverse - the Timeline's "daemon started" row now has a "View on chart" button that pans there and pulses the marker. So a restart that explains a gap is reachable from either view, closing the last event kind that only jumped one way.
+
+### `[UI]` Timeline rate units use the Satoshi glyph + a fixed second line
+
+The Timeline's rate column headers now put the unit on its own second line ("Fillable" then "(≡/PH/day)") instead of wrapping at an arbitrary spot, and the word "sat" is replaced by the Satoshi glyph in the headers, the Δ-price filter label, and the reason text - shorter, cleaner, and consistent with the rest of the dashboard. The Excel export keeps the plain "sat" wording (a font glyph can't render in a spreadsheet).
+
+### `[UI]` Reason text respects the display denomination
+
+The last raw-unit holdout: bid-event Reason lines (e.g. "track fillable: 48,288 sat/PH/day → 47,817 sat/PH/day") are generated by the daemon in canonical sat/PH/day and PH/s. They now get their numeric+unit tokens rewritten into the active denomination wherever the reason appears (Timeline table, detail drawer, chart tooltip, and the Excel export), so the sentence reads in the same units as the columns beside it (e.g. "0.48288000 ₿/EH/day → 0.47817000 ₿/EH/day"). The surrounding audit wording is untouched, and any token the daemon might word differently in future is left as-is rather than mangled.
+
+### `[UI]` Clearer filter controls + a spinning export indicator
+
+The bulk filter controls now read as controls: each group's "all · none" is a segmented button pair (bordered pills) instead of faint gray text that didn't look clickable, and the global control is two plain "select all" / "select none" buttons in the toolbar cluster (reset stays alongside). The export button now shows a spinning loader while it works instead of a "…", so it's obvious something is happening.
+
+### `[UI]` Timeline: global "Filters all · none" toggle
+
+Next to the reset button there's now a global **all · none** that flips every chip in all three filter groups (Actions, Alerts, Events) at once - a quick way to start from "everything" or "nothing" and then pick. Reset stays as the full reset (also clears the text/date filters).
+
+### `[UI]` Timeline "follow" (live tail) button
+
+A **follow** toggle in the timeline toolbar tails the feed live: it refetches faster and, as new events land, keeps you pinned to the newest ones (only when you're already near the top, so scrolling down to read isn't interrupted). Turning it on jumps to the live edge. Click again to stop.
+
+### `[UI]` Chart event tooltip respects the display denomination
+
+The price-chart marker tooltip (click a bid event on the chart) was the last surface still printing price / fillable / hashprice / overpay / max bid / effective cap / deadband in raw sat/PH/day. It now follows the units toggle like everything else, with the unit muted beside each value.
+
+### `[UI]` Timeline table + bid-event detail respect the display denomination
+
+The on-screen Timeline was still showing Fillable, Price before/after and Δ price in raw sat/PH/day regardless of the units toggle (only the Excel export and the Speed column had been converted). Those columns now follow the active denomination, with the unit shown once in each column header (e.g. "Fillable (BTC/EH/day)") and the numbers bare below. The bid-event detail drawer (click a row) gets the same treatment across all its rate rows (price, delta, fillable, hashprice, overpay, max bid, effective cap), plus budget and speed.
+
+### `[UI]` Excel export respects the display denomination; faster to open
+
+The exported spreadsheet now honours the global units toggle: with EH + BTC selected (for example), fillable/prices/Δ and speed are written in BTC/EH/day and EH/s instead of always sat/PH/day and PH/s, and each column header spells out its unit (e.g. "Fillable (BTC/EH/day)", "Speed (EH/s)"). Decimals follow the denomination too, so speed now carries the same precision as the dashboard (e.g. "3.00 PH/s") rather than rounding to a whole number. Columns use fixed widths instead of Excel's best-fit auto-sizing, which had to rescan every cell when the file opened - noticeably slow on large (20k+ row) exports.
+
+### `[UI]` Timeline: "payout initiated" no longer looks like an alarm; reset re-enables everything; localized export
+
+Grab-bag of timeline fixes. "Payout initiated" was drawn with the alarm bell in alert-amber, which read as a problem - it now uses a payout (hand-coins) glyph in payout green, since it's good news. The **reset** button now re-enables every filter group (Actions, Alerts, and Events), not just the actions. And the Excel export now follows the interface language (headers + sheet tab translated to nl/es; the values were already localized).
+
+### `[UI]` Filter chips show their real icons; "View in block explorer" button on on-chain events
+
+The Alerts and Events filter chips now carry the same glyph as their timeline rows instead of a generic colored dot - so the daemon-started chip shows the power icon (and is finally recognizable as its filter), payout shows the gem, deposit the fuel pump, alerts the warning triangle, and so on. And on-chain events (payout, deposit, pool block) get a proper **"View in block explorer"** button next to "View on chart" in the detail panel, replacing the small text link.
+
+### `[UI]` Mode-change gets its own icon so it stops colliding with daemon-started
+
+The "mode" action and the "daemon started" event both drew the Lucide power icon, so the mode filter chip looked like it might be a daemon-started filter. Mode-change now uses a distinct left-right arrow (⇄) everywhere - timeline rows + filter chip, chart markers, and the Config color swatch - leaving the power icon to mean daemon-started. (The daemon-started filter already lives in the Events row.)
+
+### `[UI]` Richer timeline detail panels: build on daemon-start, human-readable config changes, explorer links
+
+Three improvements to the timeline side panels: a **daemon started** row now shows the build that launched (e.g. `build 721 · v1.15.1 · abc1234`). A **config change** now reads in plain language and your chosen hashrate unit - `max_overpay_vs_hashprice_sat_per_eh_day: 2000000 -> 1500000` becomes "Max overpay vs hashprice: 2,000 → 1,500 sat/PH/day". And **deposit / payout / pool-block** panels now carry an "open in block explorer" link. (The daemon-start build detail only appears for boots after this update.)
+
+### `[Perf]` Timeline export is now streaming, with no row cap (#320)
+
+Replaced the Excel writer (exceljs, which held every cell in memory and forced the 200k-row cap) with a streaming one built on fflate: the worksheet is written and compressed row-by-row, so memory stays flat regardless of size - it runs comfortably on the light hardware Hashrate Autopilot targets. The row cap is gone. The Excel library also shrank from ~930 kB to ~8 kB.
+
+### `[Fix]` Autopilot no longer places a duplicate bid on a bid-list fetch blip (#319)
+
+When the Braiins bid-list read transiently failed (or momentarily didn't include our bid) while the orderbook read succeeded, the decision loop saw "no owned bids" and created a **second** bid, which its own "multiple owned bids" guard then cancelled a few minutes later - wasting a little hashrate spend and showing a confusing extra `create` in the Timeline. The create path now waits unless the bid-list fetch definitively succeeded AND the local ledger agrees there are no live bids, mirroring the caution already applied to ledger pruning. Strictly conservative: it can only prevent spurious creates.
+
+### `[UI]` "View in timeline" links + reveal resets filters when the target is hidden
+
+The chart tooltips' jump links now say "View/Show in timeline" (the page is the Timeline now, not "history"). And when you jump from a chart marker to a bid-event row that a filter is currently hiding - e.g. you'd turned "price" off, then clicked a price marker's "Show in timeline" - the Timeline now clears the filters that would keep that row from loading, so the reveal always lands on the row instead of silently going nowhere.
+
+### `[Feature]` Export the Timeline to a formatted Excel file (#320)
+
+An **export** button in the Timeline toolbar downloads every row matching the active filters as a formatted `.xlsx` (bold/frozen header, autofilter, column widths). It pages the bid-event feed to completion and merges in the payout / deposit / block / IP / retarget / alert / config / daemon-start rows within the active date range and group toggles - not just what's on screen. Very large pulls are capped at the most recent 200,000 bid events (a memory guard, not an Excel limit) with a heads-up to narrow the date range. The Excel library loads only when you click export, so it never weighs down the normal page.
+
+### `[UI]` Timeline detail panel mirrors the chart tooltip; long hashes are copyable
+
+Clicking a log row now opens a panel showing the same information the event's chart tooltip shows, instead of a bare summary. A pool block lists height, pool reward, subsidy, fees, your estimated share, and the BIP-110 signal - and the long block hash is now a small copyable value with a copy button rather than a wall of digits. Payout, deposit, IP-change and retarget rows get their structured detail too (txid / address are copyable).
+
+### `[Fix]` Timeline Action filter now hides what you deselect (opt-out)
+
+The Action chips were opt-in - selecting one showed *only* that kind, and deselecting everything showed *everything* - which is the opposite of the Alerts and Events groups and confused the operator: clicking "price" off didn't hide the price rows. All three groups now behave the same: every chip is on by default, and clicking one hides that kind. The Action group also gets its own "all · none" toggle, and deselecting every action now correctly shows no bid rows (previously it fell back to showing all). Fixed a latent bug where reloading dropped MODE_CHANGE / bid-paused / bid-resumed from a saved filter.
+
+### `[UI]` Timeline filter groups get "all · none" quick toggles
+
+The Alerts and Events filter groups now have a compact "all · none" control next to their label, so isolating a single event type (e.g. only `create`) is a couple of clicks instead of deselecting a dozen chips one by one.
+
+### `[UI]` Timeline polish: renamed, columns reordered, filter fields on one row, real reset button
+
+The History page is now called **Timeline** (nav tab + heading), since it's a unified log of every event, not just orders. The **Action** column moves ahead of **Bid** so the most useful column shows first - especially on mobile, where the long bid id used to hog the second slot. The filter toolbar's text/date fields (Bid id, From, To, Δ price) now share one dedicated row instead of Δ price sitting alone, and **reset** is a real amber button rather than a faint text link.
+
+## 2026-06-30
+
+### `[UI]` Universal sonar beacon when jumping from a log row to its chart marker (#318)
+
+Completes the graph <-> log round-trip: every event in the History log now pulses a sonar beacon on its chart marker when you click "View on chart" in the detail panel - not just pool blocks. Payout (gem), deposit (fuel), IP-change (router), and difficulty-retarget (pickaxe) markers each get the ping, and the "payout initiated" alert homes in on the matching unpaid-drop marker on the price chart. So from either direction - marker popup "View in history", or log row "View on chart" - you land on the counterpart with a beacon showing exactly which one. (The unpaid-drop marker only exists when the price chart's right axis is set to unpaid or lifetime earnings; the others beacon regardless of axis.)
+
+### `[UI]` History log rows open a detail panel instead of jumping straight to the chart (#318)
+
+Clicking a log entry (payout, deposit, pool block, IP change, retarget, alert, config change, daemon start) now opens a slide-over detail panel - matching how bid events and alert-condition rows already behave - instead of immediately panning the chart. The panel shows the event time and details, plus a "View on chart" button that does the jump (blocks still pulse the sonar beacon on their cube/crown; config and daemon-start events have no chart marker, so they show details only). Per-marker sonar beacons for the remaining marker types are a follow-up.
+
+### `[UI]` Pool-block log rows: crown/blue/yellow icons, reveal beacon, "View in history" for every block (#318)
+
+Follow-up to the unified log. Pool-block rows in the History log now use the same marker language as the chart: a gold crown for our own block, a blue cube for other miners' blocks, and a yellow cube for BIP-110-signalling blocks (previously every block row was a plain yellow cube). Clicking a block row now pulses a sonar beacon on the matching cube/crown on the hashrate chart when it jumps there (it just panned before, with no way to tell which cube). And a block's chart tooltip now offers "View in history" for every block, not only our own.
+
+### `[UI]` One shared "alert condition" marker color instead of six (#318)
+
+The six per-condition alert-band colors (below floor, zero hashrate, DATUM unreachable, marketplace API, wallet runway, Bitaxe overheating) are consolidated into a single **alert condition** color that tints every alert-condition band and its onset/recovery markers - the band label already tells you which condition it is. The setting moves from its own "Alert condition bands" group into the **Markers** section of Config -> Display -> Chart colors. Any custom color you'd set on one of the old rows carries over to the shared slot.
+
+### `[Feature]` Complete unified log: every alert type, config changes, daemon restarts (#318)
+
+Continuing the "one log of everything relevant" direction. The History tab now also shows: every remaining Telegram alert as a row (payout-initiated, Bitaxe best-difficulty, fee/beta-exit, plus any future alert class automatically - excluding ones already shown as a span or from a dedicated source); `marketplace_empty` and `sustained_paused` as log-only span rows (no extra chart band); **config changes, one row per changed field** (e.g. `max_bid: 49000 -> 50000`), recorded on save; and a **"daemon started"** row on every boot (so a restart shows even when the run mode didn't change). Config/boot events are stored in a new `system_events` table (migration 0114) and served by `/api/system-events`. The payout-initiated (unpaid-drop) dot on the price chart gains a "View in history" link that jumps the log to that time. Each new kind has a filter chip.
+
+### `[Feature]` Difficulty retargets in the History log (#317)
+
+Difficulty-retarget events (the pickaxe markers) now appear as rows in the History log, with a "View in history" link on their chart tooltip - so you can jump from a retarget marker to its log row like the other events. A new `/api/retargets` endpoint derives them server-side from the per-tick network-difficulty epochs (a >0.5% jump = retarget, the same threshold the chart uses). Pool-luck step markers are intentionally left out of the log - they're too frequent to be log-worthy.
+
+### `[UI]` Alert band onset/recovery markers reveal on cursor proximity (#317)
+
+The little down/up triangles that mark where a condition band starts and ends are now hidden by default - the chart just shows the hatch bands - and fade in only near the cursor, so they don't clutter the chart but are right there (and clickable) when you reach for one. The jumped-to (focused) span's markers always show. Bands themselves are unchanged.
+
+### `[UI]` Config color rows show the real marker icon; "View in history" on every event popup (#317)
+
+The six alert-condition color rows in Config -> Display -> Chart colors now show the actual marker glyph (the filled down-triangle the chart draws at a condition's onset) instead of a plain swatch, so they're recognizable next to the other marker rows. And the speed-edit marker popup on the hashrate chart gained a "View in history" link, so now every clickable chart popup that maps to a log row - bid events, alerts, payouts, deposits, blocks, IP changes, speed edits - can jump to its row. Those jumps also use the efficient date-window jump for old events.
+
+### `[Fix]` "View in history" lands on the row in context, even for old events (#317)
+
+Revealing a weeks-old event (e.g. a payout from 6 days ago) used to scroll to a row floating far below the live feed, where it drifted as more bid pages loaded - effectively unreachable. The reveal link now carries the event's timestamp and, when the event is well in the past, jumps the History feed's date window to around it (the feed loads the ~100 bid rows from that period rather than thousands from now). The target row lands in the viewport with surrounding context. Reset the date filter to return to the live feed.
+
+### `[Feature]` History becomes a unified event log with "View in history" from every marker (#317)
+
+The History tab now folds in the other notable account events as rows alongside bids and alerts: on-chain payouts, Braiins deposits, blocks your pool found, and public-IP changes - each with its own glyph, color, and an "Events" filter chip. And every clickable chart marker's pinned tooltip gains a "View in history" link that jumps to the matching row in the log and briefly highlights it, even if the event is weeks old (the row is surfaced on demand). This extends the chart-to-log jump you liked on the alert markers to the whole chart.
+
+### `[UI]` Alert chart markers open a pinned pop-up with "View in history" (#316)
+
+Clicking an alert onset/recovery marker on a chart now pins a small pop-up at the marker - the same interaction language as the other chart markers (pool blocks, IP changes) - instead of the full slide-over drawer (which stays for the History rows). The pop-up shows the condition, severity, started/recovered/duration and body, and its action is "View in history" (you're already on the chart), which jumps to and briefly highlights the matching row on the History page.
+
+### `[UI]` Alert chart markers are clickable; focus beacon auto-clears (#316)
+
+Two follow-ups from operator feedback. Clicking an onset or recovery marker on a chart band now opens the same alert detail drawer as the History rows (it had no info dialog before), with a generous click target over the small glyph. And the jump-to-chart focus beacon now auto-clears after ~6 seconds like the bid-event beacon, instead of pulsing for a full minute and re-appearing on every later zoom/pan of that span.
+
+### `[UI]` Alert timeline polish: detail drawer, onset/recovery markers, focus beacon (#316)
+
+Follow-up to the alerts-on-timeline work, from operator feedback. Clicking an alert row in History now slides out a detail drawer (like bid events) showing the condition, severity, when it started and recovered, the duration, and the full alert body, with a "View on chart" button. On the charts, each condition band now carries a small triangle marker at the top - a filled down-triangle at the onset and a hollow up-triangle at the recovery ("above floor again") - so even a few-minutes span is visible and you can see exactly when it cleared. Jumping from a History alert row pulses a sonar beacon on the band so you can spot what you landed on. History also auto-loads a few more pages on open so a recent alert just past the first page surfaces without manual scrolling.
+
+### `[Feature]` Alerted conditions now show as bands on the charts (#316)
+
+Sustained alert conditions - delivered hashrate below floor, zero hashrate, DATUM or marketplace-API unreachable, low wallet runway, Bitaxe overheating - used to live only in the Alerts tab, disconnected from the timeline. They now render as hatched background bands on the charts over the exact period each condition was open, with a dashed onset line and a hover tooltip naming the condition and its duration. Hashrate-shaped conditions band the Hashrate chart (where the floor line is); connectivity ones band both charts. Each condition has its own color. Orphan conditions - an opener with no recovery, e.g. left by a daemon restart mid-condition - are bounded (closed at the next episode of the same condition, or capped) so a stale weeks-old alert can't tile the whole chart.
+
+### `[Feature]` Alerts now appear as rows in the History timeline (#316)
+
+The second half of unifying alerts into the timeline: the History tab now interleaves alerted condition spans as rows, so a sustained problem sits in the same chronological feed as the bid activity around it. Each alert row shows the condition glyph + label (tinted to match its chart band), its duration or "ongoing", and the alert body in the Reason column; clicking it pans the price chart to when it started. A new "Alerts" chip group in the toolbar toggles each condition on or off. The six band colors are configurable under Config -> chart colors ("Alert condition bands"). Strings are translated to nl/es.
+
+## 2026-06-29
+
+### `[UI]` History filter toolbar laid out properly on mobile
+
+On a phone the Order History filter bar was a mess: the Action chips overflowed past the right edge of the card, and because the controls just wrapped in source order the From and To date fields ended up split across different rows in an illogical position, with the reset button stranded mid-bar. The toolbar is now mobile-first - Action chips wrap inside the card, Bid id and Δ price go full-width, From and To sit side-by-side as a single date-range row, and reset moves to its own right-aligned row at the bottom. The desktop layout is unchanged (the date pair dissolves back into the inline flow above the `sm` breakpoint).
+
+## 2026-06-28
+
+### `[Release]` v1.15.1
+
+Patch release: fixes and polish, no new headline features. The price chart's safety-ceiling line is relabeled "effective cap" and is now historically accurate - the "max premium over hashprice" knob is recorded per tick and backfilled for older history, so tuning it only moves the line from that point forward (#312). Invalid Bitcoin payout addresses are now rejected at save (#309), preventing silently lost earnings from a typo. The P&L "Per Day" card no longer sticks on "refreshing…" (#311), the DATUM stats API gives actionable errors when behind an auth proxy or on a moved port (#310), and the Electrum host/port help points to the server's own connection page (#313). Plus the IP-change tooltip relative-age, mobile tiles-bar overlap (#302), block-explorer preset both-URLs (#301), and corrected Ocean batched-sweep payout wording throughout.
+
+## 2026-06-28
+
+### `[Fix]` Backfill the effective-cap line's historical premium (#312 follow-up)
+
+The #312 fix historized "max premium over hashprice" per tick going forward, but left every row recorded before that migration NULL - and the chart falls back to the *current* config value for NULL rows, so all of your pre-existing history still chased the live knob (exactly the bug #312 was meant to kill, only fixed from the migration forward). Lowering the premium still dragged the whole back-history down with it. Migration 0113 backfills that leading NULL block with the earliest premium the daemon actually recorded - the value in effect when per-tick recording began - carried backward over the old history. We can't know the true premium for ticks that predate recording (it was never stored), so this freezes the unknown past at a concrete historical value instead of letting it follow the current setting. Future knob changes now only move the line from the change forward. No-op if you never enabled the dynamic cap.
+
+## 2026-06-28
+
+### `[Fix]` P&L per-day card no longer stuck on "refreshing…" (#311)
+
+The Profit & Loss per-day card's refresh countdown was derived from `data.checked_at_ms`, which the finance API sets to the *oldest* of its aggregated source timestamps - so whenever any source was even slightly stale, `checked_at_ms + 60s` was already in the past and the card sat on "refreshing…" forever instead of counting down like the other cards. The countdown now derives from react-query's actual fetch time (`dataUpdatedAt + 60s`) and self-heals at zero, matching the rest of the dashboard.
+
+## 2026-06-28
+
+### `[Fix]` Effective-cap line on the Price chart is now historically accurate (#312)
+
+The red line on the Price chart is the effective cap, `min(max bid, hashprice + max premium over hashprice)`. Max bid was already stored per tick, but the premium was applied as the *current* config value across the whole history - so changing "Max premium over hashprice" shifted the entire line, including the past, making it look like you'd always had the new value. The premium is now historized per tick (migration 0112), exactly like max bid, so the line reflects what the premium actually was at each moment and tuning the knob only affects ticks from the change forward. Pre-migration history falls back to the current value (we can't know the past premium). The line is also relabeled from "max bid" to "effective cap" since that's what it actually plots.
+
+## 2026-06-28
+
+### `[UI]` Electrum host/port help points to the server's connection page (#313)
+
+The "Electrum server host" / "Port" fields used a terse "Default 50001." hint, which left users unsure what to enter (the autopilot works with electrs, Fulcrum, or ElectrumX). The help now simply points to the authoritative source: read the host and port off your Electrum server's own connection page - the same applies whichever implementation you run, on Umbrel, Docker, Start9, or bare metal - and notes that a fresh Umbrel install auto-fills these for the Electrum server you chose at setup, so you usually don't need to touch them. No per-implementation presets or port specifics, since the right values are environment-specific and the connection page is the one place that always shows them. (#273 follow-up.)
+
+## 2026-06-28
+
+### `[Fix]` Clearer DATUM error when it's behind an auth proxy or its port moved (#310)
+
+When the DATUM stats API is unreachable, the panel and the "Test connection" button used to show unhelpful errors: a bare `fetch failed` (port gone), or `Unexpected token '<', "<!doctype "... is not valid JSON` (the request silently followed Umbrel's app-proxy 302 into a login page). The daemon now detects a redirect-to-login ("the Datum API is behind an auth proxy ... see docs/setup-datum-api.md"), an HTML response served with a 200, and rewrites connection-refused into "the port may have changed or a manual port mapping was reverted by an app update". `docs/setup-datum-api.md` is refreshed too: it now leads with the fact that Datum app updates revert the manual port mapping (the actual recurring failure mode), and documents the cleaner `PROXY_AUTH_ADD: "false"` / `PROXY_AUTH_WHITELIST` approach alongside the original direct-mapping method.
+
+## 2026-06-27
+
+### `[Fix]` Validate the BTC payout address (#309)
+
+The BTC payout address field accepted any non-empty string. A stray `c` got saved, the worker identity became `c.plebs-pilot`, and because Ocean credits by the address in the worker identity, the rented hashrate was credited to nobody - silent lost earnings, plus a blank Ocean panel and a frozen unpaid-earnings line. The field now validates as a real mainnet Bitcoin address (bech32 `bc1q…` or Taproot `bc1p…`) in the Config form, the first-run wizard, and the config-save API. An invalid address shows an inline error, isn't saved, and blocks the save. Validation is write-side only, so an already-saved bad value can't prevent the daemon from starting before you fix it.
+
+## 2026-06-25
+
+### `[Infra]` Dependency bumps: Babel 8, @types/node 26, typescript-eslint 8.62, actions/checkout v7 (#303-#306)
+
+Applied four Dependabot updates, all dev/build tooling or CI (no runtime bundle change): @babel/core 7.29.7 → 8.0.1, @types/node 25.9.3 → 26.0.0, typescript-eslint 8.61.1 → 8.62.0, and actions/checkout 6 → 7 in the CI workflows. The two majors were verified end to end: Babel 8 transforms the lingui macros cleanly (full build + dev-server check), and @types/node 26 passes the typecheck. Tests and dev smoke green; no behavior changes.
+
+## 2026-06-22
+
+### `[Fix]` Tiles bar "add tile" no longer overlaps the range selector on mobile (#302)
+
+On narrow screens the "add tile / pick…" control - anchored as a floating element above the tiles - overlapped the time-range buttons (3h / 6h / … / All) that sit directly above it, because the two blocks are closer together than the float's upward offset. On desktop the selector's right side is empty so it never collided. The control now floats in the top-right corner only from the `sm` breakpoint up; below that it flows as a right-aligned row beneath the tiles, so there's no overlap on phones.
+
+### `[Fix]` Block-explorer preset now sets both URLs in one click (#301)
+
+Clicking a block-explorer preset (mempool.guide, mempool.space, etc.) wrote only the Transaction URL template, leaving the Block URL template unchanged. The Config draft updater spread a stale snapshot, so the two writes a preset fires in one click landed in the same React batch and the second clobbered the first. The updater now uses a functional `setState`, so the writes compose - both URLs update together, for every preset.
+
+## 2026-06-18
+
+### `[Infra]` Dependency bumps: lingui 6.4, better-sqlite3 12.11.1, react-router 7.18, + tooling (#297, #300)
+
+Applied both grouped Dependabot updates: production deps (better-sqlite3 12.10.0 → 12.11.1, @lingui/core + @lingui/react 6.2.0 → 6.4.0, react-router-dom 7.17.0 → 7.18.0) and dev/tooling deps (the rest of @lingui/* 6.4.0, tailwindcss + @tailwindcss/vite 4.3.1, vitest 4.1.9, eslint 10.5.0, playwright 1.61.0, prettier 3.8.4, typescript-eslint 8.61.1, @types/node 25.9.3). Verified with a full workspace build, the i18n catalog recompile, the test suite, and a dev-server smoke check; no behavior changes.
+
+## 2026-06-17
+
+### `[Fix]` Two CodeQL findings: support-bundle escaping + a no-op string replace
+
+Fixed two static-analysis alerts. The Diagnostics support bundle's markdown table escaped `|` in a probe detail/error but not a leading backslash (and didn't collapse newlines), so a detail containing `\` or a multi-line error could break the table rendering; it now escapes backslashes first and flattens newlines. Separately, a leftover `whereClause.replace(/\be\./g, 'e.')` in the bid-events history query was a no-op (it replaced `e.` with itself) and is removed; the SQL it produced is byte-identical, so query behavior is unchanged.
+
+### `[UI]` Correct the Ocean payout-mechanism wording (it's a batched sweep, not a coinbase)
+
+Several tooltips and docs claimed Ocean pays you "in the coinbase of the next block Ocean finds." That's wrong: Ocean accumulates block rewards in a pool wallet and settles operator payouts as batched, multi-output transactions broadcast on its own cadence, mined into whatever block by whatever pool (not a coinbase, not necessarily an Ocean-mined block). The "next payout" tooltip on Status, the two payout-alert tooltips, and the historical-backfill tooltip on Config are reworded to match reality, and docs/spec.md + docs/research.md are corrected (the backfill code already matched any tx paying the address since #240). Translations updated for en/nl/es.
+
+## 2026-06-16
+
+### `[Infra]` pnpm v11 compatibility: settings + native-build approval in pnpm-workspace.yaml (#299)
+
+pnpm v11 stopped reading the `pnpm` field from `package.json`, which meant the build-script approvals (better-sqlite3, esbuild) and the dependency overrides (the esbuild / js-yaml / fast-uri security pins) were silently ignored on v11 - and `pnpm install` printed a warning on every update. Those settings now live in `pnpm-workspace.yaml`, where both our pinned pnpm v10 and pnpm v11 read them. pnpm v11 also changed how native builds are approved: `onlyBuiltDependencies` (which v10 uses) is no longer honored for approval and a fresh v11 install hard-errors with `ERR_PNPM_IGNORED_BUILDS`, so the workspace file now also carries an `allowBuilds` block (v11's mechanism) with both keys present - a clean install builds better-sqlite3's native binding on either pnpm major. The lockfile is unchanged, so frozen-lockfile installs are unaffected.
+
+### `[UI]` IP-change marker tooltip shows relative time
+
+The public-IP-change marker tooltip on the charts now shows a relative age in parentheses after the absolute timestamp (e.g. "15 Jun 2026, 12:22:28 (12h 24m ago)"), so you can tell at a glance how long ago an ISP rotation happened without doing the math.
+
 ## 2026-06-15
+
+### `[Infra]` Pin js-yaml to 4.2.0 (clears Dependabot advisory)
+
+Pin js-yaml `>=4.2.0` via a pnpm override to clear a medium Dependabot advisory (quadratic-complexity DoS in YAML merge-key handling). The dependency is dev-only - it rides in through `openapi-typescript`, a build-time codegen tool, and is never in the runtime image, so there is no production exposure. No runtime behavior change.
 
 ### `[Release]` v1.15.0
 
 Aviator branding (favicon, header logo, and app icon), the bid-vs-hashprice stats tile (#293), mempool.guide as the default block explorer plus mempool.kilombino.com as a second BIP-110-aware option (#289), reachable-but-not-hashing detection for Bitaxe miners (#291), and a sweep of fixes: stale-bid self-heal (#295), false bid-paused bands (#292), the cross-browser chart-jump beacon (#288), the year-long HTML cache, and daemon-offline downtime accounting. Safe to upgrade from any 1.14.x release.
-
-### `[Infra]` StartOS package tracks upstream v1.15.0
-
-The StartOS wrapper now points at upstream Hashrate Autopilot v1.15.0, adds the `1.15.0:0` package version to the StartOS version graph, and refreshes downstream README and migration metadata.
 
 ### `[UI]` "View on chart" in the History event drawer is now a button
 
@@ -85,10 +689,6 @@ A daemon outage used to vanish from the uptime and bid-coverage percentages: the
 ### `[Release]` v1.14.0
 
 Run-mode and bid-pause history (#287): History events, always-visible price-chart markers, and retroactive idle-state background bands on both charts with three new configurable color slots. History detail drawer with Reason column and bidirectional chart links (#285), sticky filters. Legend click-to-hide (#280), speed-edit markers on the hashrate chart (#281), crosshair tooltip dodging, test-locked pool-luck marker placement, and inclusive "Electrum server" labeling (#273). Migration 0111.
-
-### `[Infra]` StartOS package tracks upstream v1.14.0
-
-The StartOS package metadata now points at app version `1.14.0` and the StartOS version graph has a `1.14.0:0` entry with the upstream v1.14.0 release notes. The README package note now names v1.14.0 as the synced upstream baseline for `.s9pk` builds.
 
 ### `[UI]` Bid-paused marker defaults to rose (#287 follow-up)
 
@@ -179,10 +779,6 @@ On a narrow iPhone viewport, signaling-block cards whose template was built by a
 ### `[Release]` v1.13.0
 
 Configurable stats bar (#266), dedicated `/history` page (#256 v2), synced crosshair across both Status charts (#257), drag-to-reorder dashboard cards via per-card grip handles (#244 v2/v3), USD denomination button greys out when the oracle is unreachable instead of disappearing (#274), and a wide sweep of polish: BTC oracle inline Test button (#270 follow-up), `telegram_chat_id` redacted in `/api/debug/dump`, scan-cancel actually aborts in-flight HTTP probes (#259 v2), NerdAxe numeric `bestDiff` accepted (#260), hero price card no longer overflows on iPhone in BTC mode (#268), bid pending-cancel race fix (#276), pool-luck step marker anchors at the higher line for FOUND and the lower line for AGED OUT, BIP 110 pool/miner badge letters stay square with brand-blue Ocean, "rejection rate" renamed to "rejection ratio" everywhere. Safe to upgrade from any 1.11.x / 1.12.x release; no new migrations.
-
-### `[Infra]` StartOS package tracks upstream v1.13.0
-
-The StartOS package metadata now points at app version `1.13.0` and the StartOS version graph has a `1.13.0:0` entry with the upstream v1.13.0 release notes. The README package note now names v1.13.0 as the synced upstream baseline for `.s9pk` builds.
 
 ### `[UI]` BIP 110 pool/miner badge: even-width letter on long tags, blue for Ocean
 
@@ -402,10 +998,6 @@ The pool-luck step-marker rewrite in build 605 anchored the dot's y-position at 
 ### `[Release]` v1.12.0
 
 Public-IP change tracking + chart markers (#250), drag-to-reorder Status page cards (#244), configurable marker colors with live SVG previews, return-on-spend P&L row (#249), Braiins share-rejection rate as chart series + card row (#243), pool-luck step-marker algorithm rewritten (timestamp-anchored + multi-event collapse), continuous chart-bucket scaling (no more 30× cliff at 24 h), "Solo miners" renamed to "Bitaxe miners" everywhere user-facing, migration runner self-heals half-applied schema state, public-IP poll dropped from 5 min to 60 s. New migrations 0106-0109. Safe to upgrade from any 1.11.x release. Refreshed `dashboard.png`, `config-display-and-logging.png`, `config-pool-and-payout.png`, `config-notifications.png` (the last two switched from `.jpg` to `.png` — README references updated). README gained a Tip jar section.
-
-### `[Infra]` StartOS package tracks upstream v1.12.0
-
-The StartOS package metadata now points at app version `1.12.0` and the StartOS version graph has a `1.12.0:0` entry with the upstream v1.12.0 release notes. The README package note now names v1.12.0 as the synced upstream baseline for `.s9pk` builds.
 
 ### `[UI]` Replaced the last ASCII `->` arrow in a tooltip with the Unicode `→` (U+2192)
 

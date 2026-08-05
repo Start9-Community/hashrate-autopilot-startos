@@ -2,7 +2,7 @@ import { Trans } from '@lingui/react/macro';
 import { t } from '@lingui/core/macro';
 import { useLingui } from '@lingui/react';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 import {
@@ -16,10 +16,11 @@ import {
 import { Bip110ScanCard } from '../components/Bip110ScanCard';
 import { SoloMinersCard } from '../components/SoloMinersCard';
 import { TilesBar } from '../components/TilesBar';
-import { parseDashboardTiles } from '@hashrate-autopilot/shared';
+import { parseDashboardTiles, type DashboardTileId } from '@hashrate-autopilot/shared';
 import { HashrateChart, type HashrateRightAxis } from '../components/HashrateChart';
 import { type PriceRightAxis } from '../components/PriceChart';
 import { PriceChart } from '../components/PriceChart';
+import { AlertSpanTooltip, type AlertSpanTooltipState } from '../components/AlertSpanTooltip';
 import { ModeBadge } from '../components/ModeBadge';
 import { BtcSymbol } from '../components/BtcSymbol';
 import { SatSymbol } from '../components/SatSymbol';
@@ -29,11 +30,13 @@ import { Tooltip } from '../components/Tooltip';
 import {
   api,
   UnauthorizedError,
+  type AlertConditionInterval,
   type BalanceView,
   type FinanceResponse,
   type FinanceRangeResponse,
   type NextActionView,
   type ProposalView,
+  type RewardEventView,
   type TickNowResponse,
   type StatusResponse,
 } from '../lib/api';
@@ -45,12 +48,14 @@ import {
   formatTimestampUtc,
 } from '../lib/format';
 import { applyExplorerTemplate } from '../lib/blockExplorer';
+import { computeBidPauseIntervals } from '../lib/bidPauseSpans';
 import { useDenomination } from '../lib/denomination';
 import { copyToClipboard } from '../lib/clipboard';
 import { actionModeLabel, bidStatusClass, bidStatusLabel } from '../lib/labels';
 import { useDateTimeLocale, useFormatters, useLocale } from '../lib/locale';
 import { localizedRangeLabel } from '../lib/range-label';
 import { useChartViewport } from '../lib/useChartViewport';
+import { useNowSecond } from '../lib/nowTicker';
 import { useSharedCrosshair } from '../lib/chartCrosshair';
 import { useCardOrderContext } from '../lib/cardOrderContext';
 
@@ -71,6 +76,14 @@ const EMPTY_DEPOSITS: readonly never[] = Object.freeze([]) as readonly never[];
 // #250: frozen sentinel so the IP-change marker prop stays referentially
 // stable until real data arrives (charts are React.memo'd).
 const EMPTY_IP_CHANGES: readonly never[] = Object.freeze([]) as readonly never[];
+// #316: frozen sentinel for the alert-condition span prop.
+const EMPTY_ALERT_SPANS: readonly never[] = Object.freeze([]) as readonly never[];
+// Solo-mining props: with the master toggle off (the common case) an
+// inline `[]` fallback allocated per render sat in both charts'
+// chartData dep arrays, forcing the heaviest transform in the app to
+// recompute on every Status render.
+const EMPTY_SOLO_SERIES: readonly never[] = Object.freeze([]) as readonly never[];
+const EMPTY_BEST_DIFF_EVENTS: readonly never[] = Object.freeze([]) as readonly never[];
 
 // #93: per-chart secondary Y-axis selection, persisted per-browser.
 const HASHRATE_RIGHT_AXIS_KEY = 'hashrate-autopilot.hashrateRightAxis';
@@ -239,6 +252,29 @@ export function Status() {
   // marker actually renders (handleFocusEventRendered below), with a
   // long fallback in case it never appears at all.
   const [focusedEventId, setFocusedEventId] = useState<number | null>(null);
+  // #316: span (open_id) jumped to from a History alert row -> sonar beacon.
+  const [focusedSpanId, setFocusedSpanId] = useState<number | null>(null);
+  // #322: which edge of the focused span the beacon anchors on -
+  // 'end' when the jump came from a Timeline recovery row.
+  const [focusedSpanEdge, setFocusedSpanEdge] = useState<'start' | 'end'>('start');
+  // #318: pool-block hash jumped to from a History block row -> sonar
+  // beacon on the matching cube/crown marker.
+  const [focusedBlockHash, setFocusedBlockHash] = useState<string | null>(null);
+  // #318 follow-up: generic `<kind>:<key>` of a non-block marker jumped
+  // to from a History log row (payout / deposit / IP / retarget /
+  // unpaid-drop) -> sonar beacon on the matching chart marker.
+  const [focusedMarker, setFocusedMarker] = useState<string | null>(null);
+  // #316: pinned pop-up for a condition-band marker clicked on a chart.
+  const [alertTip, setAlertTip] = useState<AlertSpanTooltipState | null>(null);
+  // Stable identity: an inline arrow here broke both charts' React.memo
+  // on every Status render (poll ticks + crosshair moves).
+  const handleAlertSpanClick = useCallback(
+    (span: AlertConditionInterval['span'], x: number, y: number) => setAlertTip({ span, x, y }),
+    [],
+  );
+  const focusSpanClearTimer = useRef<number | null>(null);
+  const focusBlockClearTimer = useRef<number | null>(null);
+  const focusMarkerClearTimer = useRef<number | null>(null);
   const focusClearTimer = useRef<number | null>(null);
   const focusFallbackTimer = useRef<number | null>(null);
   const focusScrollTimer = useRef<number | null>(null);
@@ -277,6 +313,9 @@ export function Status() {
       if (focusClearTimer.current !== null) window.clearTimeout(focusClearTimer.current);
       if (focusFallbackTimer.current !== null) window.clearTimeout(focusFallbackTimer.current);
       if (focusScrollTimer.current !== null) window.clearInterval(focusScrollTimer.current);
+      if (focusSpanClearTimer.current !== null) window.clearTimeout(focusSpanClearTimer.current);
+      if (focusBlockClearTimer.current !== null) window.clearTimeout(focusBlockClearTimer.current);
+      if (focusMarkerClearTimer.current !== null) window.clearTimeout(focusMarkerClearTimer.current);
     },
     [],
   );
@@ -305,6 +344,46 @@ export function Status() {
     const HOUR_MS = 60 * 60_000;
     const width = 3 * HOUR_MS;
     chartViewport.jumpToWindow(at, width);
+    // #316: ?focus_span=<open_id> from a History alert row pulses a sonar
+    // beacon on the matching condition band (auto-clears after 60 s).
+    const spanRaw = params.get('focus_span');
+    if (spanRaw) {
+      const sid = Number.parseInt(spanRaw, 10);
+      if (Number.isFinite(sid)) {
+        if (focusSpanClearTimer.current !== null) window.clearTimeout(focusSpanClearTimer.current);
+        setFocusedSpanId(sid);
+        setFocusedSpanEdge(params.get('focus_span_edge') === 'end' ? 'end' : 'start');
+        // Auto-clear after ~6 s like the bid-event beacon (#288), so the
+        // pulse doesn't linger across later zoom/pan of the same span.
+        focusSpanClearTimer.current = window.setTimeout(() => {
+          focusSpanClearTimer.current = null;
+          setFocusedSpanId(null);
+        }, 6_000);
+      }
+    }
+    // #318: ?focus_block=<hash> from a History pool-block row pulses a
+    // sonar beacon on the matching cube/crown marker (auto-clears ~6 s).
+    const blockRaw = params.get('focus_block');
+    if (blockRaw) {
+      if (focusBlockClearTimer.current !== null) window.clearTimeout(focusBlockClearTimer.current);
+      setFocusedBlockHash(blockRaw);
+      focusBlockClearTimer.current = window.setTimeout(() => {
+        focusBlockClearTimer.current = null;
+        setFocusedBlockHash(null);
+      }, 6_000);
+    }
+    // #318 follow-up: ?focus_marker=<kind>:<key> from any other History
+    // log row pulses a beacon on the matching payout / deposit / IP /
+    // retarget / unpaid-drop marker (auto-clears ~6 s).
+    const markerRaw = params.get('focus_marker');
+    if (markerRaw) {
+      if (focusMarkerClearTimer.current !== null) window.clearTimeout(focusMarkerClearTimer.current);
+      setFocusedMarker(markerRaw);
+      focusMarkerClearTimer.current = window.setTimeout(() => {
+        focusMarkerClearTimer.current = null;
+        setFocusedMarker(null);
+      }, 6_000);
+    }
     const idRaw = params.get('focus_event');
     if (idRaw) {
       const id = Number.parseInt(idRaw, 10);
@@ -331,10 +410,17 @@ export function Status() {
     // also scrolls the chart block into view. Poll briefly - the
     // block only mounts once the status query resolves, which on a
     // cold navigation from /history lands a beat after this effect.
+    // #318: pool blocks + IP-change + retarget markers live on the
+    // hashrate chart; payout / deposit / unpaid-drop live on the price
+    // chart. Scroll whichever carries the jumped-to marker into view.
+    const markerKind = markerRaw ? markerRaw.split(':')[0] : null;
+    const onHashrateChart =
+      blockRaw !== null || markerKind === 'ip' || markerKind === 'retarget';
+    const scrollTargetId = onHashrateChart ? 'hashrate-chart-block' : 'price-chart-block';
     if (focusScrollTimer.current !== null) window.clearInterval(focusScrollTimer.current);
     let scrollTries = 0;
-    focusScrollTimer.current = window.setInterval(() => {
-      const el = document.getElementById('price-chart-block');
+    const attemptScroll = (): boolean => {
+      const el = document.getElementById(scrollTargetId);
       scrollTries += 1;
       if (el !== null) {
         el.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -344,9 +430,21 @@ export function Status() {
           window.clearInterval(focusScrollTimer.current);
           focusScrollTimer.current = null;
         }
+        return true;
       }
-    }, 100);
+      return false;
+    };
+    // Immediate first attempt - the chart block is usually already
+    // mounted, and waiting for the first 100 ms interval fire added a
+    // visible beat before the scroll.
+    if (!attemptScroll()) {
+      focusScrollTimer.current = window.setInterval(() => void attemptScroll(), 100);
+    }
     params.delete('focus_event');
+    params.delete('focus_span');
+    params.delete('focus_span_edge');
+    params.delete('focus_block');
+    params.delete('focus_marker');
     params.delete('at');
     const next = params.toString();
     navigate(`/${next ? `?${next}` : ''}`, { replace: true });
@@ -369,6 +467,15 @@ export function Status() {
     refetchInterval: vp.liveEdge ? 60_000 : false,
   });
 
+  // #316: condition spans (open/recovery alert pairs) for the timeline
+  // band layer on both charts, keyed off the same viewport bounds.
+  const alertSpansQuery = useQuery({
+    queryKey: ['alert-spans', fetchBounds.since_ms, fetchBounds.until_ms],
+    queryFn: () => api.alertSpans(fetchBounds.since_ms, fetchBounds.until_ms),
+    placeholderData: keepPreviousData,
+    refetchInterval: vp.liveEdge ? 60_000 : false,
+  });
+
   // #250: public-IP change markers, keyed off the same viewport bounds
   // as the other chart-marker overlays.
   const ipChangesQuery = useQuery({
@@ -377,6 +484,23 @@ export function Status() {
     placeholderData: keepPreviousData,
     refetchInterval: vp.liveEdge ? 60_000 : false,
   });
+
+  // #320: daemon-start (boot) markers for the price chart, so a restart
+  // that explains a gap is a jumpable symbol - bidirectional with the
+  // Timeline's "daemon started" rows. Keyed off the same viewport bounds.
+  const systemEventsQuery = useQuery({
+    queryKey: ['system-events', fetchBounds.since_ms, fetchBounds.until_ms],
+    queryFn: () => api.systemEvents(fetchBounds.since_ms, fetchBounds.until_ms),
+    placeholderData: keepPreviousData,
+    refetchInterval: vp.liveEdge ? 60_000 : false,
+  });
+  const bootEvents = useMemo(
+    () =>
+      (systemEventsQuery.data?.events ?? [])
+        .filter((e) => e.kind === 'daemon_started')
+        .map((e) => ({ id: e.id, occurred_at: e.occurred_at, detail: e.detail })),
+    [systemEventsQuery.data],
+  );
 
   // #275: stat tiles aggregate over the VISIBLE viewport, not
   // `fetchBounds`. The fetch buffer (±1 window-width) exists so chart
@@ -420,9 +544,14 @@ export function Status() {
   // chart's "paid earnings (lifetime)" + "lifetime earnings" lines.
   // Cap at the API's 500-row max so deeply-paid wallets don't lose
   // historical dots in pagination.
+  // #323: payout gems now come from Ocean's own payout ledger (earnpay)
+  // instead of the on-chain-only reward_events scanner, so Lightning
+  // payouts appear on the timeline too. Mapped into the chart's
+  // RewardEventView shape (txid empty + rail 'lightning' => no explorer
+  // link). block_height is unknown from earnpay; the tooltip omits it.
   const rewardEventsQuery = useQuery({
-    queryKey: ['reward-events'],
-    queryFn: () => api.rewardEvents(500),
+    queryKey: ['payout-ledger'],
+    queryFn: () => api.payoutLedger(),
     refetchInterval: 60_000,
   });
 
@@ -504,7 +633,7 @@ export function Status() {
     enabled: soloMiningEnabled,
     refetchInterval: vp.activePreset ? 60_000 : false,
   });
-  const soloSeries = soloMiningEnabled ? (soloSeriesQuery.data?.rows ?? []) : [];
+  const soloSeries = soloMiningEnabled ? (soloSeriesQuery.data?.rows ?? EMPTY_SOLO_SERIES) : EMPTY_SOLO_SERIES;
 
   const bestDiffEventsQuery = useQuery({
     queryKey: vp.activePreset
@@ -514,7 +643,37 @@ export function Status() {
     enabled: soloMiningEnabled,
     refetchInterval: vp.activePreset ? 60_000 : false,
   });
-  const bestDiffEvents = soloMiningEnabled ? (bestDiffEventsQuery.data?.events ?? []) : [];
+  const bestDiffEvents = soloMiningEnabled ? (bestDiffEventsQuery.data?.events ?? EMPTY_BEST_DIFF_EVENTS) : EMPTY_BEST_DIFF_EVENTS;
+
+  // Referentially-stable chart/tile props. Computed inline these
+  // produced a fresh array/closure per render, defeating React.memo
+  // on the charts and TilesBar (see the frozen-empty block up top).
+  const showEventKinds = useMemo(
+    () =>
+      vp.activePreset
+        ? CHART_RANGE_SPECS[vp.activePreset].showEventKinds
+        : showEventKindsForSpan(vp.until_ms - vp.since_ms),
+    [vp.activePreset, vp.until_ms, vp.since_ms],
+  );
+  const dashboardTilesJson = configQuery.data?.config?.dashboard_tiles;
+  const dashboardTileIds = useMemo(
+    () => parseDashboardTiles(dashboardTilesJson),
+    [dashboardTilesJson],
+  );
+  const configForTiles = configQuery.data?.config;
+  const handleTilesChange = useCallback((next: DashboardTileId[]) => {
+    // PATCH /api/config with the new tile list. Optimistic - we don't
+    // bounce the cache; React Query will refetch on the next interval.
+    // Persist failure surfaces in the existing config mutation error UI.
+    if (!configForTiles) return;
+    const cfg = {
+      ...configForTiles,
+      dashboard_tiles: JSON.stringify(next),
+    };
+    void api.updateConfig(cfg).then(() => {
+      qc.invalidateQueries({ queryKey: ['config'] });
+    });
+  }, [configForTiles, qc]);
 
   // Operator availability removed from the UI (API bids bypass 2FA;
   // see research.md §0.9). Backend field remains in case Braiins
@@ -528,7 +687,23 @@ export function Status() {
   //   3. Reward events
   //   4. Everything remaining
   const allOurBlocks = oceanQuery.data?.our_recent_blocks ?? EMPTY_OUR_BLOCKS;
-  const allRewardEvents = rewardEventsQuery.data?.events ?? EMPTY_REWARD_EVENTS;
+  const allRewardEvents = useMemo<readonly RewardEventView[]>(
+    () =>
+      (rewardEventsQuery.data?.payouts ?? []).map((p) => ({
+        id: p.id,
+        txid: p.on_chain_txid ?? '',
+        vout: 0,
+        // earnpay doesn't carry a block height; the tooltip hides the
+        // "#height" chip when it's 0, and the explorer link keys off txid.
+        block_height: 0,
+        value_sat: p.net_sat,
+        detected_at: p.ts_ms,
+        reorged: false,
+        rail: p.rail,
+        deduced: p.deduced,
+      })),
+    [rewardEventsQuery.data?.payouts],
+  );
   const { visibleBidEvents, visibleOurBlocks, visibleRewardEvents, markersHiddenKind, markersHiddenCount } = useMemo(() => {
     const events = bidEventsQuery.data?.events ?? EMPTY_BID_EVENTS;
     const cap = configQuery.data?.config?.chart_max_markers ?? 0;
@@ -654,34 +829,10 @@ export function Status() {
   // must not drop them. A RESUMED without a preceding PAUSED in the
   // fetched window opens at -Infinity; a PAUSED without a RESUMED
   // runs to +Infinity. The charts clamp to their data range.
-  const bidPauseIntervals = useMemo(() => {
-    const events = bidEventsQuery.data?.events ?? EMPTY_BID_EVENTS;
-    const transitions = events
-      .filter((e) => e.kind === 'BID_PAUSED' || e.kind === 'BID_RESUMED')
-      .sort((a, b) => a.occurred_at - b.occurred_at);
-    const intervals: Array<{ x0: number; x1: number }> = [];
-    let openAt: number | null = null;
-    for (const e of transitions) {
-      if (e.kind === 'BID_PAUSED') {
-        if (openAt === null) openAt = e.occurred_at;
-      } else if (openAt !== null) {
-        // BID_RESUMED with a matching open pause - shade [pause, resume].
-        intervals.push({ x0: openAt, x1: e.occurred_at });
-        openAt = null;
-      }
-      // An orphan BID_RESUMED (no open pause) is deliberately ignored.
-      // It means the daemon saw a paused->active transition but never
-      // recorded the pause start - the bid was paused during daemon
-      // downtime and a restart re-baselined as paused, or Braiins
-      // flapped the status for a tick. We have NO pause-start time, so
-      // the old `x0: -Infinity` painted the entire history as paused
-      // even while hashrate was plainly delivering (operator bug,
-      // 2026-06-13). Better to show nothing than a span we can't
-      // substantiate. The lone BID_RESUMED glyph marker still renders.
-    }
-    if (openAt !== null) intervals.push({ x0: openAt, x1: Number.POSITIVE_INFINITY });
-    return intervals;
-  }, [bidEventsQuery.data?.events]);
+  const bidPauseIntervals = useMemo(
+    () => computeBidPauseIntervals(bidEventsQuery.data?.events ?? EMPTY_BID_EVENTS),
+    [bidEventsQuery.data?.events],
+  );
 
   // #287 follow-up v3: run-mode idle bands (DRY_RUN / PAUSED),
   // computed here once for both charts. The per-tick run_mode column
@@ -724,6 +875,20 @@ export function Status() {
     }
     return intervals;
   }, [metricsQuery.data?.points, bidEventsQuery.data?.events]);
+
+  // #316: alerted condition spans -> background bands on both charts.
+  // Each chart picks the classes it's responsible for (see
+  // CONDITION_SPAN_CLASSES.charts). An open-ended span (end_ms null,
+  // still active) runs to +Infinity; the charts clamp to their data
+  // range, same as the bid-pause bands above.
+  const alertConditionIntervals = useMemo<AlertConditionInterval[]>(() => {
+    const spans = alertSpansQuery.data?.spans ?? EMPTY_ALERT_SPANS;
+    return spans.map((s) => ({
+      x0: s.start_ms,
+      x1: s.end_ms ?? Number.POSITIVE_INFINITY,
+      span: s,
+    }));
+  }, [alertSpansQuery.data?.spans]);
 
   if (query.isError && query.error instanceof UnauthorizedError) {
     navigate('/login');
@@ -782,30 +947,18 @@ export function Status() {
     ),
     indicators: (
       <TilesBar
-        tileIds={parseDashboardTiles(configQuery.data?.config?.dashboard_tiles)}
+        tileIds={dashboardTileIds}
         statsData={statsQuery.data}
         statusData={query.data}
         oceanData={oceanQuery.data}
         soloMinersData={soloMinersQuery.data}
         financeRangeData={financeRangeQuery.data}
-        onTilesChange={(next) => {
-          // PATCH /api/config with the new tile list. Optimistic
-          // - we don't bounce the cache; React Query will refetch
-          // - on the next interval. Persist failure surfaces in the
-          // - existing config mutation error UI.
-          if (!configQuery.data?.config) return;
-          const cfg = {
-            ...configQuery.data.config,
-            dashboard_tiles: JSON.stringify(next),
-          };
-          void api.updateConfig(cfg).then(() => {
-            qc.invalidateQueries({ queryKey: ['config'] });
-          });
-        }}
+        blockExplorerTemplate={configQuery.data?.config?.block_explorer_url_template}
+        onTilesChange={handleTilesChange}
       />
     ),
     hashrate: (
-      <div className="space-y-1">
+      <div className="space-y-1" id="hashrate-chart-block">
         <div className="flex justify-end items-center gap-2 text-[11px] text-slate-400">
           <Trans>right axis</Trans>
           <select
@@ -848,6 +1001,10 @@ export function Status() {
           markersHiddenCount={markersHiddenCount}
           bidPauseIntervals={bidPauseIntervals}
           idleModeIntervals={idleModeIntervals}
+          alertConditionIntervals={alertConditionIntervals}
+          focusSpanOpenId={focusedSpanId}
+          focusSpanEdge={focusedSpanEdge}
+          onAlertSpanClick={handleAlertSpanClick}
           viewportHandlers={chartViewport.handlers}
           wheelRef={chartViewport.wheelRef}
           isDragging={chartViewport.isDragging}
@@ -857,6 +1014,8 @@ export function Status() {
           chartColorOverrides={configQuery.data?.config?.chart_color_overrides}
           ipChangeEvents={ipChangesQuery.data?.events ?? EMPTY_IP_CHANGES}
           crosshair={chartCrosshair}
+          focusBlockHash={focusedBlockHash}
+          focusMarker={focusedMarker}
         />
       </div>
     ),
@@ -894,9 +1053,7 @@ export function Status() {
           events={chartBidEvents}
           markersHiddenKind={markersHiddenKind}
           markersHiddenCount={markersHiddenCount}
-          showEventKinds={vp.activePreset
-            ? CHART_RANGE_SPECS[vp.activePreset].showEventKinds
-            : showEventKindsForSpan(vp.until_ms - vp.since_ms)}
+          showEventKinds={showEventKinds}
           maxOverpayVsHashpriceSatPerPhDay={s.config_summary.max_overpay_vs_hashprice_sat_per_ph_day}
           overpaySatPerPhDay={
             configQuery.data?.config?.overpay_sat_per_eh_day != null
@@ -912,11 +1069,16 @@ export function Status() {
           rewardEvents={visibleRewardEvents}
           deposits={depositsQuery.data?.deposits ?? EMPTY_DEPOSITS}
           ourBlocks={visibleOurBlocks}
+          bootEvents={bootEvents}
           blockExplorerTemplate={configQuery.data?.config?.block_explorer_url_template}
           txExplorerTemplate={configQuery.data?.config?.block_explorer_tx_url_template}
           shareLogPct={oceanQuery.data?.user?.share_log_pct ?? null}
           bidPauseIntervals={bidPauseIntervals}
           idleModeIntervals={idleModeIntervals}
+          alertConditionIntervals={alertConditionIntervals}
+          focusSpanOpenId={focusedSpanId}
+          focusSpanEdge={focusedSpanEdge}
+          onAlertSpanClick={handleAlertSpanClick}
           viewportHandlers={chartViewport.handlers}
           wheelRef={chartViewport.wheelRef}
           isDragging={chartViewport.isDragging}
@@ -927,6 +1089,7 @@ export function Status() {
           ipChangeEvents={ipChangesQuery.data?.events ?? EMPTY_IP_CHANGES}
           crosshair={chartCrosshair}
           focusEventId={focusedEventId}
+          focusMarker={focusedMarker}
           onFocusEventRendered={handleFocusEventRendered}
         />
       </div>
@@ -1207,6 +1370,9 @@ export function Status() {
             qc.invalidateQueries({ queryKey: ['finance-range'] });
           }}
           refreshing={financeQuery.isFetching || financeRangeQuery.isFetching}
+          nextRefreshAtMs={
+            financeQuery.dataUpdatedAt > 0 ? financeQuery.dataUpdatedAt + 60_000 : null
+          }
         />
       </section>
     ),
@@ -1287,12 +1453,17 @@ export function Status() {
         editing={rearranging}
         onReorder={cardOrder.setOrder}
       />
+      {/* #316: clicking a condition-band marker on either chart pins a
+          pop-up (same interaction language as the other chart markers). */}
+      {alertTip && (
+        <AlertSpanTooltip tip={alertTip} onClose={() => setAlertTip(null)} />
+      )}
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Hero operations card - run mode, action mode, operator avail, quiet hours.
+// Hero operations card - live bid price/hashprice, delivered hashrate, run-mode toggle.
 // ---------------------------------------------------------------------------
 
 const heroColors: Record<StatusResponse['run_mode'], string> = {
@@ -1300,6 +1471,127 @@ const heroColors: Record<StatusResponse['run_mode'], string> = {
   LIVE: 'from-emerald-900/60 to-emerald-950/40 border-emerald-700/40',
   PAUSED: 'from-amber-900/60 to-amber-950/40 border-amber-700/40',
 };
+
+/**
+ * Auto-fit machinery for the hero PRICE / DELIVERED values. They swing
+ * wildly in length across the unit toggles - "48.206" in sats/PH but
+ * "$30.599,60" in USD/EH or "0,00048252" in BTC/PH - and a fixed font
+ * size overflowed the column and collided with the neighbouring value.
+ *
+ * Each FitText measures its unscaled natural width (CSS transforms
+ * don't affect scrollWidth) against its column. Inside a FitGroup the
+ * group takes the *smallest* fitting ratio and applies it to every
+ * member, so the two hero numbers always render at the same size -
+ * matched and centered - instead of one large and one shrunk.
+ */
+interface FitGroupCtx {
+  register: (id: string, ratio: number) => void;
+  scale: number;
+}
+const FitGroupContext = createContext<FitGroupCtx | null>(null);
+
+// Temporary on-device diagnostic: load the dashboard with `?fitdebug=1`
+// to render each auto-fit value's measured available/natural width and
+// scale beneath it. Lets the operator screenshot the real iPad numbers
+// instead of us guessing why a value clips there but not in any
+// headless engine. Safe to leave in (no-op without the query param).
+const FIT_DEBUG = typeof window !== 'undefined' && /[?&]fitdebug/.test(window.location.search);
+
+function FitGroup({ children, minScale = 0.5 }: { children: ReactNode; minScale?: number }) {
+  const [ratios, setRatios] = useState<Record<string, number>>({});
+  const register = useCallback((id: string, ratio: number) => {
+    setRatios((prev) => (prev[id] === ratio ? prev : { ...prev, [id]: ratio }));
+  }, []);
+  const values = Object.values(ratios);
+  const scale = values.length ? Math.max(minScale, Math.min(1, ...values)) : 1;
+  const ctx = useMemo(() => ({ register, scale }), [register, scale]);
+  return <FitGroupContext.Provider value={ctx}>{children}</FitGroupContext.Provider>;
+}
+
+function FitText({
+  id,
+  children,
+  className,
+  minScale = 0.5,
+}: {
+  /** Stable id within a FitGroup so members share one scale. */
+  id?: string;
+  children: ReactNode;
+  className?: string;
+  minScale?: number;
+}) {
+  const group = useContext(FitGroupContext);
+  const outerRef = useRef<HTMLDivElement>(null);
+  const innerRef = useRef<HTMLDivElement>(null);
+  const [localScale, setLocalScale] = useState(1);
+  const [dbg, setDbg] = useState<string | null>(null);
+
+  useLayoutEffect(() => {
+    const outer = outerRef.current;
+    const inner = innerRef.current;
+    if (!outer || !inner) return;
+    const fit = () => {
+      const avail = outer.clientWidth;
+      const natural = inner.scrollWidth; // unaffected by the transform
+      if (avail <= 0 || natural <= 0) return;
+      // 4px safety so a scaled value never lands exactly on the edge
+      // (transform-origin center + sub-pixel rounding otherwise clips
+      // the last glyph by a pixel). Only bites when actually shrinking.
+      const ratio = Math.min(1, (avail - 4) / natural);
+      if (FIT_DEBUG) setDbg(`${id ?? '-'} a${Math.round(avail)}/n${Math.round(natural)}/r${ratio.toFixed(2)}`);
+      if (group && id) group.register(id, ratio);
+      else setLocalScale(Math.max(minScale, ratio));
+    };
+    fit();
+    // Observe BOTH boxes. The outer catches column-width changes; the
+    // inner catches the content itself resizing after first paint -
+    // which is the whole bug on iOS Safari. There, the first
+    // measurement can run before the text has laid out at full width
+    // (natural <= avail => scale 1), and since the outer never changes
+    // it would never re-measure, leaving the value overflowing and
+    // clipping its last glyph (and the inline delta). Observing the
+    // inner re-fits the moment the real width materialises. Desktop
+    // Chrome/WebKit measure correctly on the first pass, which is why
+    // this only ever showed on device. A deferred pass + fonts.ready
+    // cover font-metric shifts that don't trip the observer.
+    const ro = new ResizeObserver(fit);
+    ro.observe(outer);
+    ro.observe(inner);
+    const raf = requestAnimationFrame(fit);
+    let cancelled = false;
+    if (typeof document !== 'undefined' && document.fonts?.ready) {
+      document.fonts.ready.then(() => { if (!cancelled) fit(); }).catch(() => undefined);
+    }
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(raf);
+      ro.disconnect();
+    };
+  }, [children, minScale, group, id]);
+
+  const scale = group && id ? group.scale : localScale;
+
+  return (
+    <>
+      <div ref={outerRef} className={className} style={{ overflow: 'hidden', textAlign: 'center' }}>
+        <div
+          ref={innerRef}
+          style={{
+            display: 'inline-block',
+            whiteSpace: 'nowrap',
+            transform: `scale(${scale})`,
+            transformOrigin: 'center',
+          }}
+        >
+          {children}
+        </div>
+      </div>
+      {FIT_DEBUG && dbg && (
+        <div className="text-[9px] leading-tight text-amber-400 font-mono">{dbg} s{scale.toFixed(2)}</div>
+      )}
+    </>
+  );
+}
 
 /**
  * Pick the price (sat/PH/day) to display in the hero card from a
@@ -1376,46 +1668,54 @@ function OperationsCard({
         // price (e.g. "0,00046582" - much longer than the sat
         // equivalent "46.582") has the full card width and doesn't
         // collide with the DELIVERED column on iPhone.
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 w-full">
+        <FitGroup>
+        {/* Asymmetric split: PRICE is the variable-length value (up to
+            ~10 digits + delta in BTC/USD) while DELIVERED is always
+            short (~"3,32"), so PRICE gets the wider column and the two
+            auto-fit to a shared, larger scale. */}
+        <div className="grid grid-cols-1 sm:grid-cols-[3fr_2fr] gap-4 sm:gap-5 w-full min-w-0">
+          {/* Real <div> grid items (min-w-0) so the 3fr/2fr tracks
+              actually constrain the FitText width on iOS Safari. A
+              display:contents Tooltip as the direct grid item mis-sizes
+              the track there, so the auto-fit measured a too-wide
+              column and never shrank - clipping the value on device
+              while every headless engine measured correctly. */}
+          <div className="min-w-0">
           <Tooltip text={t`Current owned-bid price (sat/PH/day). Under pay-your-bid this is exactly what Braiins charges per delivered EH-day - the live price you're paying. The plus/minus next to it is the spread vs Ocean's spot hashprice (positive = paying above break-even, negative = below). For the spend-weighted average paid across the selected chart range (handy when the bid moved during the window), see the AVG COST / PH DELIVERED stats card.`}>
-            <div className="flex flex-col items-center cursor-help">
+            <div className="flex flex-col items-center cursor-help min-w-0">
               <div className="text-[11px] uppercase tracking-wider text-slate-100 mb-1"><Trans>price</Trans></div>
-              {/* #268: number + delta badge.
-                  - On sm+ (>=640px): the wrapper is `relative` and the
-                    badge is position:absolute outside the flow so the
-                    big number stays centered regardless of badge width.
-                  - On mobile (<sm): the wrapper is a flex-col so the
-                    badge falls BELOW the number. The absolute path
-                    overflowed the card on iPhone in BTC mode, where
-                    the longer number (10 chars vs ~6 in sat mode)
-                    pushed the badge past the right edge. */}
-              <div className="leading-none flex flex-col items-center sm:block sm:relative">
-                <span className="text-3xl sm:text-4xl font-mono font-semibold text-slate-100 tabular-nums">
-                  {(() => {
-                    // Route through the same formatter the muted subtitle
-                    // uses, then drop the unit. The full formatter returns
-                    // "{value} sat/EH/day" / "{value} BTC/PH/day" / "$X/TH/day"
-                    // depending on the toggles; the suffix is rendered just
-                    // below as <SatSymbol/> / "$" / "BTC" + the per-unit-day
-                    // tail, so the big number must show only the value.
-                    const full = denomination.formatSatPerPhDay(
-                      currentPricePH,
-                      intlLocale,
-                    );
-                    const sp = full.lastIndexOf(' ');
-                    if (sp > 0) return full.slice(0, sp);
-                    const m = full.match(/^(.+?)\/(?:TH|PH|EH)\/day$/);
-                    return m?.[1] ?? full;
-                  })()}
-                </span>
-                <span className="mt-1 sm:mt-0 sm:absolute sm:left-full sm:top-1/2 sm:-translate-y-1/2 sm:ml-1.5 whitespace-nowrap">
+              {/* The big value + its spread-vs-hashprice delta are one
+                  inline unit, auto-fitted to the column so any
+                  unit/locale combination (short sats vs long USD/BTC)
+                  stays on one centered line and never collides with the
+                  DELIVERED column. */}
+              <FitText id="price" className="w-full leading-none">
+                <span className="inline-flex items-baseline gap-1.5">
+                  <span className="text-4xl font-mono font-semibold text-slate-100 tabular-nums">
+                    {(() => {
+                      // Route through the same formatter the muted subtitle
+                      // uses, then drop the unit. The full formatter returns
+                      // "{value} sat/EH/day" / "{value} BTC/PH/day" / "$X/TH/day"
+                      // depending on the toggles; the suffix is rendered just
+                      // below as <SatSymbol/> / "$" / "BTC" + the per-unit-day
+                      // tail, so the big number must show only the value.
+                      const full = denomination.formatSatPerPhDay(
+                        currentPricePH,
+                        intlLocale,
+                      );
+                      const sp = full.lastIndexOf(' ');
+                      if (sp > 0) return full.slice(0, sp);
+                      const m = full.match(/^(.+?)\/(?:TH|PH|EH)\/day$/);
+                      return m?.[1] ?? full;
+                    })()}
+                  </span>
                   <PriceDeltaVsHashprice
                     currentPH={currentPricePH}
                     hashpricePH={hashpricePH}
                     intlLocale={intlLocale}
                   />
                 </span>
-              </div>
+              </FitText>
               <div className="text-xs text-slate-400 mt-1">
                 {(() => {
                   // Strip the leading currency token (we render <SatSymbol/> /
@@ -1443,22 +1743,28 @@ function OperationsCard({
               </div>
             </div>
           </Tooltip>
+          </div>
+          <div className="min-w-0">
           <Tooltip
             text={t`Braiins's own \`state_estimate.avg_speed_ph\` reading - their internal estimate of current matched hashrate. Reacts to a CREATE_BID / EDIT_SPEED within ~3 min. The orange "delivered (Braiins)" line on the Hashrate chart below plots a different signal: real billed PH/s derived from the consumed-sat counter (Δconsumed / (bid × Δt)). That counter signal is the truthful long-run billing record but takes longer to catch up to a capacity bump because matched shares have to accumulate. During a Datum outage the counter goes to zero correctly while this estimate holds elevated for minutes - that's why the chart uses the counter signal.`}
           >
-            <div className="flex flex-col items-center">
+            <div className="flex flex-col items-center min-w-0">
               <div className="text-[11px] uppercase tracking-wider text-slate-100 mb-1"><Trans>delivered</Trans></div>
-              <div className={`text-3xl sm:text-4xl font-mono font-semibold tabular-nums leading-none ${deliveredColor}`}>
-                {(() => {
-                  const hr = denomination.formatHashrate(s.actual_hashrate_ph, intlLocale);
-                  const split = splitUnit(hr);
-                  return split ? split.num : hr;
-                })()}
-              </div>
+              <FitText id="delivered" className="w-full leading-none">
+                <span className={`text-4xl font-mono font-semibold tabular-nums ${deliveredColor}`}>
+                  {(() => {
+                    const hr = denomination.formatHashrate(s.actual_hashrate_ph, intlLocale);
+                    const split = splitUnit(hr);
+                    return split ? split.num : hr;
+                  })()}
+                </span>
+              </FitText>
               <div className="text-xs text-slate-400 mt-1">{denomination.hashrateSuffix}</div>
             </div>
           </Tooltip>
+          </div>
         </div>
+        </FitGroup>
       ) : (
         <div className="flex flex-col items-center">
           <div className="text-3xl font-mono text-slate-500">-</div>
@@ -1639,11 +1945,7 @@ function NextActionFooter({
   tickIntervalMs: number;
 }) {
   const fmt = useFormatters();
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, []);
+  const now = useNowSecond();
 
   // If the server hasn't told us when the next tick is, fall back to
   // tick_at + interval so the countdown still has something to show.
@@ -1726,7 +2028,7 @@ function PriceDeltaVsHashprice({
     <Tooltip text={tooltip}>
       <span className={`text-xs font-mono ${color} cursor-help`}>
         {sign}{denomination.mode === 'usd' && denomination.btcPrice
-          ? denomination.formatSatPerPhDay(Math.abs(delta)).replace(/\/PH\/day$/, '')
+          ? denomination.formatSatPerPhDay(Math.abs(delta)).replace(/\/(?:TH|PH|EH)\/day$/, '')
           : formatNumber(Math.abs(delta), {}, intlLocale)}
       </span>
     </Tooltip>
@@ -1947,16 +2249,11 @@ function NextActionProgress({ next }: { next: NextActionView }) {
   const { i18n } = useLingui();
   void i18n;
   // Re-render every second so the bar visibly creeps even between the
-  // 5s status polls. Hook is only useful when an event is queued; gate
-  // the interval below to avoid burning a timer in steady state.
+  // 5s status polls. Only useful when an event is queued; disabled
+  // otherwise so steady state doesn't re-render per tick.
   const hasEvent =
     next.eta_ms !== null && next.event_started_ms !== null && next.event_kind !== null;
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (!hasEvent) return;
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, [hasEvent]);
+  const now = useNowSecond(hasEvent);
 
   // Always reserve the progress-bar's vertical footprint (label row +
   // bar row). When no event is queued, render an invisible placeholder
@@ -2150,11 +2447,7 @@ function RefreshCountdown({
   refetchQueryKey?: readonly unknown[];
 }) {
   const qc = useQueryClient();
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 1_000);
-    return () => clearInterval(id);
-  }, []);
+  const now = useNowSecond();
   useEffect(() => {
     if (!refetchQueryKey || nextAtMs == null) return;
     // Self-rescheduling timer. Naive setTimeout(..., msUntil + 300) is
@@ -2171,6 +2464,13 @@ function RefreshCountdown({
     // effect re-runs with a new dep value, and the polling stops.
     let cancelled = false;
     let handle: ReturnType<typeof setTimeout>;
+    // Cap the catch-up invalidations. A normal mid-tick overlap
+    // resolves within a couple of attempts; if `nextAtMs` stays in
+    // the past longer than this, the daemon is down or stalled, and
+    // re-fetching every 2 s just hammers a dead endpoint - the
+    // regular react-query poll interval takes over instead.
+    const MAX_CATCHUP_INVALIDATIONS = 10;
+    let invalidations = 0;
     const schedule = (delayMs: number) => {
       handle = setTimeout(() => {
         if (cancelled) return;
@@ -2184,6 +2484,8 @@ function RefreshCountdown({
           return;
         }
         qc.invalidateQueries({ queryKey: refetchQueryKey });
+        invalidations += 1;
+        if (invalidations >= MAX_CATCHUP_INVALIDATIONS) return;
         schedule(2_000);
       }, Math.max(0, delayMs));
     };
@@ -2517,9 +2819,9 @@ function OceanPanel() {
               tooltip={
                 // State-aware: when the daemon emits the literal
                 // 'Next block' string the balance is already past
-                // threshold and the wording flips to explain what
-                // "next block" means in context (next pool block
-                // Ocean wins, not next Bitcoin block).
+                // threshold and the wording flips to explain that it's
+                // Ocean's projection - settlement is a batched sweep tx,
+                // not a coinbase of an Ocean-mined block.
                 o.user.time_to_payout_text === 'Next block'
                   ? t`Our unpaid balance (${denomination.formatSat(
                       o.user.unpaid_sat,
@@ -2527,7 +2829,7 @@ function OceanPanel() {
                     )}) has already crossed the payout threshold (${denomination.formatSat(
                       o.user.payout_threshold_sat,
                       intlLocale,
-                    )} ≈ 0,01 BTC). The accumulated balance ships as a coinbase output the next time Ocean wins a pool block - under TIDES the pool only pays out when it finds a block, since that's the only block where it controls the coinbase. "Next block" means the next Ocean pool block (~3/day at typical share), NOT the next Bitcoin block in general. The blue cubes on the hashrate chart above mark each pool block as it lands.`
+                    )} ≈ 0,01 BTC), so Ocean has queued us for payout. "Next block" is Ocean's own projection, not a literal trigger: Ocean settles operator payouts as a batched payment transaction from its pool wallet, broadcast on its own cadence and mined into whatever block by whatever pool - it is NOT a coinbase output and NOT necessarily an Ocean-mined block. When it confirms, a payout marker appears on the price chart.`
                   : t`Projected time until our unpaid balance (${denomination.formatSat(
                       o.user.unpaid_sat,
                       intlLocale,
@@ -2681,6 +2983,7 @@ function FinancePanel({
   chartRange,
   onRefresh,
   refreshing,
+  nextRefreshAtMs,
 }: {
   data: FinanceResponse | undefined;
   rangeData: FinanceRangeResponse | undefined;
@@ -2688,25 +2991,64 @@ function FinancePanel({
   chartRange: ChartRange;
   onRefresh: () => void;
   refreshing: boolean;
+  /** #311: when the panel will next refetch. Derived from react-query's
+   *  fetch time + 60s, NOT data.checked_at_ms (which is the oldest of
+   *  the aggregated source timestamps and is often already stale, which
+   *  pinned the countdown on "refreshing…" forever). */
+  nextRefreshAtMs: number | null;
 }) {
   const { intlLocale } = useLocale();
   const denomination = useDenomination();
   const qc = useQueryClient();
   const [rebuilding, setRebuilding] = useState(false);
+  const [resetting, setResetting] = useState(false);
+  // #343: last rebuild/reset outcome, shown as a confirmation so the
+  // operator knows it finished and what it pulled. Auto-clears.
+  const [finResult, setFinResult] = useState<
+    { kind: 'rebuild' | 'reset'; payouts: number; collected_sat: number } | null
+  >(null);
   const { i18n } = useLingui();
   void i18n;
 
+  const showFinResult = (r: { kind: 'rebuild' | 'reset'; payouts: number; collected_sat: number }) => {
+    setFinResult(r);
+    window.setTimeout(() => setFinResult(null), 12_000);
+  };
+
   const handleRebuild = async () => {
     if (rebuilding) return;
-    if (!window.confirm(t`Wipe the local terminal-bid cache and re-paginate every bid from Braiins on the next refresh? This is safe but slower than a normal refresh.`)) {
+    // #343: rebuild both sides of the ledger - the spend cache (re-paginate
+    // bids from Braiins) AND the Ocean payout store (re-fetch the full
+    // earnpay history, healing a "collected" that ended up short).
+    if (!window.confirm(t`Recompute the Profit & Loss panel from scratch? Re-paginates every bid from Braiins (spent) and re-fetches your full Ocean payout history (collected). Safe, just slower than a normal refresh.`)) {
       return;
     }
     setRebuilding(true);
     try {
-      await api.rebuildSpendCache();
+      const [, payoutRes] = await Promise.all([api.rebuildSpendCache(), api.rebuildPayouts()]);
       qc.invalidateQueries({ queryKey: ['finance'] });
+      showFinResult({ kind: 'rebuild', payouts: payoutRes.payouts ?? 0, collected_sat: payoutRes.collected_sat ?? 0 });
     } finally {
       setRebuilding(false);
+    }
+  };
+
+  const handleHardReset = async () => {
+    if (resetting) return;
+    // #343: nuclear option - wipe both datasets and rebuild from scratch,
+    // so nothing stale can survive. The payout wipe is fetch-before-delete
+    // (an Ocean outage leaves the store intact), and re-pulled payouts are
+    // marked already-notified, so it won't re-alert about old payouts.
+    if (!window.confirm(t`Hard reset the Profit & Loss data? This DELETES the stored Ocean payout history and Braiins spend cache, then rebuilds both from scratch. Safe (no other data touched, and it won't re-notify you), but the collected figure will briefly show 0 while it re-pulls.`)) {
+      return;
+    }
+    setResetting(true);
+    try {
+      const res = await api.hardResetFinance();
+      qc.invalidateQueries({ queryKey: ['finance'] });
+      showFinResult({ kind: 'reset', payouts: res.payouts ?? 0, collected_sat: res.collected_sat ?? 0 });
+    } finally {
+      setResetting(false);
     }
   };
 
@@ -2805,18 +3147,9 @@ function FinancePanel({
   // range dropdown labels from CHART_RANGE_SPECS.
   const rangeLabel = localizedRangeLabel(chartRange, i18n.locale);
 
-  // P&L now refreshes every 60s (matches the rest of the dashboard).
-  // Dashboard countdown is derived from checked_at_ms + 60s so the
-  // operator sees how long until fresh numbers without guessing the
-  // cadence. Earlier 1h cadence was too coarse - block-find events
-  // that bump `unpaid earnings (Ocean)` by ~38k sats took up to an
-  // hour to land in the panel even though /api/ocean had the new
-  // number within seconds.
-  const nextRefreshAtMs = data.checked_at_ms + 60_000;
-
   const headerControls = (
     <div className="flex items-center gap-2 text-[11px] text-slate-500 font-mono">
-      <RefreshCountdown nextAtMs={nextRefreshAtMs} />
+      <RefreshCountdown nextAtMs={nextRefreshAtMs} refetchQueryKey={['finance']} />
       <button
         onClick={onRefresh}
         disabled={refreshing}
@@ -2830,9 +3163,19 @@ function FinancePanel({
           onClick={handleRebuild}
           disabled={rebuilding}
           className="px-1.5 py-0.5 rounded border border-slate-700 text-slate-400 hover:bg-slate-800 disabled:opacity-50"
-          title={t`Wipe the local terminal-bid cache and re-paginate every bid from Braiins on the next refresh. Use if the 'spent (whole account)' figure looks wrong.`}
+          title={t`Re-fetch both sides of the ledger (re-paginate Braiins bids + re-pull the full Ocean payout history) and fill any gaps. Use if 'spent' or 'collected' looks off.`}
         >
           {rebuilding ? '…' : <Trans>rebuild</Trans>}
+        </button>
+      )}
+      {data.spent_scope === 'account' && (
+        <button
+          onClick={handleHardReset}
+          disabled={resetting}
+          className="px-1.5 py-0.5 rounded border border-red-900/60 text-red-300/80 hover:bg-red-950/40 disabled:opacity-50"
+          title={t`Hard reset: delete the stored payout history + spend cache and rebuild both from scratch. Use only if 'rebuild' didn't fix it.`}
+        >
+          {resetting ? '…' : <Trans>hard reset</Trans>}
         </button>
       )}
     </div>
@@ -2850,7 +3193,6 @@ function FinancePanel({
           <div className="text-xs uppercase tracking-wider text-slate-100">
             <Trans>Profit &amp; Loss · per day</Trans>
           </div>
-          {headerControls}
         </div>
         {hasPerDay ? (
           // Per-day values are all projections / estimates (Ocean's
@@ -2980,9 +3322,21 @@ function FinancePanel({
           <div className="text-xs uppercase tracking-wider text-slate-100">
             <Trans>Profit &amp; Loss · lifetime</Trans>
           </div>
-          {/* refresh/rebuild controls live on the per-day card only -
-              they refresh the same data, no point duplicating them */}
+          {/* #343: rebuild / hard-reset live here, on the LIFETIME card -
+              they rebuild the lifetime datasets (collected + spent), so
+              this is where they belong (they used to sit on per-day). */}
+          {headerControls}
         </div>
+        {finResult && (
+          <div className="mb-2 text-[11px] text-emerald-300/90 font-mono">
+            {finResult.kind === 'reset' ? <Trans>hard reset done</Trans> : <Trans>rebuild done</Trans>}
+            {' · '}
+            {/* #343: concrete confirmation - how many payouts + the collected total now. */}
+            <Trans>
+              {finResult.payouts} payouts · collected {denomination.formatSat(finResult.collected_sat, intlLocale)}
+            </Trans>
+          </div>
+        )}
         {/* The panel reads as the arithmetic of the net line: an
             explicit leading sign tells the operator which side of the
             ledger each row sits on. Spent is the only subtraction;
@@ -3026,27 +3380,56 @@ function FinancePanel({
         />
         <FinanceRow
           sign="plus"
-          label={t`collected (on-chain)`}
+          label={t`collected`}
           value={data.collected_sat}
           status={data.collected_status}
           tooltip={
             data.collected_status === 'computing'
-              ? t`Payout observer is starting up. Waiting for the first balance scan to complete - usually a few seconds with an Electrum server, up to a minute with bitcoind scantxoutset.`
+              ? t`Loading your payout history from Ocean. Waiting for the first read of Ocean's payout ledger to complete - usually a few seconds.`
               : data.collected_sat !== null
-                ? t`UTXOs at the configured payout address. Read via your Electrum server (preferred, instant) or bitcoind RPC (slower).`
-                : t`Not configured. Go to Config → On-chain payouts and select Electrum server or Bitcoin Knots RPC to track your on-chain balance. The net line treats missing collected as 0 so the arithmetic still reads - a blank row here is the hint that a piece of the income side isn't wired up.`
+                ? t`Everything Ocean has actually paid you: on-chain payouts from Ocean's own payout ledger, plus Lightning payouts deduced from your unpaid earnings dropping to zero (Ocean's ledger doesn't report those). Counts what you were paid, even if you've since spent it.`
+                : t`No payout address configured. Set your Ocean payout address under Config → Pool & Payout so the Profit & Loss panel can read your collected earnings. The net line treats missing collected as 0 so the arithmetic still reads.`
           }
         />
+        {/* #323: on-chain vs Lightning split. Only shown when a
+            Lightning payout actually exists - for the common all-on-chain
+            operator the split equals the collected line, so surfacing it
+            would just be noise. */}
+        {data.collected_lightning_sat !== null &&
+          data.collected_lightning_sat > 0 &&
+          data.collected_onchain_sat !== null && (
+            <div className="ml-5 space-y-0.5 text-xs text-slate-500">
+              <FinanceFootnote
+                label={t`on-chain`}
+                value={denomination.formatSat(data.collected_onchain_sat, intlLocale)}
+                tooltip={t`The part of collected that settled on-chain (has a transaction on the blockchain).`}
+              />
+              <FinanceFootnote
+                label={t`Lightning`}
+                value={denomination.formatSat(data.collected_lightning_sat, intlLocale)}
+                tooltip={t`The part of collected that settled over Lightning (off-chain, no blockchain transaction). Ocean's payout ledger doesn't report Lightning payouts, so these are deduced from your unpaid earnings dropping to zero - amounts are approximate.`}
+              />
+            </div>
+          )}
         {/* #170 follow-up: operator-entered pre-installation /
             off-chain earnings. Hidden when the field is 0 (default)
             so the panel stays uncluttered for the common case. */}
         {data.historical_offset_sat > 0 && (
-          <FinanceRow
-            sign="plus"
-            label={t`pre-installation (manual)`}
-            value={data.historical_offset_sat}
-            tooltip={t`Operator-entered offset for earnings the on-chain payout observer can't see - Lightning payouts, pre-autopilot Ocean history that's already been swept, etc. Set under Config → Pool & Payout → On-chain payouts.`}
-          />
+          <>
+            <FinanceRow
+              sign="plus"
+              label={t`pre-installation (manual)`}
+              value={data.historical_offset_sat}
+              tooltip={t`Operator-entered offset for earnings outside Ocean's payout ledger - e.g. pre-autopilot history from a different pool. Set under Config → Pool & Payout → On-chain payouts.`}
+            />
+            {/* #323: earnpay now drives collected and already includes
+                Lightning, so an offset that was originally added to
+                compensate for missed Lightning payouts would now
+                double-count. Flag it so the operator can review. */}
+            <div className="ml-5 text-xs text-amber-400/80">
+              {t`Heads up: collected now comes from Ocean's full payout ledger, Lightning included. If you set this manual offset to make up for Lightning payouts, it may now double-count - review it under Config → Pool & Payout.`}
+            </div>
+          </>
         )}
 
         <div className="mt-3 pt-3 border-t border-slate-800">
@@ -3059,7 +3442,7 @@ function FinancePanel({
             // digging out of the initial deposit. Keeps the rest of
             // the panel calm so the eye lands on the conclusion.
             valueClass={netColor}
-            tooltip={t`Collected on-chain + pre-installation (manual) + Ocean's unpaid earnings − spent on bids. Missing collected is treated as 0 (the on-chain row still shows - so the operator sees the gap). Negative = still recouping the initial deposit.`}
+            tooltip={t`Collected (Ocean's full payout ledger, on-chain + Lightning) + pre-installation (manual) + Ocean's unpaid earnings − spent on bids. Missing collected is treated as 0. Negative = still recouping the initial deposit.`}
           />
           {/* #249: rate of return on its own row so the sat column
               stays right-aligned across all four lines above. Same

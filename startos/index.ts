@@ -1,6 +1,6 @@
 import { buildManifest } from '@start9labs/start-sdk'
 import { manifest as sdkManifest } from './manifest'
-import { versionGraph } from './install/versionGraph'
+import { versionGraph } from './versions'
 
 export { createBackup } from './backups'
 export { main } from './main'

@@ -11,6 +11,7 @@
  * just collected and redirect to /.
  */
 
+import { isValidBtcPayoutAddress } from '@hashrate-autopilot/shared';
 import { Trans } from '@lingui/react/macro';
 import { t } from '@lingui/core/macro';
 import { useLingui } from '@lingui/react';
@@ -389,6 +390,9 @@ function MiningStep({
   // mismatch as a hard error, not a soft warning.
   const addr = form.btc_payout_address.trim();
   const worker = form.destination_pool_worker_name.trim();
+  // #309: the payout address must be a real mainnet bech32(m) address,
+  // not just any non-empty string.
+  const addrValid = isValidBtcPayoutAddress(addr);
   const workerPrefixOk =
     addr.length === 0 || (worker.startsWith(addr + '.') && worker.length > addr.length + 1);
 
@@ -409,7 +413,7 @@ function MiningStep({
     form.minimum_floor_hashrate_ph > 0 &&
     form.minimum_floor_hashrate_ph <= form.target_hashrate_ph &&
     poolUrlOk &&
-    addr.length > 0 &&
+    addrValid &&
     worker.includes('.') &&
     workerPrefixOk &&
     bitcoindOk &&
@@ -485,8 +489,19 @@ function MiningStep({
             type="text"
             value={form.btc_payout_address}
             onChange={(e) => onAddressChange(e.target.value)}
-            className={textInputCss}
+            className={
+              addr.length > 0 && !addrValid ? textInputCss + ' border-red-600' : textInputCss
+            }
           />
+          {addr.length > 0 && !addrValid && (
+            <span className="block text-xs text-red-400 mt-1 leading-snug">
+              <Trans>
+                Not a valid Bitcoin address. Use a mainnet bech32 address (starts with{' '}
+                <code className="text-slate-200">bc1q</code>) or Taproot (
+                <code className="text-slate-200">bc1p</code>).
+              </Trans>
+            </span>
+          )}
         </Field>
         <Field
           label={t`Worker identity`}
@@ -548,7 +563,7 @@ function MiningStep({
             <Field label={t`RPC URL`}>
               <input
                 type="text"
-                placeholder="http://bitcoind.startos:8332"
+                placeholder="http://bitcoin-rpc-host:8332"
                 value={form.bitcoind_rpc_url}
                 onChange={(e) => update('bitcoind_rpc_url', e.target.value)}
                 className={textInputCss}
@@ -579,7 +594,7 @@ function MiningStep({
                 <Field label={t`Host`}>
                   <input
                     type="text"
-                    placeholder="electrs.startos"
+                    placeholder="electrs-host"
                     value={form.electrs_host}
                     onChange={(e) => update('electrs_host', e.target.value)}
                     className={textInputCss}
@@ -599,9 +614,9 @@ function MiningStep({
             </div>
             <p className="text-xs text-slate-500">
               <Trans>
-                On StartOS use host <code>electrs.startos</code> and port <code>50001</code>.
-                Enter the host only, without <code>http://</code> or a path. Any
-                Electrum-protocol server works: electrs, Fulcrum, or ElectrumX.
+                On StartOS, keep the package-provided host and port. Enter the host only,
+                without <code>http://</code> or a path. Any Electrum-protocol server works:
+                electrs, Fulcrum, or ElectrumX.
               </Trans>
             </p>
           </div>

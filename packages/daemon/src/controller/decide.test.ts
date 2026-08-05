@@ -62,6 +62,11 @@ function state(overrides: Partial<State> = {}): State {
     balance: null,
     owned_bids: [],
     unknown_bids: [],
+    // Default to the confirmed-empty case: the bid-list fetch succeeded
+    // and the ledger agrees we own nothing, so a CREATE is legitimate.
+    // The #319 guard is exercised by explicit overrides.
+    bids_fetch_ok: true,
+    active_ledger_bid_count: 0,
     actual_hashrate: { owned_ph: 0, unknown_ph: 0, total_ph: 0 },
     below_floor_since: null,
     above_floor_ticks: 0,
@@ -133,7 +138,16 @@ describe('decide - case selection', () => {
 });
 
 describe('decide - Datum stratum down auto-cancel (#199)', () => {
-  const datumDown = (failures: number) => ({
+  // The cancel keys on the MANDATORY stratum TCP probe (state.pool),
+  // not the optional stats API (state.datum) - spec §9.
+  const stratumDown = (failures: number) => ({
+    reachable: false,
+    last_ok_at: 1_700_000_000_000 - failures * 60_000,
+    consecutive_failures: failures,
+    error: 'connect ECONNREFUSED',
+    latency_ms: null,
+  });
+  const statsApiDown = (failures: number) => ({
     reachable: false,
     connections: null,
     hashrate_ph: null,
@@ -141,9 +155,9 @@ describe('decide - Datum stratum down auto-cancel (#199)', () => {
     consecutive_failures: failures,
   });
 
-  it('cancels all owned bids when Datum is down for 3+ ticks', () => {
+  it('cancels all owned bids when the stratum probe fails 3+ consecutive ticks', () => {
     const proposals = decide(state({
-      datum: datumDown(3),
+      pool: stratumDown(3),
       owned_bids: [owned()],
     }));
     expect(proposals).toHaveLength(1);
@@ -154,42 +168,56 @@ describe('decide - Datum stratum down auto-cancel (#199)', () => {
     expect(proposals[0]!.reason).toContain('Datum stratum down');
   });
 
-  it('cancels multiple owned bids when Datum is down', () => {
+  it('cancels multiple owned bids when stratum is down', () => {
     const proposals = decide(state({
-      datum: datumDown(5),
+      pool: stratumDown(5),
       owned_bids: [owned(), owned({ braiins_order_id: 'order-b' })],
     }));
     expect(proposals).toHaveLength(2);
     expect(proposals.every((p) => p.kind === 'CANCEL_BID')).toBe(true);
   });
 
-  it('does not cancel when Datum is down for fewer than 3 ticks', () => {
+  it('does not cancel when stratum is down for fewer than 3 ticks', () => {
     const proposals = decide(state({
-      datum: datumDown(2),
+      pool: stratumDown(2),
       owned_bids: [owned()],
     }));
     expect(proposals.every((p) => p.kind !== 'CANCEL_BID')).toBe(true);
   });
 
-  it('does not cancel when Datum is not configured (null)', () => {
+  it('does NOT cancel on a stats-API-only outage (healthy stratum)', () => {
+    // Regression: keying on state.datum meant an auth-proxy blip on the
+    // optional stats API nuked every bid while shares flowed fine.
     const proposals = decide(state({
-      datum: null,
+      datum: statsApiDown(10),
       owned_bids: [owned()],
     }));
-    expect(proposals.every((p) => p.kind !== 'CANCEL_BID' || p.reason.includes('multiple'))).toBe(true);
+    expect(proposals.every((p) => p.kind !== 'CANCEL_BID')).toBe(true);
   });
 
-  it('does nothing when Datum is down but no owned bids', () => {
+  it('cancels on a stratum outage even when the stats API is not configured', () => {
+    // Regression: keying on state.datum meant the stop-spend protection
+    // could never fire when datum_api_url was unset.
     const proposals = decide(state({
-      datum: datumDown(10),
+      datum: null,
+      pool: stratumDown(3),
+      owned_bids: [owned()],
+    }));
+    expect(proposals).toHaveLength(1);
+    expect(proposals[0]).toMatchObject({ kind: 'CANCEL_BID' });
+  });
+
+  it('does nothing when stratum is down but no owned bids', () => {
+    const proposals = decide(state({
+      pool: stratumDown(10),
       owned_bids: [],
     }));
     expect(proposals).toEqual([]);
   });
 
-  it('does not block CREATE after Datum recovers', () => {
+  it('does not block CREATE after the stratum probe recovers', () => {
     const proposals = decide(state({
-      datum: { reachable: true, connections: 1, hashrate_ph: 1.5, last_ok_at: Date.now(), consecutive_failures: 0 },
+      pool: { reachable: true, last_ok_at: Date.now(), consecutive_failures: 0, error: null, latency_ms: 4 },
       owned_bids: [],
     }));
     expect(proposals).toHaveLength(1);
@@ -197,28 +225,72 @@ describe('decide - Datum stratum down auto-cancel (#199)', () => {
   });
 });
 
+describe('decide - no duplicate CREATE off a bid-list blip (#319)', () => {
+  it('CREATEs when the empty snapshot is confirmed (fetch ok + ledger empty)', () => {
+    const proposals = decide(state({
+      owned_bids: [],
+      bids_fetch_ok: true,
+      active_ledger_bid_count: 0,
+    }));
+    expect(proposals).toHaveLength(1);
+    expect(proposals[0]).toMatchObject({ kind: 'CREATE_BID' });
+  });
+
+  it('does NOT create when the bid-list fetch failed this tick', () => {
+    // getCurrentBids() returned null -> owned_bids empty is "unknown",
+    // not "we own nothing". Acting blind would duplicate a live bid.
+    const proposals = decide(state({
+      owned_bids: [],
+      bids_fetch_ok: false,
+      active_ledger_bid_count: 0,
+    }));
+    expect(proposals).toEqual([]);
+  });
+
+  it('does NOT create when the ledger still holds an active bid the snapshot omitted', () => {
+    // The exact 2026-07-01 incident: fetch succeeded but didn't include
+    // a bid we still believe we own -> wait for the prune/reconcile path
+    // instead of placing a duplicate.
+    const proposals = decide(state({
+      owned_bids: [],
+      bids_fetch_ok: true,
+      active_ledger_bid_count: 1,
+    }));
+    expect(proposals).toEqual([]);
+  });
+
+  it('resumes CREATE once the stale ledger entry has been pruned to zero', () => {
+    const proposals = decide(state({
+      owned_bids: [],
+      bids_fetch_ok: true,
+      active_ledger_bid_count: 0,
+    }));
+    expect(proposals[0]).toMatchObject({ kind: 'CREATE_BID' });
+  });
+});
+
 describe('decide - PENDING_CANCEL bids are never re-mutated (#276)', () => {
-  const datumDown = (failures: number) => ({
+  const stratumDown = (failures: number) => ({
     reachable: false,
-    connections: null,
-    hashrate_ph: null,
     last_ok_at: 1_700_000_000_000 - failures * 60_000,
     consecutive_failures: failures,
+    error: 'connect ECONNREFUSED',
+    latency_ms: null,
   });
   const pendingCancel = (id = 'order-a') =>
     owned({ braiins_order_id: id, status: 'BID_STATUS_PENDING_CANCEL' });
 
-  it('does not re-cancel a PENDING_CANCEL bid when Datum is down (empirical 2026-06-06: duplicate cancel markers)', () => {
+  it('does not re-cancel a PENDING_CANCEL bid when stratum is down (empirical 2026-06-06: duplicate cancel markers)', () => {
     const proposals = decide(state({
-      datum: datumDown(3),
+      pool: stratumDown(3),
       owned_bids: [pendingCancel()],
     }));
     expect(proposals).toEqual([]);
   });
 
-  it('cancels only the still-live bid when Datum is down and another is PENDING_CANCEL', () => {
+  it('cancels only the still-live bid when stratum is down and another is PENDING_CANCEL', () => {
     const proposals = decide(state({
-      datum: datumDown(3),
+      pool: stratumDown(3),
       owned_bids: [pendingCancel('order-a'), owned({ braiins_order_id: 'order-b' })],
     }));
     expect(proposals).toHaveLength(1);

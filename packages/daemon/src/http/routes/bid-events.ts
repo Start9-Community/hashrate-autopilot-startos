@@ -194,6 +194,8 @@ export async function registerBidEventsRoute(
       before_id?: string;
       kinds?: string;
       source?: string;
+      /** #342: free-text search (id + reason + note). Supersedes order_id. */
+      q?: string;
       order_id?: string;
       since_ms?: string;
       until_ms?: string;
@@ -207,16 +209,24 @@ export async function registerBidEventsRoute(
     const beforeId = req.query.before_id
       ? Number.parseInt(req.query.before_id, 10)
       : undefined;
-    const kinds = req.query.kinds
-      ? (req.query.kinds.split(',').filter((s) =>
-          ['CREATE_BID', 'EDIT_PRICE', 'EDIT_SPEED', 'CANCEL_BID', 'MODE_CHANGE', 'BID_PAUSED', 'BID_RESUMED'].includes(s),
-        ) as Array<'CREATE_BID' | 'EDIT_PRICE' | 'EDIT_SPEED' | 'CANCEL_BID' | 'MODE_CHANGE' | 'BID_PAUSED' | 'BID_RESUMED'>)
-      : undefined;
+    // #318 follow-up: the `kinds` param is an opt-out selector. Absent =
+    // no filter. Present (even the empty string `?kinds=`) = filter to
+    // exactly the listed kinds; an empty string yields [] = "hide every
+    // action" and the repo returns no bid events.
+    const kinds =
+      req.query.kinds !== undefined
+        ? (req.query.kinds.split(',').filter((s) =>
+            ['CREATE_BID', 'EDIT_PRICE', 'EDIT_SPEED', 'CANCEL_BID', 'MODE_CHANGE', 'BID_PAUSED', 'BID_RESUMED'].includes(s),
+          ) as Array<'CREATE_BID' | 'EDIT_PRICE' | 'EDIT_SPEED' | 'CANCEL_BID' | 'MODE_CHANGE' | 'BID_PAUSED' | 'BID_RESUMED'>)
+        : undefined;
     const source =
       req.query.source === 'AUTOPILOT' || req.query.source === 'OPERATOR'
         ? (req.query.source as 'AUTOPILOT' | 'OPERATOR')
         : undefined;
-    const orderIdContains = req.query.order_id?.trim() || undefined;
+    // #342: `q` is the general free-text search (id + reason + note).
+    // `order_id` is kept as a fallback for any persisted URL from before
+    // the rename.
+    const textSearch = req.query.q?.trim() || req.query.order_id?.trim() || undefined;
     const sinceMs = req.query.since_ms
       ? Number.parseInt(req.query.since_ms, 10)
       : undefined;
@@ -236,9 +246,9 @@ export async function registerBidEventsRoute(
       limit,
     };
     if (beforeId && Number.isFinite(beforeId)) args.beforeId = beforeId;
-    if (kinds && kinds.length > 0) args.kinds = kinds;
+    if (kinds !== undefined) args.kinds = kinds;
     if (source) args.source = source;
-    if (orderIdContains) args.orderIdContains = orderIdContains;
+    if (textSearch) args.textSearch = textSearch;
     if (sinceMs && Number.isFinite(sinceMs)) args.sinceMs = sinceMs;
     if (untilMs && Number.isFinite(untilMs)) args.untilMs = untilMs;
     if (minAbsPriceDeltaSat) args.minAbsPriceDeltaSat = minAbsPriceDeltaSat;

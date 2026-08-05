@@ -12,7 +12,7 @@ manifestVersion: 1
 id: rdouma-hashrate-autopilot
 category: bitcoin
 name: Hashrate Autopilot
-version: "1.15.0"
+version: "1.17.4"
 tagline: Autopilot for renting hashrate to mine on Ocean Mining
 icon: https://raw.githubusercontent.com/rdouma/hashrate-autopilot/main/assets/icon-512.png
 # Umbrel renders description literally - no YAML folding of soft
@@ -29,7 +29,7 @@ description: |
 
   Setup is a three-step web wizard accessible at port 3010. After setup you get a dashboard with live decisions, charts, the DRY-RUN / LIVE / PAUSED switch, and a P&L panel that reads spend from Braiins and earnings from your on-chain wallet.
 
-  This app declares Bitcoin Knots, Electrs, and Datum Gateway as dependencies, so Umbrel will prompt you to install them during setup. Once all apps run on the same Umbrel, the autopilot's dashboard auto-discovers the local Datum HTTP API, Electrs server, and Bitcoin RPC across Umbrel's shared Docker network - zero copy/paste, the worker-count, hashrate, P&L earnings, and BIP110 signalling panels all populate on first boot. (Pointing at off-Umbrel instances is also supported - just override the URLs in Config after setup.)
+  This app declares a Bitcoin node, an Electrum server, and Datum Gateway as dependencies, so Umbrel will prompt you to install them during setup - any of Umbrel's Bitcoin node apps and any Electrum server (Electrs, Fulcrum, or ElectrumX) works. Once all apps run on the same Umbrel, the autopilot's dashboard auto-discovers the local Datum HTTP API, Electrum server, and Bitcoin RPC across Umbrel's shared Docker network - zero copy/paste, the worker-count, hashrate, P&L earnings, and BIP110 signalling panels all populate on first boot. (Pointing at off-Umbrel instances is also supported - just override the URLs in Config after setup.)
 
 developer: Remco Douma
 website: https://github.com/rdouma/hashrate-autopilot
@@ -58,6 +58,79 @@ defaultPassword: ''
 submitter: Remco Douma
 submission: https://github.com/rdouma/hashrate-autopilot
 releaseNotes: |
+  v1.17.4 - stability: the daemon no longer crashes when the Electrum connection drops.
+
+  FIXED
+  - No more crash-loop on a flaky Electrum connection: if your Electrum server (electrs, Fulcrum, or ElectrumX) restarted or dropped an idle connection while the daemon was mid-request, the daemon could crash and restart in a loop, spamming Telegram. It now handles a dropped connection cleanly and retries, instead of crashing.
+  - Removed a misleading "Telegram 2FA tap required" note shown after placing a bid: the autopilot places bids through Braiins' API using your owner token, which needs no Telegram confirmation (that step exists only in Braiins' own web interface).
+
+  v1.17.3 - Lightning payout amounts corrected; Bitaxe card respects your number format.
+
+  FIXED
+  - Deduced Lightning payouts no longer overcount: a deduced payout recorded the full unpaid balance from just before the drop, which overcounts whenever Ocean credits a freshly found block and then pays out only the older balance, leaving that new credit unpaid. The autopilot now records the actual balance decrease, folds a multi-step drop into one payout, and self-corrects any amounts already stored - no hard reset needed.
+  - Bitaxe miners card respects your number format: every value on the card (hashrate, power, rejection ratio, efficiency, temperatures, best difficulty) now uses your chosen decimal separator instead of a hard-coded period, so a comma-decimal locale no longer shows "1.02 TH/s" next to a stats bar reading "1,02".
+
+  v1.17.2 - Lightning payouts no longer missing from Profit & Loss.
+
+  NEW
+  - Lightning payouts are deduced: Ocean's payout API turns out not to report Lightning payouts at all (confirmed by Ocean support), so anyone paid over Lightning saw a too-low collected figure and an inflated loss rate. The autopilot now deduces those payouts from your unpaid earnings dropping to zero - confirmed over two consecutive readings so a brief API glitch can't fake one, and only when no matching entry exists in Ocean's own ledger. A deduced payout shows as "type not known yet" for its first 24 hours (a late-arriving on-chain record replaces it automatically), then as "probably Lightning". Your history is backfilled on upgrade, and if Ocean's API ever starts reporting Lightning payouts, the real records take over seamlessly.
+  - Deduced payouts on the chart: they render as a ghost gem (dashed outline) whose tooltip explains how the payout was deduced and marks the amount as approximate.
+
+  FIXED
+  - Timeline notes survive the Profit & Loss hard reset: rebuilding your finances no longer erases the personal notes you attached to payout events.
+
+  v1.17.1 - a current-block-height tile, a searchable Timeline with personal notes, and a Profit & Loss self-heal.
+
+  NEW
+  - Current block height tile: a new stats-bar tile shows the latest Bitcoin block, names the pool or miner that found it, crowns your own blocks, marks Ocean and BIP 110 blocks, and links straight to your block explorer.
+  - Search your whole Timeline: the Timeline's bid-id filter is now a full-text search box that matches across the bid id, the reason, your personal notes, and the identifiers on each row (block heights, IPs, deposit tx ids, config values) - across your entire history, not just the rows currently loaded.
+  - Personal notes on Timeline events: attach a note to any Timeline row; it is saved, searchable, and included in the Excel export.
+  - Profit & Loss hard reset: next to rebuild, a button that wipes and rebuilds the Ocean payout store and the Braiins spend cache from scratch when a figure looks wrong. Both controls now report what they did.
+
+  IMPROVED
+  - Profit & Loss collected self-heals: the payout history is re-fetched on every restart and periodically, so a partial fetch during an upgrade can no longer leave your collected total permanently short.
+  - Clearer alert details: an alert detail panel now breaks an outage into the threshold you waited out, when the alert fired, when it recovered, the alert duration, and the total time the condition was open - and durations round to the nearest minute instead of always rounding down.
+  - Dynamic DNS test now pushes the daemon's own detected public IP, not the address the dashboard request came from.
+
+  v1.17.0 - the security release: your secrets are now encrypted at rest, you can change your password and rotate tokens in-app, and Profit & Loss counts Lightning payouts.
+
+  SECURITY
+  - Secrets encrypted at rest: your Braiins tokens, bitcoind RPC password, Telegram token, and DDNS credential are now AES-256-GCM encrypted in the database instead of plaintext, and your dashboard password is stored as a one-way hash. A copied database or a backup no longer hands over your secrets. Existing installs upgrade themselves on first start; nothing for you to do.
+  - No more secrets in the audit trail: the config-change history no longer records credential values, and any that were previously logged are scrubbed on upgrade.
+  - Credentials are write-only in the settings API now: the dashboard shows those fields blank and keeps the saved value if you leave them blank.
+
+  NEW
+  - Change your password and rotate your Braiins tokens from the dashboard: Config > Pool & Payout > Security & credentials. The password change takes effect immediately; a new Braiins token is checked against Braiins before it's saved so a typo can't break bidding. Every change asks for your current password first. This is the first way to rotate these without a shell, so it finally works on Umbrel.
+  - Profit & Loss now counts Lightning payouts: the "collected" figure is read from Ocean's own payout ledger, so both on-chain and Lightning payouts count, split by rail, and a payout that's already been spent still shows up. No Bitcoin node required for the collected number anymore.
+
+  v1.16.0 - the Timeline release: one unified event log, alert recoveries, Excel export, and two controller-safety fixes.
+
+  NEW
+  - Unified Timeline (the History page, rebuilt): one chronological feed of everything that happened - bid actions, alert conditions with their durations, on-chain payouts, Braiins deposits, every pool block (yours crowned), difficulty retargets, public-IP changes, config edits, and daemon restarts. Every row opens a detail panel, and every row and chart marker jump to each other with a sonar ping so you can trace any event in both directions.
+  - Alert recoveries are events too: when a condition heals (hashrate back above floor, DATUM reachable again), the Timeline shows an emerald "resolved" row at that moment with the recovery message, controlled by the same filter chip as the alert itself.
+  - Excel export: one click streams the current filtered Timeline to a formatted .xlsx - frozen header, autofilter, your display units, your language - with no row cap and flat memory even at hundreds of thousands of rows.
+  - Follow (live tail): a toggle that keeps the newest events pinned to the top and polls every source faster, so the Timeline becomes a live console during an incident.
+  - Daemon restarts now show on the price chart as an emerald power marker, jumpable to and from the Timeline - a restart that explains a gap in your history is one click away from either view.
+  - Everything respects your display units: the Timeline's columns, detail panels, chart tooltips, the free-text decision reasons, and the Excel export all follow the sats/BTC/USD and TH/PH/EH toggles, with the Satoshi glyph standing in for "sat".
+
+  FIXES
+  - No duplicate bid after a marketplace hiccup (#319): a transient failure fetching the bid list could make the autopilot believe it owned nothing and post a second bid; creating now requires a confirmed-successful fetch and an empty local ledger.
+  - The stop-spend protection now watches the right signal: cancelling bids after a sustained DATUM outage keys on the mandatory stratum probe, so it works even without the optional stats API configured - and a stats-API blip can no longer cancel healthy bids.
+  - Pool-block alerts report your exact TIDES credit (#321): the "credited to you" number is now the real balance delta Ocean recorded, not a ~1%-high estimate; the "~" prefix only appears when the exact number genuinely isn't knowable.
+  - The wallet-runway alert threshold accepts fractional days via environment variable, and a retired internal setting was removed.
+
+  v1.15.1 - effective-cap chart accuracy, payout-address validation, refresh and DATUM fixes.
+
+  FIXES
+  - The price chart's safety-ceiling line is now historically accurate (#312): it's relabeled "effective cap" and the "max premium over hashprice" knob is recorded per tick - and backfilled for older history - so changing it only moves the line from that point forward instead of rewriting your whole past.
+  - Invalid Bitcoin payout addresses are now rejected (#309): the payout-address field in Config and the first-run wizard validate that you've entered a real mainnet address, so a typo can't silently credit your rented hashrate's earnings to nobody.
+  - The Profit & Loss "Per Day" card no longer sticks on "refreshing..." (#311): its countdown ticks down and reloads like the rest of the dashboard.
+  - Clearer errors when the DATUM stats API is unreachable (#310): the panel now tells you when it's behind an auth proxy or its port moved, instead of a cryptic parse error.
+  - Clearer Electrum host/port help (#313): the fields point you to your Electrum server's own connection page for the right host and port.
+  - The IP-change marker tooltip shows how long ago the address changed.
+  - Mobile: the "add tile" control no longer overlaps the time-range buttons (#302); block-explorer presets set both the block and transaction URL in one click (#301).
+  - Ocean payout wording corrected throughout: payouts arrive as batched sweep transactions, not coinbase-direct.
+
   v1.15.0 - aviator branding, bid-vs-hashprice tile, BIP-110 explorers, not-hashing detection, stale-bid self-heal.
 
   NEW

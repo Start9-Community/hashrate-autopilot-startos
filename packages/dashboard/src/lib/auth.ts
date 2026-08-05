@@ -35,6 +35,16 @@ export function getPassword(): string | null {
   );
 }
 
+/**
+ * True when the stored password lives in localStorage (i.e. "Remember me"
+ * was ticked). #332 uses this to re-store a freshly changed password in
+ * the same backend, so a password change doesn't silently downgrade a
+ * remembered session to a tab-lifetime one.
+ */
+export function isPasswordRemembered(): boolean {
+  return window.localStorage.getItem(STORAGE_KEY) !== null;
+}
+
 export function clearPassword(): void {
   window.localStorage.removeItem(STORAGE_KEY);
   window.sessionStorage.removeItem(STORAGE_KEY);

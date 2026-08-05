@@ -19,7 +19,7 @@ import type {
   AlertDeliveryStatus,
   AlertSeverity,
 } from '../../state/types.js';
-import type { AlertRow, AlertsRepo } from '../../state/repos/alerts.js';
+import type { AlertConditionSpan, AlertRow, AlertsRepo } from '../../state/repos/alerts.js';
 import type { ConfigRepo } from '../../state/repos/config.js';
 
 export interface AlertsRouteDeps {
@@ -44,6 +44,15 @@ export interface AlertsListResponse {
   total_count: number;
   /** #121: are there older rows past the returned page? */
   has_more: boolean;
+}
+
+export interface AlertSpansQuery {
+  since_ms?: string;
+  until_ms?: string;
+}
+
+export interface AlertSpansResponse {
+  spans: AlertConditionSpan[];
 }
 
 export interface AcknowledgeResponse {
@@ -186,6 +195,56 @@ export async function registerAlertsRoutes(
         total_count: totalCount,
         has_more: hasMore,
       };
+    },
+  );
+
+  // #316: condition spans (open/recovery alert pairs) overlapping the
+  // requested window, for the timeline band layer on both charts and
+  // the unified History feed. Defaults to a 30-day look-back when no
+  // window is given.
+  app.get<{ Querystring: AlertSpansQuery }>(
+    '/api/alert-spans',
+    async (req): Promise<AlertSpansResponse> => {
+      const now = Date.now();
+      const untilMs = req.query.until_ms ? Number(req.query.until_ms) : now;
+      const sinceMs = req.query.since_ms
+        ? Number(req.query.since_ms)
+        : untilMs - 30 * 24 * 60 * 60 * 1000;
+      if (!Number.isFinite(sinceMs) || !Number.isFinite(untilMs) || sinceMs > untilMs) {
+        return { spans: [] };
+      }
+      const spans = await deps.alertsRepo.conditionSpansSince(sinceMs, untilMs, now);
+      // #341: attach the current-config sustained threshold per class, so
+      // the drawer can estimate the pre-firing wait for pre-0119 rows that
+      // never recorded condition-onset. Rows that DID record onset ignore
+      // this and compute the exact threshold from fired_at - start_ms.
+      const cfg = await deps.configRepo.get();
+      const thresholdFor = (cls: string): number | null => {
+        if (!cfg) return null;
+        switch (cls) {
+          case 'hashrate_below_floor':
+            return cfg.below_floor_alert_after_minutes ?? null;
+          case 'zero_hashrate':
+            return cfg.zero_hashrate_loud_alert_after_minutes ?? null;
+          case 'datum_unreachable':
+            return cfg.datum_unreachable_alert_after_minutes ?? null;
+          case 'api_unreachable':
+            return cfg.api_outage_alert_after_minutes ?? null;
+          case 'marketplace_empty':
+            return cfg.marketplace_empty_alert_after_minutes ?? null;
+          case 'sustained_paused':
+            return cfg.sustained_paused_alert_after_minutes ?? null;
+          // wallet_runway (day-based projection) and solo_overheating
+          // (temperature) have no minutes-based sustained wait.
+          default:
+            return null;
+        }
+      };
+      const enriched = spans.map((s) => ({
+        ...s,
+        threshold_minutes: thresholdFor(s.event_class),
+      }));
+      return { spans: enriched };
     },
   );
 

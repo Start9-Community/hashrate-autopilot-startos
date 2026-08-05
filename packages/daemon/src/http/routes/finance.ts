@@ -2,10 +2,12 @@
  * GET /api/finance - top-level money panel for the dashboard.
  *
  * Combines three sources into a single profit/loss view:
- *   - spent      = lifetime sum of `amount_consumed_sat` across every
- *                  bid the autopilot has ever owned (operator can also
- *                  bump a bid manually; that path also goes through
- *                  the autopilot's owned-bids ledger so it's counted).
+ *   - spent      = scope per config.spent_scope: 'account' (default)
+ *                  counts the whole account via AccountSpendService,
+ *                  'autopilot' restricts to lifetime amount_consumed_sat
+ *                  over ledger-owned bids. (There is no dashboard
+ *                  manual-bump path - §7.3's override flow was retired
+ *                  unbuilt.)
  *   - collected  = lifetime sat received at the configured payout
  *                  address (sum of reward_events.value_sat where
  *                  reorged=0). We count "what they put in," not the
@@ -42,10 +44,11 @@ import {
 import type { AccountSpendService } from '../../services/account-spend.js';
 import type { HashpriceCache } from '../../services/hashprice-cache.js';
 import type { OceanClient } from '../../services/ocean.js';
+import type { OceanPayoutsService } from '../../services/ocean-payouts-service.js';
 import type { PayoutObserver } from '../../services/payout-observer.js';
 import type { OwnedBidsRepo } from '../../state/repos/owned_bids.js';
 import type { ConfigRepo } from '../../state/repos/config.js';
-import type { RewardEventsRepo } from '../../state/repos/reward_events.js';
+import type { OceanPayoutsRepo } from '../../state/repos/ocean_payouts.js';
 import type { TickMetricsRepo } from '../../state/repos/tick_metrics.js';
 
 const EH_PER_PH = 1000;
@@ -75,16 +78,25 @@ export interface FinanceResponse {
   readonly spent_active_sat: number | null;
   readonly collected_sat: number | null;
   /**
-   * #97 - disambiguates the three states `collected_sat: null` collapses
-   * into for the dashboard:
-   * - 'computing' - payout observer is enabled but the first scan has
-   *   not yet produced a snapshot. Dashboard renders a spinner so the
+   * #323: collected split by settlement rail, so the P&L panel can show
+   * "0.081 on-chain, 0.012 Lightning". `collected_onchain_sat +
+   * collected_lightning_sat === collected_sat`. Null in the same states
+   * `collected_sat` is null (no payout address configured).
+   */
+  readonly collected_onchain_sat: number | null;
+  readonly collected_lightning_sat: number | null;
+  /**
+   * #97 / #323 - disambiguates the three states `collected_sat: null`
+   * collapses into for the dashboard:
+   * - 'computing' - a payout address is configured but the daemon
+   *   hasn't completed its first earnpay read for it yet (fresh boot /
+   *   just-switched address). Dashboard renders a spinner so the
    *   operator does not see a blank em-dash mid-startup.
-   * - 'ready'     - observer has produced a snapshot; `collected_sat`
-   *   reflects it.
-   * - 'idle'      - observer is disabled (`payout_source = 'none'` or
-   *   missing creds). Dashboard renders the existing "not configured"
-   *   tooltip on the em-dash.
+   * - 'ready'     - earnpay has been read at least once; `collected_sat`
+   *   reflects it (0 is a legitimate "no payouts yet" value).
+   * - 'idle'      - no payout address configured, so there's nothing to
+   *   fetch. Dashboard renders the existing "not configured" tooltip on
+   *   the em-dash.
    */
   readonly collected_status: 'computing' | 'ready' | 'idle';
   readonly expected_sat: number | null;
@@ -114,13 +126,16 @@ export interface FinanceResponse {
 export interface FinanceDeps {
   readonly ownedBidsRepo: OwnedBidsRepo;
   readonly configRepo: ConfigRepo;
+  /** Still used for `checked_at_ms` staleness (on-chain snapshot time), not for collected. */
   readonly payoutObserver: PayoutObserver | null;
   readonly oceanClient: OceanClient | null;
   readonly accountSpend: AccountSpendService | null;
   readonly hashpriceCache: HashpriceCache | null;
   readonly tickMetricsRepo: TickMetricsRepo;
-  /** #240 follow-up: source of truth for lifetime collected. */
-  readonly rewardEventsRepo: RewardEventsRepo;
+  /** #323: source of truth for lifetime collected (on-chain + Lightning) via Ocean earnpay. */
+  readonly oceanPayoutsRepo: OceanPayoutsRepo;
+  /** #323: provides the collected computing/ready/idle status for the panel. */
+  readonly oceanPayoutsService: OceanPayoutsService;
 }
 
 /**
@@ -274,6 +289,29 @@ export async function registerFinanceRoute(
     return { ok: true };
   });
 
+  app.post('/api/finance/payouts/rebuild', async () => {
+    // #343: force a full re-fetch of Ocean's earnpay payout history and
+    // upsert it, healing a `collected` figure that ended up short because
+    // the one-shot backfill captured a partial list. Safe + idempotent.
+    if (!deps.oceanPayoutsService) {
+      return { ok: false, error: 'ocean payouts service not configured' };
+    }
+    const summary = await deps.oceanPayoutsService.requestFullBackfill();
+    return { ok: true, ...summary };
+  });
+
+  app.post('/api/finance/hard-reset', async () => {
+    // #343: hard reset of the whole P&L dataset - wipe + rebuild the Ocean
+    // payout store from scratch (exact copy of the earnpay ledger, no
+    // stale rows) AND re-paginate the Braiins spend cache. The payout wipe
+    // is fetch-before-delete, so an Ocean outage leaves the store intact.
+    const [summary] = await Promise.all([
+      deps.oceanPayoutsService?.hardReset() ?? Promise.resolve({ payouts: 0, collected_sat: 0 }),
+      deps.accountSpend?.rebuild() ?? Promise.resolve(),
+    ]);
+    return { ok: true, ...summary };
+  });
+
   app.get('/api/finance', async (): Promise<FinanceResponse> => {
     const config = await deps.configRepo.get();
     const scope = config?.spent_scope ?? 'autopilot';
@@ -281,8 +319,10 @@ export async function registerFinanceRoute(
     let spent_sat: number;
     let spent_closed_sat: number | null = null;
     let spent_active_sat: number | null = null;
+    let spendSnap: Awaited<ReturnType<NonNullable<typeof deps.accountSpend>['getLifetimeSpend']>> | null = null;
     if (scope === 'account' && deps.accountSpend) {
       const snap = await deps.accountSpend.getLifetimeSpend();
+      spendSnap = snap;
       if (snap) {
         spent_sat = snap.total_settlement_sat;
         spent_closed_sat = snap.closed_sat;
@@ -296,23 +336,37 @@ export async function registerFinanceRoute(
       spent_sat = await deps.ownedBidsRepo.sumLifetimeConsumedSat();
     }
 
-    // #240 follow-up: collected = LIFETIME RECEIVED, not current UTXO
-    // balance. Operator on Taliesin received a payout to the new
-    // configured address, then spent it; the previous
-    // `total_unspent_sat` source showed 0 because the UTXOs were gone,
-    // even though the address received N sat in its lifetime. We
-    // count "what they put in," not the current balance.
-    // sum is over reward_events.value_sat for non-reorged events. The
-    // observer populates that table both from current-UTXO scans
-    // (steady state) and from historical electrs scans of the
-    // address's tx history (boot + every 30 min), so spent payouts
-    // are captured too.
-    const collected_sat = deps.payoutObserver
-      ? await deps.rewardEventsRepo.sumPaidUpTo(Date.now())
-      : null;
-    const collected_status: 'computing' | 'ready' | 'idle' = !deps.payoutObserver
-      ? 'idle'
-      : deps.payoutObserver.getCollectedStatus();
+    // #323: collected = LIFETIME RECEIVED via Ocean's authoritative
+    // earnpay payout list, which sees BOTH on-chain and Lightning
+    // settlements. This replaces the on-chain-only reward_events
+    // derivation (which understated net P&L for any Lightning payout,
+    // since unpaid_sat dropped but collected never rose). It's also no
+    // longer gated on the on-chain scanner: earnpay needs only the
+    // Ocean address, so operators without electrs/bitcoind now get a
+    // collected figure too. We count "what they put in" - a payout
+    // that's since been spent still counts.
+    const payoutAddr = config?.btc_payout_address || null;
+    let collected_sat: number | null = null;
+    let collected_onchain_sat: number | null = null;
+    let collected_lightning_sat: number | null = null;
+    let collected_status: 'computing' | 'ready' | 'idle';
+    if (!payoutAddr) {
+      collected_status = 'idle';
+    } else {
+      const nowMs = Date.now();
+      collected_sat = await deps.oceanPayoutsRepo.sumNetUpTo(payoutAddr, nowMs);
+      const split = await deps.oceanPayoutsRepo.sumNetByRail(payoutAddr, nowMs);
+      collected_onchain_sat = split.onchain;
+      collected_lightning_sat = split.lightning;
+      // Already have persisted payouts -> trust them immediately even
+      // while a background refresh runs; otherwise defer to the
+      // service's synced-once state so a fresh boot shows a spinner,
+      // not a premature 0.
+      collected_status =
+        collected_sat > 0
+          ? 'ready'
+          : deps.oceanPayoutsService.getCollectedStatus(payoutAddr);
+    }
 
     let oceanStats: Awaited<ReturnType<OceanClient['fetchStats']>> | null = null;
     if (deps.oceanClient && config?.btc_payout_address) {
@@ -352,6 +406,8 @@ export async function registerFinanceRoute(
       spent_closed_sat,
       spent_active_sat,
       collected_sat,
+      collected_onchain_sat,
+      collected_lightning_sat,
       collected_status,
       expected_sat,
       historical_offset_sat,
@@ -373,7 +429,9 @@ export async function registerFinanceRoute(
       checked_at_ms: oldestSourceTimestamp(
         oceanStats?.fetched_at_ms ?? null,
         deps.payoutObserver?.getLastSnapshot()?.checked_at ?? null,
-        scope === 'account' ? (await deps.accountSpend?.getLifetimeSpend())?.fetched_at_ms ?? null : null,
+        // Reuse the snapshot fetched above - this was a second full
+        // getLifetimeSpend() call for just its timestamp.
+        spendSnap?.fetched_at_ms ?? null,
       ),
     };
   });

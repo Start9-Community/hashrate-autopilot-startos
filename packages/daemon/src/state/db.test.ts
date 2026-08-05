@@ -137,6 +137,15 @@ describe('openDatabase - migrations', () => {
       '0109_ip_change_events.sql',
       '0110_dashboard_tiles.sql',
       '0111_bid_events_allow_mode_change.sql',
+      '0112_tick_metrics_max_overpay.sql',
+      '0113_tick_metrics_backfill_max_overpay.sql',
+      '0114_system_events.sql',
+      '0115_drop_handover_window.sql',
+      '0116_ocean_payouts.sql',
+      '0117_scrub_config_change_secrets.sql',
+      '0118_event_notes.sql',
+      '0119_alerts_condition_started_at.sql',
+      '0120_deduced_payouts.sql',
     ]);
     expect(handle.migrations.skipped).toEqual([]);
   });

@@ -1,0 +1,20 @@
+-- #343: deduced payouts. Ocean's earnpay endpoint does not return
+-- Lightning payouts at all (confirmed by Ocean support, 2026-07-15:
+-- "there are no ways to fetch the lightning payouts for the OCEAN API
+-- at the moment"), so an operator paid over Lightning sees "collected"
+-- permanently short and their P&L loss rate inflated.
+--
+-- The daemon now deduces those payouts from the per-tick unpaid
+-- series (tick_metrics.ocean_unpaid_sat): a confirmed sharp drop to
+-- ~zero that has no matching earnpay settlement is recorded in
+-- ocean_payouts as a deduced payout. Deduced rows start with rail
+-- 'unknown' (the settlement could still surface in earnpay within the
+-- 24h correction window) and resolve to 'lightning' once it doesn't.
+-- If a real earnpay record ever matches one (Ocean says the API "will
+-- evolve" to include Lightning), the deduced row is superseded.
+--
+-- `deduced` marks such rows so the UI can badge them, P&L sums keep
+-- working unchanged (same table, same net_sat semantics), and the
+-- scanner knows which rows it owns. rail gains no CHECK constraint in
+-- 0116, so the new 'unknown' value needs no schema change.
+ALTER TABLE ocean_payouts ADD COLUMN deduced INTEGER NOT NULL DEFAULT 0;

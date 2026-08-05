@@ -10,15 +10,26 @@
  * `reachable: false`; they never throw out of `poll()`.
  *
  * `DatumPoller` wraps a `DatumService` and re-reads `datum_api_url`
- * from config on every poll, so config edits take effect on the next
- * tick without a daemon restart. When the URL is empty, it returns
- * null - observe() translates that to `state.datum = null` and the
- * dashboard shows a "not configured" empty state.
+ * on every poll. A managed `BHA_DATUM_API_URL` environment override
+ * stays authoritative over saved config; otherwise config edits take
+ * effect on the next tick without a daemon restart. When the URL is
+ * empty, it returns null - observe() translates that to
+ * `state.datum = null` and the dashboard shows a "not configured"
+ * empty state.
  *
  * See docs/setup-datum-api.md for the Umbrel-side port-exposure recipe.
  */
 
 import type { DatumSnapshot } from '../controller/types.js';
+
+export function resolveDatumApiUrl(
+  configuredUrl: string | null,
+  env: Readonly<Record<string, string | undefined>> = process.env,
+): string | null {
+  const managedUrl = env['BHA_DATUM_API_URL'];
+  if (managedUrl === undefined) return configuredUrl;
+  return managedUrl.trim() || null;
+}
 
 export interface DatumPollResult {
   readonly reachable: boolean;
@@ -63,10 +74,7 @@ const HASHRATE_UNIT_TO_PH: Record<string, number> = {
 };
 
 function hashrateUnitMultiplier(unit: string): number | undefined {
-  const normalized = unit
-    .toLowerCase()
-    .trim()
-    .replace('/sec', '/s');
+  const normalized = unit.toLowerCase().trim().replace('/sec', '/s');
   return HASHRATE_UNIT_TO_PH[normalized];
 }
 
@@ -98,14 +106,42 @@ export class DatumService {
     try {
       const response = await fetch(`${this.apiUrl}/umbrel-api`, {
         signal: controller.signal,
+        // #310: don't silently follow a redirect. An auth proxy in front
+        // of the Datum API (e.g. Umbrel's app-proxy) answers an
+        // unauthenticated machine request with a 3xx to its login page;
+        // following it lands on HTML that then fails JSON.parse with a
+        // baffling "Unexpected token '<'". Surfacing the redirect lets us
+        // hand back an actionable hint instead.
+        redirect: 'manual',
       });
       if (response.status === 404) {
         return await this.pollStartosDashboard(checkedAt, controller.signal);
       }
+      if (response.type === 'opaqueredirect' || (response.status >= 300 && response.status < 400)) {
+        return this.fail(
+          checkedAt,
+          'redirected to a login page - the Datum API is behind an auth proxy (e.g. Umbrel app-proxy). Expose it directly or disable the proxy auth; see docs/setup-datum-api.md',
+        );
+      }
       if (!response.ok) {
         return this.fail(checkedAt, `HTTP ${response.status}`);
       }
-      const payload = (await response.json()) as UmbrelApiResponse;
+      // Read the body as text and parse explicitly, so an HTML page
+      // served with a 200 (some proxies inline the login page) yields a
+      // clear hint instead of an "Unexpected token '<'".
+      const body = await response.text();
+      let payload: UmbrelApiResponse;
+      try {
+        payload = JSON.parse(body) as UmbrelApiResponse;
+      } catch {
+        const looksLikeHtml = /^\s*<(!doctype|html)/i.test(body);
+        return this.fail(
+          checkedAt,
+          looksLikeHtml
+            ? 'the Datum API returned an HTML page, not JSON - likely a login page from an auth proxy in front of Datum (e.g. Umbrel app-proxy). Expose it directly or disable the proxy auth; see docs/setup-datum-api.md'
+            : `the Datum API returned a non-JSON response. Check the URL and port. Body starts: ${body.slice(0, 60).replace(/\s+/g, ' ')}`,
+        );
+      }
       const connections = extractNumber(payload, 'Connections');
       const hashrate_ph = extractHashratePh(payload);
       this.lastOkAt = checkedAt;
@@ -118,7 +154,14 @@ export class DatumService {
         error: null,
       };
     } catch (err) {
-      return this.fail(checkedAt, (err as Error).message ?? String(err));
+      // #310: a bare "fetch failed" is usually connection refused /
+      // nothing listening - common right after an Umbrel app update
+      // reverts a manual port mapping. Make that actionable.
+      const msg = (err as Error).message ?? String(err);
+      const friendly = /fetch failed|ECONNREFUSED|connect|refused/i.test(msg)
+        ? `cannot reach the Datum API at ${this.apiUrl} (connection refused - the port may have changed or a manual port mapping was reverted by an app update); see docs/setup-datum-api.md`
+        : msg;
+      return this.fail(checkedAt, friendly);
     } finally {
       clearTimeout(timeout);
     }
@@ -226,7 +269,7 @@ function extractDashboardHashratePh(html: string): number | null {
   if (!amount || !unit) return null;
   const n = Number.parseFloat(amount);
   if (!Number.isFinite(n)) return null;
-  const multiplier = hashrateUnitMultiplier(unit) ?? (1 / 1_000);
+  const multiplier = hashrateUnitMultiplier(unit) ?? 1 / 1_000;
   return n * multiplier;
 }
 

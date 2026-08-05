@@ -35,7 +35,6 @@ export interface ConfigTable {
   /** #135: dedicated minute threshold for the sustained_paused alert (was pool_outage_blip_tolerance_seconds × 5). */
   sustained_paused_alert_after_minutes: number;
   api_outage_alert_after_minutes: number;
-  handover_window_minutes: number;
   btc_payout_address: string;
   /** #100: Telegram chat id the notifier POSTs into. Empty string = unconfigured. */
   telegram_chat_id: string;
@@ -278,6 +277,29 @@ export interface IpChangeEventsTable {
 }
 
 // ---------------------------------------------------------------------------
+// system_events (#318): config changes + daemon boots for the History log
+// ---------------------------------------------------------------------------
+export interface SystemEventsTable {
+  id: Generated<number>;
+  occurred_at: number;
+  kind: string;
+  field: string | null;
+  old_value: string | null;
+  new_value: string | null;
+  detail: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// event_notes (#336): operator's personal notes on Timeline events, keyed
+// by the row's stable `<kind>:<key>` identity.
+// ---------------------------------------------------------------------------
+export interface EventNotesTable {
+  event_key: string;
+  note: string;
+  updated_at: number;
+}
+
+// ---------------------------------------------------------------------------
 // alerts
 // ---------------------------------------------------------------------------
 
@@ -315,6 +337,12 @@ export interface AlertsTable {
   delivery_meta_json: string | null;
   /** #100: ms-epoch when the operator clicked acknowledge. Null = unacknowledged. */
   acknowledged_at_ms: number | null;
+  /**
+   * #341: ms-epoch when the underlying condition first went bad
+   * (bad_since), stamped on the firing row. NULL on recovery rows and
+   * every pre-0119 alert; the span builder falls back to created_at.
+   */
+  condition_started_at: number | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -375,6 +403,11 @@ export interface TickMetricsTable {
   fillable_ask_sat_per_eh_day: number | null;
   hashprice_sat_per_eh_day: number | null;
   max_bid_sat_per_eh_day: number | null;
+  /** #312: config.max_overpay_vs_hashprice at the tick, so the chart's
+   *  effective-cap line (min(max_bid, hashprice + this)) is historically
+   *  accurate instead of using the current value across all of history.
+   *  NULL on pre-0112 rows; the chart falls back to current config. */
+  max_overpay_vs_hashprice_sat_per_eh_day: number | null;
   available_balance_sat: number | null;
   total_balance_sat: number | null;
   datum_hashrate_ph: number | null;
@@ -544,6 +577,44 @@ export interface SecretsTable {
   updated_at: number;
 }
 
+/**
+ * #323: persisted Ocean payouts from the /v1/earnpay endpoint. Source
+ * of truth for lifetime "collected" in the P&L panel. Covers both
+ * on-chain (`on_chain_txid` present) and Lightning (`on_chain_txid`
+ * null) settlements. See migration 0116.
+ */
+export interface OceanPayoutsTable {
+  id: Generated<number>;
+  /** Payout address this settlement belongs to. P&L sums are scoped to the current config address. */
+  address: string;
+  /** Settlement time, ms epoch (parsed from Ocean's ISO `ts`). */
+  ts: number;
+  /** On-chain txid, or null for a Lightning (off-chain) payout. */
+  on_chain_txid: string | null;
+  /** Net satoshis that actually reached the operator (`total_satoshis_net_paid`). */
+  net_sat: number;
+  /** 1 = coinbase-direct (`is_generation_txn`), 0 = batched sweep. */
+  is_generation: Generated<0 | 1>;
+  /**
+   * Derived rail: 'onchain' when a txid is present, else 'lightning'.
+   * Deduced rows (#343) start as 'unknown' during the 24h correction
+   * window, then resolve to 'lightning'.
+   */
+  rail: 'onchain' | 'lightning' | 'unknown';
+  /** Idempotency key: `<address>|oc:<txid>`, `<address>|ln:<ts>:<net_sat>`, or `<address>|dd:<drop_tick_at>` for deduced rows. */
+  dedup_key: string;
+  /** 1 once the stage-2 (enriched) alert has been fired for this payout. */
+  enriched_alert: Generated<0 | 1>;
+  first_seen_at: number;
+  /**
+   * #343: 1 = not from earnpay but deduced from a confirmed drop of
+   * the unpaid-earnings series to ~zero with no matching settlement
+   * (Ocean's API doesn't return Lightning payouts). Amount is the
+   * last-seen unpaid value before the drop - approximate by nature.
+   */
+  deduced: Generated<0 | 1>;
+}
+
 /** #108: persisted Ocean pool blocks. See migration 0065. */
 export interface PoolBlocksTable {
   height: number;
@@ -644,6 +715,7 @@ export interface SoloBestDifficultyEventsTable {
 export interface Database {
   config: ConfigTable;
   pool_blocks: PoolBlocksTable;
+  ocean_payouts: OceanPayoutsTable;
   runtime_state: RuntimeStateTable;
   owned_bids: OwnedBidsTable;
   deferred_actions: DeferredActionsTable;
@@ -663,6 +735,8 @@ export interface Database {
   solo_miner_samples: SoloMinerSamplesTable;
   solo_best_difficulty_events: SoloBestDifficultyEventsTable;
   ip_change_events: IpChangeEventsTable;
+  system_events: SystemEventsTable;
+  event_notes: EventNotesTable;
   _migrations: MigrationsTable;
 }
 

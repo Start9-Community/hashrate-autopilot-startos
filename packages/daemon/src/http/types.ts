@@ -232,6 +232,20 @@ export interface StatusResponse {
       readonly minutes: number;
     } | null;
   } | null;
+  /**
+   * #335: current Bitcoin chain tip, for the "block height" tile. Null
+   * when no bitcoind RPC is configured (the tile hides in that case).
+   */
+  readonly chain_tip: {
+    readonly height: number;
+    readonly hash: string;
+    readonly found_by_ocean: boolean;
+    readonly signals_bip110: boolean;
+    /** Coinbase pool tag ("Ocean", "Foundry USA Pool", ...) or null. */
+    readonly pool_tag: string | null;
+    /** Inner miner tag (mainly Ocean's per-miner identity) or null. */
+    readonly miner_tag: string | null;
+  } | null;
 }
 
 export interface ProposalView {
@@ -260,6 +274,12 @@ export interface DecisionDetail extends DecisionSummary {
 
 export interface ConfigResponse {
   readonly config: AppConfig;
+  /**
+   * #331: which credential fields are configured. Their values are
+   * blanked in `config` (write-only over the API); this tells the UI to
+   * show "configured / leave blank to keep" instead of an empty field.
+   */
+  readonly credentials_set?: Record<string, boolean>;
 }
 
 export interface UpdateRunModeBody {

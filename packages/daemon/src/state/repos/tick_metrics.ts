@@ -28,6 +28,7 @@ export interface InsertTickMetricArgs {
   readonly fillable_ask_sat_per_eh_day: number | null;
   readonly hashprice_sat_per_eh_day: number | null;
   readonly max_bid_sat_per_eh_day: number | null;
+  readonly max_overpay_vs_hashprice_sat_per_eh_day: number | null;
   readonly available_balance_sat: number | null;
   readonly total_balance_sat: number | null;
   readonly datum_hashrate_ph: number | null;
@@ -101,6 +102,7 @@ export interface AggregatedTickMetricRow {
   fillable_ask_sat_per_eh_day: number | null;
   hashprice_sat_per_eh_day: number | null;
   max_bid_sat_per_eh_day: number | null;
+  max_overpay_vs_hashprice_sat_per_eh_day: number | null;
   available_balance_sat: number | null;
   total_balance_sat: number | null;
   datum_hashrate_ph: number | null;
@@ -139,8 +141,20 @@ export interface AggregatedTickMetricRow {
 export class TickMetricsRepo {
   constructor(private readonly db: Kysely<Database>) {}
 
+  /** Cached MIN(tick_at). `undefined` = not yet computed. The value
+   *  only changes on the first-ever insert (null -> value) or on
+   *  retention pruning, yet every /api/metrics poll asks for it -
+   *  cache instead of re-querying per request. */
+  private firstTickAtCache: number | null | undefined = undefined;
+
   async insert(args: InsertTickMetricArgs): Promise<void> {
     await this.db.insertInto('tick_metrics').values(args).execute();
+    if (
+      this.firstTickAtCache === null ||
+      (this.firstTickAtCache !== undefined && args.tick_at < this.firstTickAtCache)
+    ) {
+      this.firstTickAtCache = args.tick_at;
+    }
   }
 
   async listSince(sinceMs: number, limit = 10_000, untilMs?: number): Promise<TickMetricRow[]> {
@@ -189,6 +203,7 @@ export class TickMetricsRepo {
         fillable_ask_sat_per_eh_day: r.fillable_ask_sat_per_eh_day,
         hashprice_sat_per_eh_day: r.hashprice_sat_per_eh_day,
         max_bid_sat_per_eh_day: r.max_bid_sat_per_eh_day,
+        max_overpay_vs_hashprice_sat_per_eh_day: r.max_overpay_vs_hashprice_sat_per_eh_day,
         available_balance_sat: r.available_balance_sat,
         total_balance_sat: r.total_balance_sat,
         datum_hashrate_ph: r.datum_hashrate_ph,
@@ -239,6 +254,9 @@ export class TickMetricsRepo {
         ),
         sql<number | null>`AVG(max_bid_sat_per_eh_day)`.as(
           'max_bid_sat_per_eh_day',
+        ),
+        sql<number | null>`AVG(max_overpay_vs_hashprice_sat_per_eh_day)`.as(
+          'max_overpay_vs_hashprice_sat_per_eh_day',
         ),
         sql<number | null>`AVG(available_balance_sat)`.as('available_balance_sat'),
         sql<number | null>`AVG(total_balance_sat)`.as('total_balance_sat'),
@@ -726,11 +744,14 @@ export class TickMetricsRepo {
    * whatever history actually exists.
    */
   async firstTickAt(): Promise<number | null> {
-    const row = await this.db
-      .selectFrom('tick_metrics')
-      .select(sql<number | null>`MIN(tick_at)`.as('min_tick_at'))
-      .executeTakeFirst();
-    return row?.min_tick_at ?? null;
+    if (this.firstTickAtCache === undefined) {
+      const row = await this.db
+        .selectFrom('tick_metrics')
+        .select(sql<number | null>`MIN(tick_at)`.as('min_tick_at'))
+        .executeTakeFirst();
+      this.firstTickAtCache = row?.min_tick_at ?? null;
+    }
+    return this.firstTickAtCache;
   }
 
   /**
@@ -815,6 +836,33 @@ export class TickMetricsRepo {
   }
 
   /**
+   * #317: distinct network-difficulty epochs at or after `sinceMs`, each
+   * with the earliest tick that observed it, ordered by time. Difficulty
+   * is constant within an epoch, so grouping yields one row per epoch
+   * (a handful over months). The /api/retargets route walks these and
+   * emits a retarget wherever the value jumps >0.5% - the same threshold
+   * the Hashrate chart uses to place its retarget markers.
+   */
+  async difficultyEpochsSince(
+    sinceMs: number,
+  ): Promise<Array<{ difficulty: number; first_tick_at: number }>> {
+    const rows = await this.db
+      .selectFrom('tick_metrics')
+      .select((eb) => [
+        'network_difficulty as difficulty',
+        eb.fn.min<number>('tick_at').as('first_tick_at'),
+      ])
+      .where('network_difficulty', 'is not', null)
+      .where('tick_at', '>=', sinceMs)
+      .groupBy('network_difficulty')
+      .orderBy('first_tick_at', 'asc')
+      .execute();
+    return rows
+      .filter((r) => r.difficulty != null)
+      .map((r) => ({ difficulty: Number(r.difficulty), first_tick_at: Number(r.first_tick_at) }));
+  }
+
+  /**
    * #230: write `difficulty` to every row in `[fromTickAtMs, toTickAtMs)`
    * whose `network_difficulty` is currently NULL. The `IS NULL` guard
    * is load-bearing - backfill never overwrites a live observation,
@@ -835,7 +883,89 @@ export class TickMetricsRepo {
     return Number(result.numUpdatedRows ?? 0);
   }
 
+  /**
+   * #343: candidate payout drops in the `ocean_unpaid_sat` series for
+   * the deduced-payouts scanner. A candidate is a tick where the
+   * unpaid balance fell sharply versus the previous non-null reading
+   * AND the next non-null reading confirms it stayed down - the
+   * two-consecutive-low-ticks gate that keeps a single-tick API glitch
+   * (Ocean briefly reporting 0) from minting a phantom payout.
+   *
+   * Gates, mirroring the payout_initiated alert heuristic plus the
+   * confirmation tick:
+   *   - prev >= minPreDropSat (noise floor; Ocean's lowest Lightning
+   *     payout floor is 65,536 sat, so 10k is safely below any real
+   *     payout and above jitter)
+   *   - (prev - cur) / prev > dropFraction (sharp, not accrual noise)
+   *   - cur < residualThresholdSat AND next < residualThresholdSat
+   *     (a real payout leaves residual near zero on BOTH ticks)
+   *   - next < prev * (1 - dropFraction) (the balance did not bounce
+   *     back - the glitch discriminator)
+   *
+   * NULL readings (Ocean outage, pre-#89 rows, the bogus-value
+   * cleanup) are bridged over: LAG/LEAD run on the non-null series
+   * only, so a drop across daemon downtime is still one candidate at
+   * the first low tick after the gap.
+   *
+   * Window functions keep the scan in SQLite - the full-history pass
+   * walks the whole table without materialising it in JS.
+   */
+  async findUnpaidDropCandidates(
+    sinceMs: number,
+    opts: {
+      dropFraction: number;
+      residualThresholdSat: number;
+      minPreDropSat: number;
+    },
+  ): Promise<Array<{ tick_at: number; pre_drop_unpaid_sat: number; post_drop_unpaid_sat: number }>> {
+    // The window functions only see rows from `innerSince` on, so the
+    // frequent incremental pass doesn't walk the whole table. The 4-day
+    // lookback (vs the caller's 3-day scan window) guarantees LAG has a
+    // prior reading for candidates at the window edge; a drop whose
+    // prior reading is older than that (multi-day daemon downtime) is
+    // picked up by the daily full-history pass instead.
+    const DAY = 24 * 60 * 60 * 1000;
+    const innerSince = sinceMs > 0 ? sinceMs - 4 * DAY : 0;
+    const queryText = `
+      SELECT tick_at, prev_unpaid AS pre_drop_unpaid_sat, cur AS post_drop_unpaid_sat
+      FROM (
+        SELECT
+          tick_at,
+          ocean_unpaid_sat AS cur,
+          LAG(ocean_unpaid_sat) OVER w AS prev_unpaid,
+          LEAD(ocean_unpaid_sat) OVER w AS next_unpaid
+        FROM tick_metrics
+        WHERE ocean_unpaid_sat IS NOT NULL
+          AND tick_at >= ${innerSince}
+        WINDOW w AS (ORDER BY tick_at)
+      )
+      WHERE tick_at >= ${sinceMs}
+        AND prev_unpaid IS NOT NULL
+        AND next_unpaid IS NOT NULL
+        AND prev_unpaid >= ${opts.minPreDropSat}
+        AND cur < ${opts.residualThresholdSat}
+        AND next_unpaid < ${opts.residualThresholdSat}
+        AND (prev_unpaid - cur) * 1.0 / prev_unpaid > ${opts.dropFraction}
+        AND next_unpaid < prev_unpaid * ${1 - opts.dropFraction}
+      ORDER BY tick_at ASC
+    `;
+    const res = await sql.raw(queryText).execute(this.db);
+    const rows = (res as unknown as {
+      rows: Array<{ tick_at: number; pre_drop_unpaid_sat: number; post_drop_unpaid_sat: number }>;
+    }).rows;
+    return rows.map((r) => ({
+      tick_at: Number(r.tick_at),
+      pre_drop_unpaid_sat: Number(r.pre_drop_unpaid_sat),
+      // The residual left on the drop tick itself. A Lightning payout
+      // can pay the older balance and leave a freshly-credited block
+      // unpaid, so the actual amount paid is prev - cur, not prev (#343).
+      post_drop_unpaid_sat: Number(r.post_drop_unpaid_sat),
+    }));
+  }
+
   async pruneOlderThan(cutoffMs: number): Promise<void> {
     await this.db.deleteFrom('tick_metrics').where('tick_at', '<', cutoffMs).execute();
+    // Pruning can delete the earliest row; recompute lazily.
+    this.firstTickAtCache = undefined;
   }
 }

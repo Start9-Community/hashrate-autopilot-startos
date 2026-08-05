@@ -33,7 +33,7 @@
 import { Trans } from '@lingui/react/macro';
 import { t } from '@lingui/core/macro';
 import { useLingui } from '@lingui/react';
-import { useMemo, useRef, useState, useEffect, useLayoutEffect } from 'react';
+import { memo, useMemo, useRef, useState, useEffect, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import {
   DndContext,
@@ -66,6 +66,8 @@ import {
 
 import { useDenomination } from '../lib/denomination';
 import { useLocale } from '../lib/locale';
+import { applyExplorerTemplate } from '../lib/blockExplorer';
+import { useChartColor } from '../lib/chartColorOverrides';
 import { formatNumber } from '../lib/format';
 import { SatSymbol } from './SatSymbol';
 import type { StatsResponse, StatusResponse, OceanResponse } from '../lib/api';
@@ -87,6 +89,9 @@ export interface TilesBarProps {
    * per-tick-delta SUM but not the first-/last-cumulative diff).
    */
   readonly financeRangeData: FinanceRangeResponse | undefined;
+  /** #335: block-explorer URL template (`{hash}` / `{height}`) so the
+   *  block-height tile can link the tip to the operator's explorer. */
+  readonly blockExplorerTemplate?: string;
   /**
    * Called when the operator adds, removes, or swaps a tile. The new
    * full list (in render order) is passed; caller persists to
@@ -99,11 +104,16 @@ interface TileResult {
   readonly value: string;
   readonly tooltip?: string;
   readonly color?: string;
+  /** #335: small leading glyph before the value (e.g. the Ocean crown). */
+  readonly icon?: React.ReactNode;
+  /** #335: makes the value a link (opens in a new tab) - block-height tile
+   *  links the tip to the operator's block explorer. */
+  readonly href?: string;
   /** #293: explicit grey caption under the value. When set, the value
-   *  is rendered whole (no unit-splitting) and this string is the
-   *  caption - lets a tile show a dynamic status line (e.g. cheap
-   *  threshold / sustained-window progress) instead of just a unit. */
-  readonly caption?: string;
+   *  is rendered whole (no unit-splitting) and this is the caption - lets
+   *  a tile show a dynamic status line (e.g. cheap threshold) or, for the
+   *  block-height tile, a two-line pool/worker block (#335). */
+  readonly caption?: React.ReactNode;
 }
 
 interface TileCtx {
@@ -112,12 +122,132 @@ interface TileCtx {
   readonly ocean: OceanResponse | undefined;
   readonly soloMiners: SoloMinersResponse | undefined;
   readonly finance: FinanceRangeResponse | undefined;
+  readonly blockExplorerTemplate?: string;
   readonly intlLocale: string;
   readonly denomination: ReturnType<typeof useDenomination>;
 }
 
 const EM_DASH = '—';
 const DASH: TileResult = { value: EM_DASH };
+
+/**
+ * #335: block-height tile marker, mirroring the chart's pool-block icons
+ * and honoring the Chart-colors overrides:
+ *   - 'crown'  : YOUR block (found_by_us)          - gold crown
+ *   - 'bip110' : signals BIP-110                    - BIP-110-cube color
+ *   - 'ocean'  : an Ocean block (not yours)         - pool-block color
+ *   - 'gray'   : any other block                    - muted grey
+ */
+function BlockTileIcon({ variant }: { variant: 'crown' | 'bip110' | 'ocean' | 'gray' }) {
+  const ours = useChartColor('hashrate.pool_block_ours');
+  const bip110 = useChartColor('hashrate.pool_block_bip110');
+  const others = useChartColor('hashrate.pool_block_others');
+  if (variant === 'crown') {
+    return (
+      <svg
+        width="0.85em"
+        height="0.85em"
+        viewBox="0 0 10 10"
+        className="inline-block mr-1.5 align-baseline"
+        aria-label="your block"
+      >
+        <g fill={ours} fillOpacity="0.45" stroke={ours} strokeWidth="1.1" strokeLinejoin="round">
+          <path d="M0 8 L1.5 3 L4 5.5 L5 1 L6 5.5 L8.5 3 L10 8 Z" />
+          <line x1="0" y1="9.5" x2="10" y2="9.5" stroke={ours} strokeWidth="1.4" />
+        </g>
+      </svg>
+    );
+  }
+  const color = variant === 'bip110' ? bip110 : variant === 'ocean' ? others : '#64748b';
+  return (
+    <svg
+      width="0.8em"
+      height="0.8em"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={color}
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="inline-block mr-1.5 align-baseline"
+      aria-label={variant === 'bip110' ? 'BIP-110 block' : variant === 'ocean' ? 'Ocean block' : 'block'}
+    >
+      <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" />
+      <path d="m3.3 7 8.7 5 8.7-5" />
+      <path d="M12 22V12" />
+    </svg>
+  );
+}
+
+/**
+ * #335: the daemon now resolves the canonical pool name from mempool's
+ * curated database (output-address or coinbase-tag match), so pool_tag
+ * arrives clean ("Foundry USA", "Ocean", ...) - no client-side heuristic
+ * needed beyond whitespace tidy. The old fragile slash/hash splitting is
+ * gone; a legacy daemon's raw tag just displays as-is.
+ */
+function poolLabel(poolTag: string | null): string {
+  return (poolTag ?? '').replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * The worker line is only meaningful for Ocean (and our own) blocks,
+ * where the coinbase encodes a genuine per-miner identity. Public pools
+ * carry a slogan, not a worker, so their miner tag is dropped entirely.
+ */
+function workerLabel(minerTag: string | null): string {
+  return (minerTag ?? '')
+    .replace(/\/+$/g, '')
+    .replace(/^mined by\s+/i, '')
+    .replace(/^#/, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** Lucide `waves` - the pool line's icon. Inherits the caption's grey. */
+function PoolWavesIcon() {
+  return (
+    <svg
+      width="0.85em"
+      height="0.85em"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="inline-block shrink-0 opacity-80"
+      aria-hidden="true"
+    >
+      <path d="M2 6c.6.5 1.2 1 2.5 1C7 7 7 5 9.5 5c2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1" />
+      <path d="M2 12c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1" />
+      <path d="M2 18c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1" />
+    </svg>
+  );
+}
+
+/** Lucide `hard-hat` - the worker line's icon. */
+function WorkerHatIcon() {
+  return (
+    <svg
+      width="0.85em"
+      height="0.85em"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="inline-block shrink-0 opacity-80"
+      aria-hidden="true"
+    >
+      <path d="M2 18a1 1 0 0 0 1 1h18a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1z" />
+      <path d="M10 10V5a2 2 0 0 1 2-2 2 2 0 0 1 2 2v5" />
+      <path d="M4 15v-3a6 6 0 0 1 6-6" />
+      <path d="M14 6a6 6 0 0 1 6 6v3" />
+    </svg>
+  );
+}
 
 function fmtPct(v: number | null | undefined, digits = 1, intlLocale = 'en-US'): string {
   if (v === null || v === undefined) return EM_DASH;
@@ -247,10 +377,82 @@ const TILE_RENDERERS: Record<DashboardTileId, (ctx: TileCtx) => TileResult> = {
         : EM_DASH,
     tooltip: t`Current Ocean hashprice (sat per PH per day at the pool's most recent rolling window). The break-even reference the controller bids against.`,
   }),
-  pool_blocks_30d: ({ ocean, intlLocale }) => ({
-    value: ocean?.blocks_30d != null ? formatNumber(ocean.blocks_30d, {}, intlLocale) : EM_DASH,
-    tooltip: t`Ocean blocks found in the past 30 days. Used by the pool-luck calculation as the numerator.`,
-  }),
+  pool_blocks_30d: ({ ocean, intlLocale }) => {
+    // A raw block count is only meaningful relative to what's expected,
+    // so the tile colours by the 30-day pool luck (actual ÷ expected):
+    // green at or above par (>=1.0), amber in the 0.9-1.0 approach, red
+    // below 0.9. Neutral when luck isn't computable yet.
+    const luck = ocean?.pool_luck_30d ?? null;
+    return {
+      value: ocean?.blocks_30d != null ? formatNumber(ocean.blocks_30d, {}, intlLocale) : EM_DASH,
+      tooltip: t`Ocean blocks found in the past 30 days. Used by the pool-luck calculation as the numerator. Colour reflects the 30-day pool luck (actual ÷ expected): green >=1.0, amber 0.9-1.0, red below 0.9.`,
+      color:
+        luck === null
+          ? 'text-slate-100'
+          : luck >= 1.0
+            ? 'text-emerald-300'
+            : luck >= 0.9
+              ? 'text-amber-300'
+              : 'text-red-300',
+    };
+  },
+  chain_tip_height: ({ status, ocean, blockExplorerTemplate, intlLocale }) => {
+    // #335: current chain-tip height. Clicking it opens the block in the
+    // operator's explorer. The caption names who found it (tidied pool tag
+    // plus the miner tag when present). The leading icon mirrors the
+    // chart's pool-block markers: a gold crown only when YOU found the tip
+    // (found_by_us, matched against Ocean's own-block list), a BIP-110 cube
+    // when it signals, a blue cube for any other Ocean block, else a muted
+    // grey cube. Hidden entirely without a node.
+    const tip = status?.chain_tip;
+    if (!tip) return DASH;
+    const foundByUs =
+      ocean?.our_recent_blocks?.some((b) => b.height === tip.height && b.found_by_us) ?? false;
+    const variant: 'crown' | 'bip110' | 'ocean' | 'gray' = foundByUs
+      ? 'crown'
+      : tip.signals_bip110
+        ? 'bip110'
+        : tip.found_by_ocean
+          ? 'ocean'
+          : 'gray';
+    const pool = poolLabel(tip.pool_tag);
+    // Worker line only for Ocean / our own blocks - public pools carry a
+    // slogan, not a miner. Most tips are then a single clean line.
+    const worker =
+      tip.found_by_ocean || foundByUs ? workerLabel(tip.miner_tag) : '';
+    const caption =
+      pool || worker ? (
+        <span className="flex flex-col items-center gap-0.5 leading-tight">
+          {pool && (
+            <span className="flex items-center gap-1 min-w-0">
+              <PoolWavesIcon />
+              <span className="truncate">{pool}</span>
+            </span>
+          )}
+          {worker && (
+            <span className="flex items-center gap-1 min-w-0">
+              <WorkerHatIcon />
+              <span className="truncate">{worker}</span>
+            </span>
+          )}
+        </span>
+      ) : (
+        EM_DASH
+      );
+    return {
+      value: formatNumber(tip.height, {}, intlLocale),
+      // Gold number only for a block you actually found.
+      color: foundByUs ? 'text-amber-300' : undefined,
+      icon: <BlockTileIcon variant={variant} />,
+      caption,
+      href: blockExplorerTemplate
+        ? applyExplorerTemplate(blockExplorerTemplate, { block_hash: tip.hash, height: tip.height })
+        : undefined,
+      tooltip: foundByUs
+        ? t`Current Bitcoin block height - you found this one! Click to open it in your block explorer.`
+        : t`Current Bitcoin block height. The caption names the pool (or miner) that found it, and the icon marks Ocean / BIP-110 blocks. Click to open it in your block explorer.`,
+    };
+  },
   pool_luck_24h: ({ ocean, intlLocale }) => {
     const v = ocean?.pool_luck_24h ?? null;
     // #266 follow-up: window-aware colour bands. Short windows are
@@ -334,8 +536,12 @@ const TILE_RENDERERS: Record<DashboardTileId, (ctx: TileCtx) => TileResult> = {
       // suffix. There's room for it and "17d" reads as a typo.
       value: `${text} ${t`days`}`,
       tooltip: t`Days of Braiins wallet runway at the current 3 h average spend rate. = total balance ÷ daily spend. Doesn't account for upcoming deposits.`,
+      // Green once there's more than the default alert threshold (3 days)
+      // of runway, amber in the 1-3 day approach, red under a day where a
+      // top-up is genuinely urgent. Earlier 7/14-day thresholds painted
+      // a comfortable two-week runway amber, which read as a false alarm.
       color:
-        days >= 14 ? 'text-emerald-300' : days >= 7 ? 'text-amber-300' : 'text-red-300',
+        days >= 3 ? 'text-emerald-300' : days >= 1 ? 'text-amber-300' : 'text-red-300',
     };
   },
   bitaxe_fleet_hashrate: ({ soloMiners, intlLocale }) => {
@@ -466,6 +672,7 @@ function labelFor(id: DashboardTileId): string {
     case 'bid_vs_hashprice': return t`bid vs hashprice`;
     case 'hashprice_now': return t`hashprice now`;
     case 'pool_blocks_30d': return t`pool blocks 30d`;
+    case 'chain_tip_height': return t`block height`;
     case 'pool_luck_24h': return t`pool luck 24h`;
     case 'pool_luck_7d': return t`pool luck 7d`;
     case 'pool_luck_30d': return t`pool luck 30d`;
@@ -542,13 +749,18 @@ function UnitCaption({ unit }: { unit: string }) {
   return <>{localized}</>;
 }
 
-export function TilesBar({
+// memo: Status re-renders at crosshair/poll frequency; the tiles only
+// need to re-render when query data or the tile list actually changes.
+export const TilesBar = memo(TilesBarImpl);
+
+function TilesBarImpl({
   tileIds,
   statsData,
   statusData,
   oceanData,
   soloMinersData,
   financeRangeData,
+  blockExplorerTemplate,
   onTilesChange,
 }: TilesBarProps) {
   const { i18n } = useLingui();
@@ -562,7 +774,12 @@ export function TilesBar({
   // look). The operator removes the last tile by clicking ×; if they
   // remove all of them the bar reverts to defaults on next render so
   // the page is never tile-less and unrecoverable.
-  const effective = tileIds.length === 0 ? DEFAULT_DASHBOARD_TILES : tileIds;
+  const effective = (tileIds.length === 0 ? DEFAULT_DASHBOARD_TILES : tileIds).filter(
+    // #335: the block-height tile needs a Bitcoin node. Hide it entirely
+    // (rather than show a dash) once the daemon confirms there's no chain
+    // tip; keep it while status is still loading so it doesn't pop in.
+    (id) => id !== 'chain_tip_height' || statusData === undefined || statusData.chain_tip != null,
+  );
 
   const ctx: TileCtx = {
     stats: statsData,
@@ -570,6 +787,7 @@ export function TilesBar({
     ocean: oceanData,
     soloMiners: soloMinersData,
     finance: financeRangeData,
+    blockExplorerTemplate,
     intlLocale: intlLocale ?? 'en-US',
     denomination,
   };
@@ -630,7 +848,12 @@ export function TilesBar({
           items={effective as DashboardTileId[]}
           strategy={horizontalListSortingStrategy}
         >
-          <section className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(160px,1fr))] auto-rows-fr">
+          {/* minmax min at 150px so all six default tiles fit one row
+              on an iPad Pro portrait (~976px content = 6×152px), where
+              160px wrapped the sixth tile onto a lonely second row.
+              Wider screens still cap at the tile count; narrower ones
+              reflow. */}
+          <section className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(150px,1fr))] auto-rows-fr">
             {effective.map((id, idx) => (
               <TileSlot
                 key={id}
@@ -671,7 +894,15 @@ function FloatingAddButton({
   // anchor. The local wrapper just owns open/close state.
   const buttonRef = useRef<HTMLButtonElement>(null);
   return (
-    <div className="absolute -top-7 right-0 flex items-center gap-2 pointer-events-auto">
+    // #302: on narrow screens the floating `-top-7` corner anchor
+    // overlapped the period/range selector that sits directly above the
+    // tiles (the blocks are only `space-y-5` apart, less than the -7
+    // offset). On desktop the selector's right side is empty so the
+    // float is harmless; on mobile the buttons and this control collide.
+    // Below `sm` we drop the absolute positioning and let it flow as a
+    // right-aligned row beneath the tiles - no overlap. From `sm` up it
+    // floats in the section's top-right corner as before.
+    <div className="mt-3 flex items-center justify-end gap-2 pointer-events-auto sm:absolute sm:-top-7 sm:right-0 sm:mt-0">
       <span className="text-xs text-slate-400 lowercase">
         <Trans>add tile</Trans>
       </span>
@@ -754,7 +985,24 @@ function TileSlot({ id, inUse, result, onReplace, onRemove }: TileSlotProps) {
         {labelFor(id)}
       </div>
       <div className={`text-2xl font-mono tabular-nums text-center ${result.color ?? 'text-slate-100'}`}>
-        {split ? split.num : result.value}
+        {result.href ? (
+          <a
+            href={result.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:underline decoration-dotted underline-offset-4"
+            // Don't let the click bubble to the tile's drag/tooltip layer.
+            onClick={(e) => e.stopPropagation()}
+          >
+            {result.icon}
+            {split ? split.num : result.value}
+          </a>
+        ) : (
+          <>
+            {result.icon}
+            {split ? split.num : result.value}
+          </>
+        )}
       </div>
       <div className="text-xs text-slate-500 mt-0.5 text-center min-h-[1.25rem]">
         {result.caption !== undefined ? result.caption : split ? <UnitCaption unit={split.unit} /> : ' '}

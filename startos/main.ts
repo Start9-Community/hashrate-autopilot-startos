@@ -1,7 +1,33 @@
 import { sdk } from './sdk'
+import { buildDependencyEnv } from './dependency-addresses'
 import { appVersion, servicePort } from './utils'
 
 export const main = sdk.setupMain(async ({ effects }) => {
+  const bitcoindRpc = await sdk.host
+    .getBridgeAddress(effects, {
+      packageId: 'bitcoind',
+      hostId: 'rpc',
+      internalPort: 8332,
+      ssl: false,
+    })
+    .const()
+  const datumApi = await sdk.host
+    .getBridgeAddress(effects, {
+      packageId: 'datum',
+      hostId: 'main',
+      internalPort: 7152,
+      ssl: false,
+    })
+    .const()
+  const electrs = await sdk.host
+    .getBridgeAddress(effects, {
+      packageId: 'electrs',
+      hostId: 'electrum',
+      internalPort: 50001,
+      ssl: false,
+    })
+    .const()
+
   return sdk.Daemons.of(effects).addDaemon('primary', {
     subcontainer: await sdk.SubContainer.of(
       effects,
@@ -23,11 +49,7 @@ export const main = sdk.setupMain(async ({ effects }) => {
         DB_PATH: '/app/data/state.db',
         DASHBOARD_STATIC: 'packages/dashboard/dist',
         APP_VERSION: appVersion,
-        BHA_BITCOIND_RPC_URL: 'http://bitcoind.startos:8332',
-        BHA_DATUM_API_URL: 'http://datum.startos:7152',
-        BHA_ELECTRS_HOST: 'electrs.startos',
-        BHA_ELECTRS_PORT: '50001',
-        BHA_PAYOUT_SOURCE: 'electrs',
+        ...buildDependencyEnv({ bitcoindRpc, datumApi, electrs }),
       },
     },
     ready: {

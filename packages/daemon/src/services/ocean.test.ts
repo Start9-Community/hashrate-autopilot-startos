@@ -154,3 +154,79 @@ describe('parseOceanTs', () => {
     expect(a).toBeGreaterThan(b);
   });
 });
+
+// #323: earnpay payout parsing. Shape captured 2026-07-04 against the
+// operator's address: result.payouts[] with ts, on_chain_txid (null =
+// Lightning), total_satoshis_net_paid (already in sats), is_generation_txn.
+const EARNPAY = {
+  result: {
+    payouts: [
+      {
+        ts: '2026-05-25T14:02:11.000000',
+        on_chain_txid: '784542e9e148c481c66e33528e5b7628cb1585b87389d3a771fb77154e8dcc85',
+        total_satoshis_net_paid: 1_115_700,
+        is_generation_txn: false,
+      },
+      // Lightning payout: no txid, off-chain. The whole reason for #323.
+      {
+        ts: '2026-06-01T09:15:00.000000',
+        on_chain_txid: null,
+        total_satoshis_net_paid: 65_536,
+        is_generation_txn: false,
+      },
+    ],
+  },
+};
+
+function fakeEarnpayFetch(body: unknown = EARNPAY): typeof fetch {
+  return (async (url: string) => {
+    if (!String(url).includes('/earnpay/')) {
+      return { ok: false, status: 404, json: async () => ({}) } as Response;
+    }
+    return { ok: true, status: 200, json: async () => body } as Response;
+  }) as unknown as typeof fetch;
+}
+
+describe('OceanClient.fetchPayouts (#323)', () => {
+  it('parses on-chain and Lightning payouts, deriving rail from txid presence', async () => {
+    const client = createOceanClient({ fetch: fakeEarnpayFetch() });
+    const payouts = await client.fetchPayouts('bc1qaddr', '2020-01-01', '2026-07-06');
+    expect(payouts).not.toBeNull();
+    expect(payouts).toHaveLength(2);
+
+    const onchain = payouts![0]!;
+    expect(onchain.on_chain_txid).toMatch(/^784542e9/);
+    expect(onchain.net_sat).toBe(1_115_700);
+    expect(onchain.is_generation).toBe(false);
+
+    const lightning = payouts![1]!;
+    expect(lightning.on_chain_txid).toBeNull();
+    expect(lightning.net_sat).toBe(65_536);
+  });
+
+  it('drops malformed rows (zero amount / unparseable ts)', async () => {
+    const body = {
+      result: {
+        payouts: [
+          { ts: '2026-06-01T00:00:00', on_chain_txid: null, total_satoshis_net_paid: 0, is_generation_txn: false },
+          { ts: '', on_chain_txid: 'x', total_satoshis_net_paid: 500, is_generation_txn: false },
+          { ts: '2026-06-02T00:00:00', on_chain_txid: 'ok', total_satoshis_net_paid: 700, is_generation_txn: false },
+        ],
+      },
+    };
+    const client = createOceanClient({ fetch: fakeEarnpayFetch(body) });
+    const payouts = await client.fetchPayouts('bc1qaddr', '2020-01-01', '2026-07-06');
+    expect(payouts).toHaveLength(1);
+    expect(payouts![0]!.net_sat).toBe(700);
+  });
+
+  it('returns [] when payouts is missing, null on HTTP failure', async () => {
+    const emptyClient = createOceanClient({ fetch: fakeEarnpayFetch({ result: {} }) });
+    expect(await emptyClient.fetchPayouts('bc1qaddr', '2020-01-01', '2026-07-06')).toEqual([]);
+
+    const failFetch = (async () =>
+      ({ ok: false, status: 500, json: async () => ({}) }) as Response) as unknown as typeof fetch;
+    const failClient = createOceanClient({ fetch: failFetch });
+    expect(await failClient.fetchPayouts('bc1qaddr', '2020-01-01', '2026-07-06')).toBeNull();
+  });
+});

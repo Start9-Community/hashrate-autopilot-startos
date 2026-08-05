@@ -28,6 +28,7 @@ import {
 
 import {
   api,
+  type AlertConditionInterval,
   type BidEventView,
   type DecisionDetail,
   type DecisionSummary,
@@ -36,6 +37,8 @@ import {
   type OurBlockMarker,
   type RewardEventView,
 } from '../lib/api';
+import { AlertConditionBands } from './AlertConditionBands';
+import { MarkerBeacon } from './MarkerBeacon';
 import {
   countPriorEpochPoolBlocks,
   inferRetargetBlockHeight,
@@ -45,17 +48,22 @@ import { type IpChangeMarkerEvent } from './IpChangeMarkers';
 import { applyExplorerTemplate } from '../lib/blockExplorer';
 import {
   clientXToTickAt,
-  CrosshairReadout,
+  CrosshairReadoutLayer,
+  CrosshairSvgLayer,
   nearestTickIndex,
   useCrosshairPointer,
   type CrosshairReadoutRow,
+  type CrosshairState,
+  type CrosshairView,
   type SharedCrosshair,
 } from '../lib/chartCrosshair';
 import { darkenHex, getChartColor, parseOverrides } from '../lib/chartColors';
 import { useSeriesVisibility } from '../lib/seriesVisibility';
 import { copyToClipboard } from '../lib/clipboard';
 import { useDenomination } from '../lib/denomination';
+import { ReasonText } from './DenomUnit';
 import {
+  cachedNumberFormat,
   formatAgeMinutes,
   formatCompactNumber,
   formatDuration,
@@ -64,6 +72,7 @@ import {
   formatTimestampUtc,
 } from '../lib/format';
 import { useDateTimeLocale, useFormatters, useLocale } from '../lib/locale';
+import { RateSuffix } from './DenomUnit';
 import { SatSymbol } from './SatSymbol';
 import {
   PoolBlockTooltip,
@@ -216,7 +225,7 @@ function formatSatCompact(
       return Math.max(base, spanDigits + 1);
     };
     const fmt = (decimals: number): string =>
-      new Intl.NumberFormat(locale, {
+      cachedNumberFormat(locale, {
         minimumFractionDigits: 0,
         maximumFractionDigits: decimals,
       }).format(btc);
@@ -227,6 +236,20 @@ function formatSatCompact(
     return btc.toExponential(2);
   }
   return formatCompactNumber(sat, locale, axisSpan);
+}
+
+/** #320: a daemon-start (boot) event rendered as a chart marker. */
+export interface BootMarker {
+  id: number;
+  occurred_at: number;
+  detail: string | null;
+}
+
+interface BootTooltipState {
+  boot: BootMarker;
+  x: number;
+  y: number;
+  pinned: boolean;
 }
 
 export const PriceChart = memo(function PriceChart({
@@ -241,6 +264,7 @@ export const PriceChart = memo(function PriceChart({
   rewardEvents = [],
   deposits = [],
   ourBlocks = [],
+  bootEvents = [],
   blockExplorerTemplate,
   txExplorerTemplate,
   shareLogPct = null,
@@ -249,6 +273,10 @@ export const PriceChart = memo(function PriceChart({
   soloSeries = [],
   bidPauseIntervals = [],
   idleModeIntervals = [],
+  alertConditionIntervals = [],
+  focusSpanOpenId = null,
+  focusSpanEdge = 'start',
+  onAlertSpanClick,
   viewportHandlers,
   wheelRef,
   isDragging = false,
@@ -258,6 +286,7 @@ export const PriceChart = memo(function PriceChart({
   chartColorOverrides,
   crosshair,
   focusEventId = null,
+  focusMarker = null,
   onFocusEventRendered,
 }: {
   points: readonly MetricPoint[];
@@ -271,13 +300,12 @@ export const PriceChart = memo(function PriceChart({
    */
   showEventKinds: readonly BidEventKind[];
   /**
-   * Current config's dynamic-cap allowance. When set, the cap line is
-   * computed per-tick as `min(max_bid, hashprice + this)` rather than
-   * the flat `max_bid` - matches what decide() actually uses each
-   * tick. Null → fall back to max_bid. Applied as a constant across
-   * the history (we don't store historical config per tick), so past
-   * effective caps are approximate if the operator changed this
-   * value.
+   * Current config's dynamic-cap allowance. The cap line is computed
+   * per-tick as `min(max_bid, hashprice + premium)`. #312: the premium
+   * is now historized per tick, so the chart uses each tick's stored
+   * value and this prop is only the fallback for pre-0112 rows (where
+   * the per-tick column is null). Past effective caps are therefore
+   * accurate now, except on those old rows.
    */
   maxOverpayVsHashpriceSatPerPhDay?: number | null;
   /**
@@ -338,7 +366,13 @@ export const PriceChart = memo(function PriceChart({
    * chart they hovered.
    */
   ourBlocks?: readonly OurBlockMarker[];
-  /** #250: public-IP change events accepted for parity with the hashrate chart. */
+  /**
+   * #320: daemon-start (boot) events, drawn as always-visible top-edge
+   * power-glyph markers with a dashed guide line - the chart counterpart
+   * to the Timeline's "daemon started" rows, for bidirectional jumping.
+   */
+  bootEvents?: readonly BootMarker[];
+  /** #250: public-IP change events, drawn as router-icon markers. */
   ipChangeEvents?: ReadonlyArray<IpChangeMarkerEvent>;
   /** Block-explorer URL template for pool-block markers (`{hash}` / `{height}` placeholders). */
   blockExplorerTemplate?: string;
@@ -374,6 +408,14 @@ export const PriceChart = memo(function PriceChart({
    * edges line up with the power markers instead of tick boundaries.
    */
   idleModeIntervals?: ReadonlyArray<{ x0: number; x1: number; mode: 'DRY_RUN' | 'PAUSED' }>;
+  /** #316: alerted condition spans; only price-targeted classes render here. */
+  alertConditionIntervals?: ReadonlyArray<AlertConditionInterval>;
+  /** #316: span (open_id) jumped to from History; gets a sonar beacon. */
+  focusSpanOpenId?: number | null;
+  /** #322: beacon the focused span's closing edge instead of its onset. */
+  focusSpanEdge?: 'start' | 'end';
+  /** #316: clicking a condition-band marker. */
+  onAlertSpanClick?: (span: AlertConditionInterval['span'], clientX: number, clientY: number) => void;
   viewportHandlers?: {
     onPointerDown: React.PointerEventHandler<SVGSVGElement>;
     onPointerMove: React.PointerEventHandler<SVGSVGElement>;
@@ -398,6 +440,11 @@ export const PriceChart = memo(function PriceChart({
    *  through the normal onMarkerClick path. Status clears this back
    *  to null a few seconds after onFocusEventRendered fires. */
   focusEventId?: number | null;
+  /** #318 follow-up: `<kind>:<key>` of a non-bid marker jumped to from a
+   *  History log row (payout:<id>, deposit:<txid>, unpaid:<ts>). The
+   *  matching payout gem / deposit fuel / unpaid-drop marker renders a
+   *  MarkerBeacon. Status clears it back to null after ~6 s. */
+  focusMarker?: string | null;
   /** #288: fired (possibly more than once) when the focused event's
    *  marker is actually present in the rendered set. Status starts
    *  the beacon's clear countdown on the first call, so slow metrics/
@@ -433,6 +480,10 @@ export const PriceChart = memo(function PriceChart({
   const COLOR_MODE_CHANGE = getChartColor('events.mode_change', _colorOverrides);
   const COLOR_BID_PAUSED = getChartColor('events.bid_paused', _colorOverrides);
   const COLOR_BID_RESUMED = getChartColor('events.bid_resumed', _colorOverrides);
+  // #320: daemon-start (boot) marker - emerald, matching the Timeline
+  // log's boot glyph (#34d399). Not operator-configurable; a boot is a
+  // fixed system event, not a tunable overlay.
+  const COLOR_BOOT = '#34d399';
   const COLOR_RIGHT_AXIS = getChartColor('price.right_axis', _colorOverrides);
   // #280: clickable-legend series visibility, persisted per device
   // under this chart's own key. `hidden` feeds the Y-axis autoscale
@@ -458,7 +509,13 @@ export const PriceChart = memo(function PriceChart({
   const dateTimeLocale = useDateTimeLocale();
   const denomination = useDenomination();
 
-  const chartData = useMemo(() => {
+  // #perf: viewport-independent series derivations, split out of
+  // chartData. chartData recomputes on every drag frame (its deps
+  // include viewportSince/Until) and on UI-only keys (chartHeight,
+  // focusEventId); the O(n × window) effective-rate accumulation and
+  // the base series maps below depend only on the fetched points and
+  // the smoothing setting, so they must not re-run per frame.
+  const baseSeries = useMemo(() => {
     const pricePoints: PricePoint[] = points
       .filter((p) => Number.isFinite(p.our_primary_price_sat_per_ph_day))
       .map((p) => ({ t: p.tick_at, v: p.our_primary_price_sat_per_ph_day as number }));
@@ -675,16 +732,30 @@ export const PriceChart = memo(function PriceChart({
         }
       }
     }
+    return { pricePoints, hashpricePoints, fillablePoints, effectivePoints, settledPoints };
+  }, [points, priceSmoothingMinutes]);
+
+  const chartData = useMemo(() => {
+    const { pricePoints, hashpricePoints, fillablePoints, effectivePoints, settledPoints } = baseSeries;
 
     // The line the operator actually cares about: the effective cap
     // that decide() uses each tick, which is the tighter of the fixed
     // max_bid and the dynamic hashprice+max_overpay. When the dynamic
     // cap isn't configured, this collapses to max_bid and the line
     // looks exactly like the previous "max bid" line.
+    // #312: the premium is now historized per tick. Use the per-tick
+    // value (`max_overpay_vs_hashprice_sat_per_ph_day`); only fall back
+    // to the current-config constant for pre-0112 rows where it's null,
+    // so changing the knob no longer shifts the whole history.
+    const effectivePremium = (p: MetricPoint): number | null =>
+      p.max_overpay_vs_hashprice_sat_per_ph_day != null
+        ? p.max_overpay_vs_hashprice_sat_per_ph_day
+        : maxOverpayVsHashpriceSatPerPhDay;
     const capPoints: PricePoint[] = points
       .filter((p) => {
         if (!Number.isFinite(p.max_bid_sat_per_ph_day)) return false;
-        if (maxOverpayVsHashpriceSatPerPhDay !== null && !Number.isFinite(p.hashprice_sat_per_ph_day)) return false;
+        if (effectivePremium(p) !== null && !Number.isFinite(p.hashprice_sat_per_ph_day))
+          return false;
         return true;
       })
       .map((p) => {
@@ -692,10 +763,8 @@ export const PriceChart = memo(function PriceChart({
         const hashprice = Number.isFinite(p.hashprice_sat_per_ph_day)
           ? (p.hashprice_sat_per_ph_day as number)
           : null;
-        const dynamic =
-          maxOverpayVsHashpriceSatPerPhDay !== null && hashprice !== null
-            ? hashprice + maxOverpayVsHashpriceSatPerPhDay
-            : null;
+        const premium = effectivePremium(p);
+        const dynamic = premium !== null && hashprice !== null ? hashprice + premium : null;
         const v = dynamic !== null ? Math.min(fixed, dynamic) : fixed;
         return { t: p.tick_at, v };
       });
@@ -822,6 +891,11 @@ export const PriceChart = memo(function PriceChart({
       stroke: string;
       axisLabel: string;
       formatTick: (v: number, axisSpan?: number) => string;
+      /** #331 follow-up: true for sat-denominated series (unpaid, paid,
+       *  lifetime, block reward, Braiins balance). The tooltip drops the
+       *  "(sat)" from the label and renders the value with a dimmed
+       *  currency glyph that follows the sats/BTC/USD toggle. */
+      currency?: boolean;
     } | null = (() => {
       switch (rightAxisSeries) {
         case 'none':
@@ -835,7 +909,7 @@ export const PriceChart = memo(function PriceChart({
             stroke: COLOR_RIGHT_AXIS,
             axisLabel: 'effective (sat/PH/day)',
             formatTick: (v) =>
-              new Intl.NumberFormat(intlLocale, {
+              cachedNumberFormat(intlLocale, {
                 maximumFractionDigits: 0,
               }).format(v),
           };
@@ -845,6 +919,7 @@ export const PriceChart = memo(function PriceChart({
             stroke: COLOR_RIGHT_AXIS,
             axisLabel: `block reward (${denomination.mode === 'usd' ? '$' : denomination.mode === 'btc' ? '₿' : 'sat'})`,
             formatTick: (v, span) => formatSatCompact(v, denomination, intlLocale, span),
+            currency: true,
           };
         case 'btc_usd_price':
           return {
@@ -858,7 +933,7 @@ export const PriceChart = memo(function PriceChart({
             formatTick: (v) => {
               const abs = Math.abs(v);
               const fmt = (x: number, d: number): string =>
-                new Intl.NumberFormat(intlLocale, {
+                cachedNumberFormat(intlLocale, {
                   minimumFractionDigits: d,
                   maximumFractionDigits: d,
                 }).format(x);
@@ -873,6 +948,7 @@ export const PriceChart = memo(function PriceChart({
             stroke: COLOR_RIGHT_AXIS,
             axisLabel: `unpaid (${denomination.mode === 'usd' ? '$' : denomination.mode === 'btc' ? '₿' : 'sat'})`,
             formatTick: (v, span) => formatSatCompact(v, denomination, intlLocale, span),
+            currency: true,
           };
         case 'paid_total_sat':
           return {
@@ -884,6 +960,7 @@ export const PriceChart = memo(function PriceChart({
             stroke: COLOR_RIGHT_AXIS,
             axisLabel: `paid total (${denomination.mode === 'usd' ? '$' : denomination.mode === 'btc' ? '₿' : 'sat'})`,
             formatTick: (v, span) => formatSatCompact(v, denomination, intlLocale, span),
+            currency: true,
           };
         case 'total_balance_sat':
           return {
@@ -891,6 +968,7 @@ export const PriceChart = memo(function PriceChart({
             stroke: COLOR_RIGHT_AXIS,
             axisLabel: `Braiins balance (${denomination.mode === 'usd' ? '$' : denomination.mode === 'btc' ? '₿' : 'sat'})`,
             formatTick: (v, span) => formatSatCompact(v, denomination, intlLocale, span),
+            currency: true,
           };
         case 'solo_power_watts': {
           // Nearest-neighbor join with 15s tolerance - see HashrateChart's
@@ -906,7 +984,7 @@ export const PriceChart = memo(function PriceChart({
             // fleets are typically 15-100W where kW scale would round
             // to zero.
             formatTick: (v) =>
-              `${new Intl.NumberFormat(intlLocale, { maximumFractionDigits: 1 }).format(v)} W`,
+              `${cachedNumberFormat(intlLocale, { maximumFractionDigits: 1 }).format(v)} W`,
           };
         }
         case 'lifetime_earnings_sat':
@@ -921,6 +999,7 @@ export const PriceChart = memo(function PriceChart({
             stroke: COLOR_RIGHT_AXIS,
             axisLabel: `lifetime (${denomination.mode === 'usd' ? '$' : denomination.mode === 'btc' ? '₿' : 'sat'})`,
             formatTick: (v, span) => formatSatCompact(v, denomination, intlLocale, span),
+            currency: true,
           };
         case 'avg_overpay_intent':
           return {
@@ -928,7 +1007,7 @@ export const PriceChart = memo(function PriceChart({
             stroke: COLOR_RIGHT_AXIS,
             axisLabel: 'avg overpay intent (sat/PH/day)',
             formatTick: (v) =>
-              new Intl.NumberFormat(intlLocale, {
+              cachedNumberFormat(intlLocale, {
                 maximumFractionDigits: 0,
               }).format(v),
           };
@@ -938,7 +1017,7 @@ export const PriceChart = memo(function PriceChart({
             stroke: COLOR_RIGHT_AXIS,
             axisLabel: 'avg overpay settled (sat/PH/day)',
             formatTick: (v) =>
-              new Intl.NumberFormat(intlLocale, {
+              cachedNumberFormat(intlLocale, {
                 maximumFractionDigits: 0,
               }).format(v),
           };
@@ -1327,7 +1406,7 @@ export const PriceChart = memo(function PriceChart({
     // crosshair readout - the bid row mirrors the smoothed line the
     // chart draws, the cap row mirrors the per-tick effective cap.
     return { pricePoints, xs, smoothedPriceByTick, capByTick, minX, maxX, dataMinX, dataMaxX, hasPrice, priceMin, priceMax, xScale, yScale, pricePath, priceAreaPath, hashpricePath, fillablePath, fillableHasData: fillablePoints.length > 0, effectivePath, effectiveHasData: effectivePoints.length > 0, capPath, capExclusionPolygon, yTicks, xTickInterval, xTicks, visibleEvents, rightAxis, hasRightAxis, rightAxisPath, rightYTicks, rightYScale, padRight, marketplaceEmptyIntervals, braiinsUnreachableIntervals, daemonOfflineIntervals };
-  }, [points, events, showEventKinds, focusEventId, priceSmoothingMinutes, historicalPayoutsOffsetSat, maxOverpayVsHashpriceSatPerPhDay, chartHeight, rightAxisSeries, soloSeries, denomination, intlLocale, viewportSince, viewportUntil, hidden]);
+  }, [baseSeries, points, events, showEventKinds, focusEventId, priceSmoothingMinutes, historicalPayoutsOffsetSat, maxOverpayVsHashpriceSatPerPhDay, chartHeight, rightAxisSeries, soloSeries, denomination, intlLocale, viewportSince, viewportUntil, hidden]);
 
   const eventPriceAt = useCallback((e: BidEventView): number | null => {
     const pricePoints = chartData?.pricePoints ?? [];
@@ -1371,10 +1450,10 @@ export const PriceChart = memo(function PriceChart({
 
   // Pool-block dots (right-axis = ocean_unpaid_sat or lifetime_earnings_sat).
   const onPoolBlockEnter = useCallback(
-    (block: OurBlockMarker) => (e: React.MouseEvent) => {
+    (block: OurBlockMarker, balance?: PoolBlockTooltipState['balance']) => (e: React.MouseEvent) => {
       setPoolBlockTip((prev) => {
         if (prev?.pinned) return prev;
-        return { block, x: e.clientX, y: e.clientY, pinned: false };
+        return { block, balance, x: e.clientX, y: e.clientY, pinned: false };
       });
     },
     [],
@@ -1383,9 +1462,20 @@ export const PriceChart = memo(function PriceChart({
     setPoolBlockTip((prev) => (prev?.pinned ? prev : null));
   }, []);
   const onPoolBlockClick = useCallback(
-    (block: OurBlockMarker) => (e: React.MouseEvent) => {
+    (block: OurBlockMarker, balance?: PoolBlockTooltipState['balance']) => (e: React.MouseEvent) => {
       e.stopPropagation();
-      setPoolBlockTip({ block, x: e.clientX, y: e.clientY, pinned: true });
+      setPoolBlockTip({ block, balance, x: e.clientX, y: e.clientY, pinned: true });
+    },
+    [],
+  );
+  // Touch tap = pin directly (see the matching handler in HashrateChart):
+  // iOS suppresses the first-tap click on hover-revealing markers, so
+  // without this the block tooltip opened unpinned - no dismiss button
+  // and no "View in timeline" jump.
+  const onPoolBlockTap = useCallback(
+    (block: OurBlockMarker, balance?: PoolBlockTooltipState['balance']) => (e: React.PointerEvent) => {
+      if (e.pointerType === 'mouse') return;
+      setPoolBlockTip({ block, balance, x: e.clientX, y: e.clientY, pinned: true });
     },
     [],
   );
@@ -1472,6 +1562,30 @@ export const PriceChart = memo(function PriceChart({
     [],
   );
   const closeDepositTip = useCallback(() => setDepositTip(null), []);
+
+  // #320: daemon-start (boot) markers - same hover/pin pattern as the
+  // reward/deposit dots.
+  const [bootTip, setBootTip] = useState<BootTooltipState | null>(null);
+  const onBootEnter = useCallback(
+    (boot: BootMarker) => (e: React.MouseEvent) => {
+      setBootTip((prev) => {
+        if (prev?.pinned) return prev;
+        return { boot, x: e.clientX, y: e.clientY, pinned: false };
+      });
+    },
+    [],
+  );
+  const onBootLeave = useCallback(() => {
+    setBootTip((prev) => (prev?.pinned ? prev : null));
+  }, []);
+  const onBootClick = useCallback(
+    (boot: BootMarker) => (e: React.MouseEvent) => {
+      e.stopPropagation();
+      setBootTip({ boot, x: e.clientX, y: e.clientY, pinned: true });
+    },
+    [],
+  );
+  const closeBootTip = useCallback(() => setBootTip(null), []);
 
   const onUnpaidDropEnter = useCallback(
     (d: { tick_at: number; prev: number; cur: number }) => (e: React.MouseEvent) => {
@@ -1569,6 +1683,22 @@ export const PriceChart = memo(function PriceChart({
   }, [unpaidDropTip?.pinned]);
 
   useEffect(() => {
+    if (!bootTip?.pinned) return;
+    const onDocClick = (ev: MouseEvent) => {
+      const target = ev.target as Node | null;
+      if (
+        target &&
+        document.getElementById('price-chart-pinned-boot-tooltip')?.contains(target)
+      ) {
+        return;
+      }
+      setBootTip(null);
+    };
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, [bootTip?.pinned]);
+
+  useEffect(() => {
     if (!tooltip?.pinned) return;
     const onDocClick = (ev: MouseEvent) => {
       const target = ev.target as Node | null;
@@ -1637,8 +1767,9 @@ export const PriceChart = memo(function PriceChart({
     return out;
   }, [chartData, showRewardMarkers, rewardEvents, points]);
 
+  type PoolBlockBalance = NonNullable<PoolBlockTooltipState['balance']>;
   const visiblePoolBlockMarkers = useMemo(() => {
-    const empty: Array<{ block: OurBlockMarker; cx: number; cy: number; blockCx: number }> = [];
+    const empty: Array<{ block: OurBlockMarker; cx: number; cy: number; blockCx: number; balance: PoolBlockBalance | null }> = [];
     if (!chartData || !showPoolBlockMarkers || !chartData.rightAxis) return empty;
     const { dataMinX, dataMaxX, xScale, rightYScale, rightAxis } = chartData;
     let lastNonNull: number | null = null;
@@ -1658,7 +1789,13 @@ export const PriceChart = memo(function PriceChart({
       cy: number;
       blockCx: number;
       steppedIdx: number;
+      balance: PoolBlockBalance | null;
     }> = [];
+    // #322 follow-up: the dot sits ON the balance line, so the tooltip
+    // should say what the balance did there - carry the step's
+    // before/after values along with the geometry.
+    const balanceSeries: PoolBlockBalance['series'] =
+      rightAxisSeries === 'ocean_unpaid_sat' ? 'unpaid' : 'lifetime';
     // ourBlocks comes from /api/ocean newest-first, so sort ASC so the
     // two-pointer cursor walk lines up with `points` (also ASC).
     const sortedBlocks = [...ourBlocks].sort((a, b) => a.timestamp_ms - b.timestamp_ms);
@@ -1696,6 +1833,7 @@ export const PriceChart = memo(function PriceChart({
     let scanFromIdx = 0;
     let lastClaimedSteppedIdx = -1;
     let lastClaimedValue: number | null = null;
+    let lastClaimedBaseline: number | null = null;
     for (const b of sortedBlocks) {
       if (b.timestamp_ms < dataMinX || b.timestamp_ms > dataMaxX) continue;
       while (cursor < points.length && points[cursor]!.tick_at < b.timestamp_ms) {
@@ -1706,6 +1844,7 @@ export const PriceChart = memo(function PriceChart({
       const scanFrom = Math.max(cursor, scanFromIdx);
       let v: number | null = null;
       let steppedIdx = -1;
+      let balance: PoolBlockBalance | null = null;
       if (scanFrom < points.length) {
         // Baseline = value at the tick just before scanFrom. For block
         // 1 this is the pre-block tick. For block N+1 this is the
@@ -1732,6 +1871,10 @@ export const PriceChart = memo(function PriceChart({
           scanFromIdx = steppedIdx + 1;
           lastClaimedSteppedIdx = steppedIdx;
           lastClaimedValue = stepped;
+          lastClaimedBaseline = baselineIsNum ? (baseline as number) : null;
+          if (lastClaimedBaseline !== null) {
+            balance = { series: balanceSeries, before_sat: lastClaimedBaseline, after_sat: stepped };
+          }
         } else if (
           lastClaimedSteppedIdx >= 0 &&
           lastClaimedValue !== null &&
@@ -1755,6 +1898,12 @@ export const PriceChart = memo(function PriceChart({
           // pass below pulls the dots apart visually.
           steppedIdx = lastClaimedSteppedIdx;
           v = lastClaimedValue;
+          // Batched case: Ocean folded this block's credit into the
+          // previous step - the observed before/after describes the
+          // combined step, shared by both blocks.
+          if (lastClaimedBaseline !== null && lastClaimedValue !== null) {
+            balance = { series: balanceSeries, before_sat: lastClaimedBaseline, after_sat: lastClaimedValue };
+          }
         } else {
           const c = rightAxis.values[cursor];
           if (typeof c === 'number' && Number.isFinite(c)) v = c;
@@ -1770,6 +1919,7 @@ export const PriceChart = memo(function PriceChart({
         cy: rightYScale(v),
         blockCx: xScale(b.timestamp_ms),
         steppedIdx,
+        balance,
       });
     }
     // #221: shared-step stagger. After the scan-advancing pass above,
@@ -1785,7 +1935,7 @@ export const PriceChart = memo(function PriceChart({
     const out: typeof empty = [];
     for (const p of projected) {
       if (p.steppedIdx < 0) {
-        out.push({ block: p.block, cx: p.cx, cy: p.cy, blockCx: p.blockCx });
+        out.push({ block: p.block, cx: p.cx, cy: p.cy, blockCx: p.blockCx, balance: p.balance });
         continue;
       }
       const rank = stepCounts.get(p.steppedIdx) ?? 0;
@@ -1795,10 +1945,11 @@ export const PriceChart = memo(function PriceChart({
         cx: p.cx + rank * STAGGER_PX,
         cy: p.cy,
         blockCx: p.blockCx,
+        balance: p.balance,
       });
     }
     return out;
-  }, [chartData, showPoolBlockMarkers, ourBlocks, points]);
+  }, [chartData, showPoolBlockMarkers, ourBlocks, points, rightAxisSeries]);
 
   const unpaidDropMarkers = useMemo(() => {
     const empty: Array<{ cx: number; cy: number; tick_at: number; prev: number; cur: number }> = [];
@@ -1823,6 +1974,23 @@ export const PriceChart = memo(function PriceChart({
     }
     return out;
   }, [chartData, rightAxisSeries, points]);
+
+  // #318 follow-up: the "payout initiated" log row targets the
+  // unpaid-drop marker, but the point-alert and the tick-derived drop
+  // aren't id-linked - so resolve which drop to beacon by nearest tick
+  // to the jumped-to timestamp (`unpaid:<ts>`), within an hour.
+  const focusUnpaidTickAt = useMemo(() => {
+    if (!focusMarker || !focusMarker.startsWith('unpaid:')) return null;
+    const ts = Number.parseInt(focusMarker.slice('unpaid:'.length), 10);
+    if (!Number.isFinite(ts)) return null;
+    let best: number | null = null;
+    let bestDist = Infinity;
+    for (const d of unpaidDropMarkers) {
+      const dist = Math.abs(d.tick_at - ts);
+      if (dist < bestDist) { bestDist = dist; best = d.tick_at; }
+    }
+    return bestDist <= 60 * 60 * 1000 ? best : null;
+  }, [focusMarker, unpaidDropMarkers]);
 
   const difficultyRetargets = useMemo<RetargetEvent[]>(() => {
     const n = points.length;
@@ -1865,6 +2033,23 @@ export const PriceChart = memo(function PriceChart({
     return out;
   }, [points, ourBlocks]);
 
+  // #318 follow-up: the log's retarget key is the API's tick_at, which
+  // can differ from this chart's locally-derived epoch-boundary tick by
+  // a tick or two - so resolve the beacon target by nearest, within a
+  // few minutes.
+  const focusRetargetTickAt = useMemo(() => {
+    if (!focusMarker || !focusMarker.startsWith('retarget:')) return null;
+    const ts = Number.parseInt(focusMarker.slice('retarget:'.length), 10);
+    if (!Number.isFinite(ts)) return null;
+    let best: number | null = null;
+    let bestDist = Infinity;
+    for (const r of difficultyRetargets) {
+      const dist = Math.abs(r.tick_at - ts);
+      if (dist < bestDist) { bestDist = dist; best = r.tick_at; }
+    }
+    return bestDist <= 10 * 60 * 1000 ? best : null;
+  }, [focusMarker, difficultyRetargets]);
+
   // #257: crosshair wiring - mirror of the HashrateChart block. The
   // svg ref is shared with the wheel-zoom ref callback; pointer
   // handlers compose viewport pan/zoom with crosshair hover /
@@ -1899,9 +2084,10 @@ export const PriceChart = memo(function PriceChart({
   // the smoothed series the chart draws; fillable / hashprice come
   // straight off the tick; cap is the per-tick effective cap; the
   // right-axis series formats through its own axis formatter.
-  const crosshairView = useMemo(() => {
-    const cs = crosshair?.state;
-    if (!cs || !chartData || isDragging) return null;
+  // Called by the subscription-backed crosshair layers, so pointer
+  // moves never re-render this chart.
+  const computeCrosshairView = useCallback((cs: CrosshairState): CrosshairView | null => {
+    if (!chartData || isDragging) return null;
     if (cs.tickAt < chartData.minX || cs.tickAt > chartData.maxX) return null;
     const i = nearestTickIndex(chartData.xs, cs.tickAt);
     if (i < 0) return null;
@@ -1909,7 +2095,17 @@ export const PriceChart = memo(function PriceChart({
     const p = points[i]!;
     const rows: CrosshairReadoutRow[] = [];
     const dots: Array<{ cy: number; color: string }> = [];
-    const fmtRate = (v: number) => denomination.formatSatPerPhDay(v, intlLocale);
+    // Value + a dimmed unit suffix (the Satoshi glyph in sats mode, ₿/$ per
+    // the currency toggle), matching the muted "subtitle" unit look on the
+    // stat tiles - the unit reads at lower intensity than the number.
+    const fmtRate = (v: number): React.ReactNode => (
+      <>
+        {denomination.formatSatPerPhDayValue(v, intlLocale)}{' '}
+        <span className="text-slate-500">
+          <RateSuffix suffix={denomination.rateSuffix} />
+        </span>
+      </>
+    );
     const bid = smoothedPriceByTick.get(p.tick_at) ?? null;
     if (bid !== null) {
       rows.push({ color: COLOR_PRICE, label: t`our bid`, value: fmtRate(bid) });
@@ -1929,19 +2125,38 @@ export const PriceChart = memo(function PriceChart({
     if (cap !== null) {
       // No dot: the cap usually sits far above the auto-ranged
       // viewport, so a dot would render off-plot most of the time.
-      rows.push({ color: COLOR_MAXBID, label: t`max bid`, value: fmtRate(cap) });
+      rows.push({ color: COLOR_MAXBID, label: t`effective cap`, value: fmtRate(cap) });
     }
     if (hasRightAxis && rightAxis) {
       const v = rightAxis.values[i];
       if (v !== null && v !== undefined && Number.isFinite(v)) {
         const span = (rightYTicks[rightYTicks.length - 1] ?? 1) - (rightYTicks[0] ?? 0);
-        rows.push({ color: rightAxis.stroke, label: rightAxis.axisLabel, value: rightAxis.formatTick(v, span) });
+        const num = rightAxis.formatTick(v, span);
+        // Currency series (unpaid, paid, lifetime, ...): drop the "(sat)"
+        // from the label and render the value with a dimmed glyph that
+        // follows the toggle. USD already carries a "$" prefix from the
+        // formatter, so it gets no suffix.
+        const label = rightAxis.currency
+          ? rightAxis.axisLabel.replace(/\s*\([^)]*\)\s*$/, '')
+          : rightAxis.axisLabel;
+        const value: React.ReactNode =
+          rightAxis.currency && denomination.mode !== 'usd' ? (
+            <>
+              {num}{' '}
+              <span className="text-slate-500">
+                {denomination.mode === 'btc' ? '₿' : <SatSymbol />}
+              </span>
+            </>
+          ) : (
+            num
+          );
+        rows.push({ color: rightAxis.stroke, label, value });
         dots.push({ cy: rightYScale(v), color: rightAxis.stroke });
       }
     }
     const x = xScale(cs.tickAt);
     return { state: cs, x, lineXFrac: x / WIDTH, rows, dots };
-  }, [crosshair?.state, chartData, isDragging, points, denomination, intlLocale, _colorOverrides]);
+  }, [chartData, isDragging, points, denomination, intlLocale, _colorOverrides]);
 
   // #288: tell Status the focused marker is actually in the rendered
   // set so the beacon's clear countdown starts at render time, not
@@ -2001,7 +2216,7 @@ export const PriceChart = memo(function PriceChart({
       // Adaptive decimals - keep tick labels narrow without losing
       // legibility. Drop trailing zeros so "0,4840" reads as "0,484".
       const fmt = (decimals: number): string =>
-        new Intl.NumberFormat(intlLocale, {
+        cachedNumberFormat(intlLocale, {
           minimumFractionDigits: 0,
           maximumFractionDigits: decimals,
         }).format(btc);
@@ -2039,7 +2254,7 @@ export const PriceChart = memo(function PriceChart({
             <Legend color={COLOR_EFFECTIVE} label={t`effective`} hidden={isHidden('rightAxis')} onToggle={() => toggle('rightAxis')} />
           )}
           <Legend color={COLOR_HASHPRICE} label={t`hashprice`} dashed hidden={isHidden('hashprice')} onToggle={() => toggle('hashprice')} />
-          <Legend color={COLOR_MAXBID} label={t`max bid`} hidden={isHidden('maxBid')} onToggle={() => toggle('maxBid')} />
+          <Legend color={COLOR_MAXBID} label={t`effective cap`} hidden={isHidden('maxBid')} onToggle={() => toggle('maxBid')} />
           {hasRightAxis && rightAxis && (
             <Legend color={rightAxis.stroke} label={rightAxis.axisLabel} hidden={isHidden('rightAxis')} onToggle={() => toggle('rightAxis')} />
           )}
@@ -2048,7 +2263,7 @@ export const PriceChart = memo(function PriceChart({
                 !r.reorged &&
                 r.detected_at >= chartData.minX &&
                 r.detected_at <= chartData.maxX,
-            ) && <Legend color={COLOR_PAYOUT} label={t`on-chain payout`} dashed hidden={isHidden('payout')} onToggle={() => toggle('payout')} />}
+            ) && <Legend color={COLOR_PAYOUT} label={t`payout`} dashed hidden={isHidden('payout')} onToggle={() => toggle('payout')} />}
           {/* #287 follow-up: the three always-visible kinds join the
               legend only when at least one such marker is actually in
               view - they're rare, so the legend stays uncluttered in
@@ -2363,6 +2578,23 @@ export const PriceChart = memo(function PriceChart({
             </rect>
           );
         })}
+        {/* #316: alerted condition bands targeting the price chart
+            (DATUM/API unreachable, low wallet runway). */}
+        <AlertConditionBands
+          intervals={alertConditionIntervals}
+          target="price"
+          xScale={xScale}
+          dataMinX={dataMinX}
+          dataMaxX={dataMaxX}
+          top={PADDING.top}
+          height={chartHeight - PADDING.top - PADDING.bottom}
+          colorOverrides={_colorOverrides}
+          idSuffix="px"
+          focusSpanOpenId={focusSpanOpenId}
+          focusSpanEdge={focusSpanEdge}
+          crosshair={crosshair}
+          onSpanClick={onAlertSpanClick}
+        />
         {capExclusionPolygon && !isHidden('maxBid') && (
           <>
             <defs>
@@ -2438,9 +2670,10 @@ export const PriceChart = memo(function PriceChart({
           // #287 follow-up: mode-change and pause/resume markers have
           // no price anchor (no bid price on the row), so they render
           // like pool blocks: top-edge glyph + full-height dashed
-          // guide line down to the plot baseline. One shared power
-          // icon for every mode change regardless of direction
-          // (operator: "let's not overdo it"); the tooltip's reason
+          // guide line down to the plot baseline. One shared
+          // arrow-left-right icon for every mode change regardless of
+          // direction (operator: "let's not overdo it"; was `power`,
+          // now reserved for daemon-started); the tooltip's reason
           // line carries the transition / Braiins pause reason.
           if (e.kind === 'MODE_CHANGE' || e.kind === 'BID_PAUSED' || e.kind === 'BID_RESUMED') {
             const stroke =
@@ -2460,9 +2693,12 @@ export const PriceChart = memo(function PriceChart({
                 >
                   {e.kind === 'MODE_CHANGE' ? (
                     <>
-                      {/* Lucide `power`. */}
-                      <path d="M12 2v10" />
-                      <path d="M18.4 6.6a9 9 0 1 1-12.77.04" />
+                      {/* Lucide `arrow-left-right` - run-mode switch (was
+                          `power`, which collided with daemon-started). */}
+                      <path d="M8 3 4 7l4 4" />
+                      <path d="M4 7h16" />
+                      <path d="m16 21 4-4-4-4" />
+                      <path d="M20 17H4" />
                     </>
                   ) : e.kind === 'BID_PAUSED' ? (
                     <>
@@ -2757,20 +2993,24 @@ export const PriceChart = memo(function PriceChart({
               strokeWidth="1.5"
             />
             <rect x={d.cx - 9} y={d.cy - 9} width="18" height="18" fill="transparent" />
+            {focusUnpaidTickAt !== null && d.tick_at === focusUnpaidTickAt && (
+              <MarkerBeacon cx={d.cx} cy={d.cy} color={COLOR_DEPOSIT} />
+            )}
           </g>
         ))}
 
         {/* Pool-block dots on the right-axis line. Click opens the
             same rich tooltip the Hashrate chart uses (reward, our
             share, BIP-110 signal, explorer link). */}
-        {visiblePoolBlockMarkers.map(({ block: b, cx, cy, blockCx }) => {
+        {visiblePoolBlockMarkers.map(({ block: b, cx, cy, blockCx, balance }) => {
           const fill = b.found_by_us ? COLOR_OUR_BLOCK : COLOR_POOL_BLOCK;
           return (
             <g
               key={`pool-block-${b.block_hash || b.height}`}
-              onMouseEnter={onPoolBlockEnter(b)}
+              onMouseEnter={onPoolBlockEnter(b, balance ?? undefined)}
               onMouseLeave={onPoolBlockLeave}
-              onClick={onPoolBlockClick(b)}
+              onClick={onPoolBlockClick(b, balance ?? undefined)}
+              onPointerUp={onPoolBlockTap(b, balance ?? undefined)}
               style={{ cursor: 'pointer' }}
             >
               {Math.abs(cx - blockCx) > 2 && (
@@ -2812,6 +3052,7 @@ export const PriceChart = memo(function PriceChart({
                 onMouseEnter={onPoolBlockEnter(b)}
                 onMouseLeave={onPoolBlockLeave}
                 onClick={onPoolBlockClick(b)}
+                onPointerUp={onPoolBlockTap(b)}
                 style={{ cursor: 'pointer' }}
               >
                 <line
@@ -2872,17 +3113,25 @@ export const PriceChart = memo(function PriceChart({
                   pointerEvents="none"
                 />
                 <rect x={x - 9} y={PADDING.top - 13} width={18} height={18} fill="transparent" />
+                {/* #343: deduced payouts render as a "ghost" gem -
+                    dashed outline, near-hollow fill - so an inferred
+                    record reads differently from one out of Ocean's
+                    own ledger. Tooltip carries the full explanation. */}
                 <svg
                   x={x - 7} y={PADDING.top - 11}
                   width="14" height="14" viewBox="0 0 24 24"
                   fill="none" stroke={COLOR_PAYOUT_GEM} strokeWidth="2"
                   strokeLinecap="round" strokeLinejoin="round"
                   opacity="0.85"
+                  strokeDasharray={r.deduced ? '3 2' : undefined}
                 >
-                  <path d="M17 3a2 2 0 0 1 1.6.8l3 4a2 2 0 0 1 .013 2.382l-7.99 10.986a2 2 0 0 1-3.247 0l-7.99-10.986A2 2 0 0 1 2.4 7.8l2.998-3.997A2 2 0 0 1 7 3z" fill={COLOR_PAYOUT_GEM} fillOpacity="0.25" />
+                  <path d="M17 3a2 2 0 0 1 1.6.8l3 4a2 2 0 0 1 .013 2.382l-7.99 10.986a2 2 0 0 1-3.247 0l-7.99-10.986A2 2 0 0 1 2.4 7.8l2.998-3.997A2 2 0 0 1 7 3z" fill={COLOR_PAYOUT_GEM} fillOpacity={r.deduced ? 0.08 : 0.25} />
                   <path d="M2 9h20" />
                   <path d="M10.5 3 8 9l4 13 4-13-2.5-6" />
                 </svg>
+                {focusMarker === `payout:${r.id}` && (
+                  <MarkerBeacon cx={x} cy={PADDING.top - 4} color={COLOR_PAYOUT_GEM} />
+                )}
               </g>
             );
           })}
@@ -2981,10 +3230,57 @@ export const PriceChart = memo(function PriceChart({
                   <path d="M2 21h13" />
                   <path d="M3 9h11" />
                 </svg>
+                {focusMarker === `deposit:${d.tx_id}` && (
+                  <MarkerBeacon cx={x} cy={PADDING.top - 4} color={COLOR_DEPOSIT} />
+                )}
               </g>
             );
           });
         })()}
+
+        {/* #320: daemon-start (boot) markers. Always-visible top-edge
+            power glyph + full-height dashed guide line (no price anchor),
+            mirroring the mode-change marker idiom. Clicking pins a
+            tooltip with a "View in timeline" jump; the reverse jump
+            (log -> chart) beacons via focusMarker `boot:<id>`. */}
+        {bootEvents
+          .filter((b) => b.occurred_at >= dataMinX && b.occurred_at <= dataMaxX)
+          .map((b) => {
+            const x = xScale(b.occurred_at);
+            return (
+              <g
+                key={`boot-icon-${b.id}`}
+                onMouseEnter={onBootEnter(b)}
+                onMouseLeave={onBootLeave}
+                onClick={onBootClick(b)}
+                style={{ cursor: 'pointer' }}
+              >
+                <line
+                  x1={x} x2={x}
+                  y1={PADDING.top + 8} y2={chartHeight - PADDING.bottom}
+                  stroke={COLOR_BOOT}
+                  strokeWidth="1"
+                  strokeDasharray="2 4"
+                  opacity="0.55"
+                  pointerEvents="none"
+                />
+                <rect x={x - 9} y={PADDING.top - 13} width={18} height={18} fill="transparent" />
+                <svg
+                  x={x - 7} y={PADDING.top - 11}
+                  width="14" height="14" viewBox="0 0 24 24"
+                  fill="none" stroke={COLOR_BOOT} strokeWidth="2"
+                  strokeLinecap="round" strokeLinejoin="round"
+                >
+                  {/* Lucide `power` - reserved for daemon-started. */}
+                  <path d="M12 2v10" />
+                  <path d="M18.4 6.6a9 9 0 1 1-12.77.04" />
+                </svg>
+                {focusMarker === `boot:${b.id}` && (
+                  <MarkerBeacon cx={x} cy={PADDING.top - 4} color={COLOR_BOOT} />
+                )}
+              </g>
+            );
+          })}
 
         {difficultyRetargets
           .filter((r) => r.tick_at >= dataMinX && r.tick_at <= dataMaxX)
@@ -3017,6 +3313,9 @@ export const PriceChart = memo(function PriceChart({
                   <path d="M16.001 11.999a19.9 19.9 0 0 1 3.024 5.824c.444 1.369 2.26 1.676 2.603.278A13 13 0 0 0 20 8.069" />
                   <path d="M18.352 3.352a1.205 1.205 0 0 0-1.704 0l-5.296 5.296a1.205 1.205 0 0 0 0 1.704l2.296 2.296a1.205 1.205 0 0 0 1.704 0l5.296-5.296a1.205 1.205 0 0 0 0-1.704z" />
                 </svg>
+                {focusRetargetTickAt !== null && r.tick_at === focusRetargetTickAt && (
+                  <MarkerBeacon cx={x} cy={PADDING.top - 4} color={COLOR_RETARGET} />
+                )}
               </g>
             );
           })}
@@ -3027,32 +3326,15 @@ export const PriceChart = memo(function PriceChart({
             IP rotation), not with the price-axis content. */}
 
         {/* #257: crosshair marker line + per-series dots. Pinned
-            renders solid; transient hover renders dashed. */}
-        {crosshairView && (
-          <g pointerEvents="none">
-            <line
-              x1={crosshairView.x}
-              x2={crosshairView.x}
-              y1={PADDING.top}
-              y2={chartHeight - PADDING.bottom}
-              stroke="#94a3b8"
-              strokeWidth="1"
-              strokeDasharray={crosshairView.state.pinned ? undefined : '3 3'}
-              opacity={crosshairView.state.pinned ? 0.9 : 0.6}
-            />
-            {crosshairView.dots.map((d, di) => (
-              <circle
-                key={`xh-dot-${di}`}
-                cx={crosshairView.x}
-                cy={d.cy}
-                r="3"
-                fill={d.color}
-                stroke="#0f172a"
-                strokeWidth="1"
-              />
-            ))}
-          </g>
-        )}
+            renders solid; transient hover renders dashed. Subscribes
+            to the crosshair store itself - hover doesn't re-render
+            this chart. */}
+        <CrosshairSvgLayer
+          crosshair={crosshair}
+          computeView={computeCrosshairView}
+          topY={PADDING.top}
+          bottomY={chartHeight - PADDING.bottom}
+        />
         </g>
 
         {hasRightAxis && rightAxis && (
@@ -3073,23 +3355,21 @@ export const PriceChart = memo(function PriceChart({
       {/* #257: per-chart value readout for the crosshair. Suppressed
           while a marker hover-tooltip is open - markers win on direct
           hover (pinned marker tooltips coexist fine). */}
-      {crosshairView && !(
-        (tooltip !== null && !tooltip.pinned) ||
-        (poolBlockTip !== null && !poolBlockTip.pinned) ||
-        (rewardTip !== null && !rewardTip.pinned) ||
-        (depositTip !== null && !depositTip.pinned) ||
-        (retargetTip !== null && !retargetTip.pinned) ||
-        (unpaidDropTip !== null && !unpaidDropTip.pinned)
-      ) && (
-        <CrosshairReadout
-          chartId="price"
-          state={crosshairView.state}
-          svgEl={svgElRef.current}
-          lineXFrac={crosshairView.lineXFrac}
-          rows={crosshairView.rows}
-          onClose={() => crosshair?.clear()}
-        />
-      )}
+      <CrosshairReadoutLayer
+        chartId="price"
+        crosshair={crosshair}
+        computeView={computeCrosshairView}
+        suppressed={
+          (tooltip !== null && !tooltip.pinned) ||
+          (poolBlockTip !== null && !poolBlockTip.pinned) ||
+          (rewardTip !== null && !rewardTip.pinned) ||
+          (depositTip !== null && !depositTip.pinned) ||
+          (retargetTip !== null && !retargetTip.pinned) ||
+          (unpaidDropTip !== null && !unpaidDropTip.pinned) ||
+          (bootTip !== null && !bootTip.pinned)
+        }
+        svgRef={svgElRef}
+      />
 
       {poolBlockTip && (
         <PoolBlockTooltip
@@ -3136,6 +3416,8 @@ export const PriceChart = memo(function PriceChart({
           onClose={closeUnpaidDropTip}
         />
       )}
+
+      {bootTip && <BootTooltip tip={bootTip} onClose={closeBootTip} />}
 
       {tooltip && (
         <EventTooltip
@@ -3212,6 +3494,7 @@ function RewardEventTooltip({
   void i18n;
   void dateTimeLocale;
   const fmt = useFormatters();
+  const navigate = useNavigate();
   const { reward, pinned } = tip;
   const ref = useRef<HTMLDivElement | null>(null);
   const [pos, setPos] = useState<{ left: number; top: number; ready: boolean }>({
@@ -3230,25 +3513,35 @@ function RewardEventTooltip({
     setPos({ left, top, ready: true });
   }, [tip.x, tip.y, reward.id]);
 
-  const url = explorerTemplate
-    ? applyExplorerTemplate(explorerTemplate, {
-        txid: reward.txid,
-        height: reward.block_height,
-      })
-    : '';
+  // #323: Lightning payouts have no txid and never touch the chain, so
+  // there's nothing to open in a block explorer - only on-chain payouts
+  // with a txid get a link.
+  const isLightning = reward.rail === 'lightning';
+  // #343: deduced payouts. 'unknown' = still inside the 24h correction
+  // window where a matching record from Ocean's own ledger can replace
+  // this one; past it the rail resolves to 'lightning' by elimination.
+  const isUnknown = reward.rail === 'unknown';
+  const isDeduced = reward.deduced === true;
+  const url =
+    explorerTemplate && !isLightning && reward.txid
+      ? applyExplorerTemplate(explorerTemplate, {
+          txid: reward.txid,
+          height: reward.block_height,
+        })
+      : '';
   const btc = reward.value_sat / 1e8;
   const valueText =
     denomination.mode === 'usd' && denomination.btcPrice !== null
-      ? `$${new Intl.NumberFormat(locale, {
+      ? `$${cachedNumberFormat(locale, {
           minimumFractionDigits: 2,
           maximumFractionDigits: 2,
         }).format(btc * denomination.btcPrice)}`
       : denomination.mode === 'btc'
-        ? `₿ ${new Intl.NumberFormat(locale, {
+        ? `₿ ${cachedNumberFormat(locale, {
             minimumFractionDigits: 8,
             maximumFractionDigits: 8,
           }).format(btc)}`
-        : `${new Intl.NumberFormat(locale, {
+        : `${cachedNumberFormat(locale, {
             minimumFractionDigits: 0,
             maximumFractionDigits: 0,
           }).format(reward.value_sat)} sat`;
@@ -3262,7 +3555,18 @@ function RewardEventTooltip({
     >
       <div className="flex items-start justify-between gap-3">
         <span className="font-semibold uppercase tracking-wider text-emerald-400">
-          <Trans>ON-CHAIN PAYOUT</Trans> · #{reward.block_height.toLocaleString(locale)}
+          {isUnknown ? (
+            <Trans>PAYOUT · TYPE NOT KNOWN YET</Trans>
+          ) : isLightning && isDeduced ? (
+            <Trans>PROBABLY LIGHTNING PAYOUT</Trans>
+          ) : isLightning ? (
+            <Trans>LIGHTNING PAYOUT</Trans>
+          ) : (
+            <>
+              <Trans>ON-CHAIN PAYOUT</Trans>
+              {reward.block_height > 0 && ` · #${reward.block_height.toLocaleString(locale)}`}
+            </>
+          )}
         </span>
         {pinned && (
           <button
@@ -3282,20 +3586,134 @@ function RewardEventTooltip({
       <div className="text-slate-500 text-[10px]">{formatTimestampUtc(reward.detected_at)}</div>
 
       <div className="mt-2 flex justify-between gap-3 text-slate-300">
-        <span className="text-slate-500"><Trans>amount</Trans></span>
+        <span className="text-slate-500">
+          {isDeduced ? <Trans>amount (approx.)</Trans> : <Trans>amount</Trans>}
+        </span>
         <span className="font-mono tabular-nums">{valueText}</span>
       </div>
 
-      {url && (
-        <div className="mt-3 pt-2 border-t border-slate-800">
-          <a
-            href={url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-sky-400 hover:text-sky-300 underline text-[11px]"
+      {isDeduced && (
+        <div className="mt-2 max-w-[230px] whitespace-normal text-[10px] leading-snug text-slate-400">
+          {isUnknown ? (
+            <Trans>
+              Deduced from your unpaid earnings dropping to zero. Ocean's
+              payout ledger doesn't report Lightning payouts; if a matching
+              payout shows up there within 24 hours, this record is replaced
+              by the real one - otherwise it becomes a Lightning payout.
+            </Trans>
+          ) : (
+            <Trans>
+              Deduced from your unpaid earnings dropping to zero. Ocean's
+              payout ledger doesn't report Lightning payouts and no matching
+              on-chain payout appeared, so this can only be a Lightning
+              payout. The amount is the last unpaid balance seen before the
+              drop, so it's approximate.
+            </Trans>
+          )}
+        </div>
+      )}
+
+      {(url || pinned) && (
+        <div className="mt-3 pt-2 border-t border-slate-800 flex flex-col gap-1.5">
+          {url && (
+            <a
+              href={url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sky-400 hover:text-sky-300 underline text-[11px]"
+            >
+              <Trans>open in block explorer →</Trans>
+            </a>
+          )}
+          {pinned && (
+            <button
+              type="button"
+              onClick={() => navigate(`/history?focus=payout:${reward.id}&ts=${reward.detected_at}`)}
+              className="text-amber-300 hover:text-amber-200 inline-flex items-center gap-1 text-[11px] self-start"
+            >
+              <Trans>View in timeline</Trans>
+              <span aria-hidden="true">→</span>
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * #320: tooltip for a daemon-start (boot) marker. Mirrors the reward /
+ * deposit tooltips: timestamp + the boot detail line (build · version ·
+ * hash), and when pinned a "View in timeline" jump to the matching log
+ * row (`focus=boot:<id>`).
+ */
+function BootTooltip({
+  tip,
+  onClose,
+}: {
+  tip: BootTooltipState;
+  onClose: () => void;
+}) {
+  const { i18n } = useLingui();
+  void i18n;
+  const fmt = useFormatters();
+  const navigate = useNavigate();
+  const { boot, pinned } = tip;
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [pos, setPos] = useState<{ left: number; top: number; ready: boolean }>({
+    left: tip.x + 12,
+    top: tip.y + 12,
+    ready: false,
+  });
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const { left, top } = sideTooltipPosition(tip.x, tip.y, rect);
+    setPos({ left, top, ready: true });
+  }, [tip.x, tip.y, boot.id]);
+
+  return (
+    <div
+      ref={ref}
+      id={pinned ? 'price-chart-pinned-boot-tooltip' : undefined}
+      className={`fixed z-50 bg-slate-950 border rounded-lg shadow-lg p-3 text-xs whitespace-nowrap ${pinned ? 'border-slate-500 pointer-events-auto' : 'border-slate-700 pointer-events-none'} ${pos.ready ? '' : 'invisible'}`}
+      style={{ left: pos.left, top: pos.top }}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <span className="font-semibold uppercase tracking-wider text-emerald-400">
+          <Trans>DAEMON STARTED</Trans>
+        </span>
+        {pinned && (
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label={t`close`}
+            className="text-slate-500 hover:text-slate-200 leading-none text-base -mt-0.5 -mr-0.5"
           >
-            <Trans>open in block explorer →</Trans>
-          </a>
+            ×
+          </button>
+        )}
+      </div>
+      <div className="text-slate-300 mt-1">
+        {fmt.timestamp(boot.occurred_at)}
+        <span className="text-slate-500 ml-2">· {formatAgeMinutes(boot.occurred_at)}</span>
+      </div>
+      <div className="text-slate-500 text-[10px]">{formatTimestampUtc(boot.occurred_at)}</div>
+      {boot.detail && (
+        <div className="mt-2 text-slate-300 font-mono text-[11px]">{boot.detail}</div>
+      )}
+      {pinned && (
+        <div className="mt-3 pt-2 border-t border-slate-800">
+          <button
+            type="button"
+            onClick={() => navigate(`/history?focus=boot:${boot.id}&ts=${boot.occurred_at}`)}
+            className="text-amber-300 hover:text-amber-200 inline-flex items-center gap-1 text-[11px] self-start"
+          >
+            <Trans>View in timeline</Trans>
+            <span aria-hidden="true">→</span>
+          </button>
         </div>
       )}
     </div>
@@ -3318,6 +3736,7 @@ function DepositTooltip({
   const { i18n } = useLingui();
   void i18n;
   const fmt = useFormatters();
+  const navigate = useNavigate();
   const { deposit, pinned } = tip;
   const ref = useRef<HTMLDivElement | null>(null);
   const [pos, setPos] = useState<{ left: number; top: number; ready: boolean }>({
@@ -3340,16 +3759,16 @@ function DepositTooltip({
   const btc = deposit.amount_sat / 1e8;
   const valueText =
     denomination.mode === 'usd' && denomination.btcPrice !== null
-      ? `$${new Intl.NumberFormat(locale, {
+      ? `$${cachedNumberFormat(locale, {
           minimumFractionDigits: 2,
           maximumFractionDigits: 2,
         }).format(btc * denomination.btcPrice)}`
       : denomination.mode === 'btc'
-        ? `₿ ${new Intl.NumberFormat(locale, {
+        ? `₿ ${cachedNumberFormat(locale, {
             minimumFractionDigits: 8,
             maximumFractionDigits: 8,
           }).format(btc)}`
-        : `${new Intl.NumberFormat(locale, {
+        : `${cachedNumberFormat(locale, {
             minimumFractionDigits: 0,
             maximumFractionDigits: 0,
           }).format(deposit.amount_sat)} sat`;
@@ -3413,16 +3832,28 @@ function DepositTooltip({
         </div>
       )}
 
-      {url && (
-        <div className="mt-3 pt-2 border-t border-slate-800">
-          <a
-            href={url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-sky-400 hover:text-sky-300 underline text-[11px]"
-          >
-            <Trans>open in block explorer →</Trans>
-          </a>
+      {(url || pinned) && (
+        <div className="mt-3 pt-2 border-t border-slate-800 flex flex-col gap-1.5">
+          {url && (
+            <a
+              href={url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sky-400 hover:text-sky-300 underline text-[11px]"
+            >
+              <Trans>open in block explorer →</Trans>
+            </a>
+          )}
+          {pinned && (
+            <button
+              type="button"
+              onClick={() => navigate(`/history?focus=deposit:${deposit.tx_id}&ts=${deposit.tx_timestamp_ms ?? deposit.credited_at_ms ?? deposit.first_seen_at_ms}`)}
+              className="text-amber-300 hover:text-amber-200 inline-flex items-center gap-1 text-[11px] self-start"
+            >
+              <Trans>View in timeline</Trans>
+              <span aria-hidden="true">→</span>
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -3445,9 +3876,20 @@ function EventTooltip({
   const { i18n } = useLingui();
   void i18n;
   const fmt = useFormatters();
+  const denomination = useDenomination();
   const navigate = useNavigate();
   const ref = useRef<HTMLDivElement>(null);
   const [copied, setCopied] = useState(false);
+
+  // Rate values in the active denomination. `rate` returns the full
+  // string incl. unit (single-value rows); `rateVal` returns the bare
+  // number for compound rows that append the unit once. The shared Row
+  // helper mutes the trailing unit via splitUnit.
+  const rate = (satPerPhDay: number | null): string =>
+    denomination.formatSatPerPhDay(satPerPhDay);
+  const rateVal = (satPerPhDay: number | null): string =>
+    denomination.formatSatPerPhDayValue(satPerPhDay);
+  const rateUnit = denomination.rateSuffix;
 
   // Find the tick_metrics row for the event's timestamp so the
   // tooltip can surface fillable / hashprice / max_bid at that
@@ -3657,9 +4099,9 @@ function EventTooltip({
 
       {e.kind === 'CREATE_BID' && (
         <div className="mt-2 space-y-0.5 text-slate-300">
-          <Row label={t`price`} value={`${formatNumber(Math.round(e.new_price_sat_per_ph_day ?? 0))} sat/PH/day`} />
-          <Row label={t`speed`} value={`${e.speed_limit_ph ?? '-'} PH/s`} />
-          <Row label={t`budget`} value={`${formatNumber(e.amount_sat ?? 0)} sat`} />
+          <Row label={t`price`} value={rate(e.new_price_sat_per_ph_day ?? null)} />
+          <Row label={t`speed`} value={denomination.formatHashrate(e.speed_limit_ph)} />
+          <Row label={t`budget`} value={denomination.formatSat(e.amount_sat ?? null)} />
         </div>
       )}
 
@@ -3667,14 +4109,14 @@ function EventTooltip({
         <div className="mt-2 space-y-0.5 text-slate-300">
           <Row
             label={t`price`}
-            value={`${formatNumber(Math.round(e.old_price_sat_per_ph_day ?? 0))} → ${formatNumber(Math.round(e.new_price_sat_per_ph_day ?? 0))} sat/PH/day`}
+            value={`${rateVal(e.old_price_sat_per_ph_day ?? null)} → ${rateVal(e.new_price_sat_per_ph_day ?? null)} ${rateUnit}`}
           />
           {e.old_price_sat_per_ph_day !== null && e.new_price_sat_per_ph_day !== null && (
             <Row
               label={t`delta`}
-              value={`${e.new_price_sat_per_ph_day >= e.old_price_sat_per_ph_day ? '+' : ''}${formatNumber(
-                Math.round(e.new_price_sat_per_ph_day - e.old_price_sat_per_ph_day),
-              )} sat/PH/day`}
+              value={`${e.new_price_sat_per_ph_day > e.old_price_sat_per_ph_day ? '+' : ''}${rateVal(
+                e.new_price_sat_per_ph_day - e.old_price_sat_per_ph_day,
+              )} ${rateUnit}`}
             />
           )}
         </div>
@@ -3682,7 +4124,7 @@ function EventTooltip({
 
       {e.kind === 'EDIT_SPEED' && (
         <div className="mt-2 space-y-0.5 text-slate-300">
-          <Row label={t`new speed`} value={`${e.speed_limit_ph ?? '-'} PH/s`} />
+          <Row label={t`new speed`} value={denomination.formatHashrate(e.speed_limit_ph)} />
         </div>
       )}
 
@@ -3692,53 +4134,31 @@ function EventTooltip({
             <Trans>market at this tick</Trans>
           </div>
           {marketAtEvent.fillable_ask_sat_per_ph_day !== null && (
-            <Row
-              label={t`fillable`}
-              value={`${formatNumber(Math.round(marketAtEvent.fillable_ask_sat_per_ph_day))} sat/PH/day`}
-            />
+            <Row label={t`fillable`} value={rate(marketAtEvent.fillable_ask_sat_per_ph_day)} />
           )}
           {overpayAtEvent !== null && (
-            <Row
-              label={t`overpay`}
-              value={`${formatNumber(Math.round(overpayAtEvent))} sat/PH/day`}
-            />
+            <Row label={t`overpay`} value={rate(overpayAtEvent)} />
           )}
           {marketAtEvent.hashprice_sat_per_ph_day !== null ? (
-            <Row
-              label={t`hashprice`}
-              value={`${formatNumber(Math.round(marketAtEvent.hashprice_sat_per_ph_day))} sat/PH/day`}
-            />
+            <Row label={t`hashprice`} value={rate(marketAtEvent.hashprice_sat_per_ph_day)} />
           ) : (
             <Row label={t`hashprice`} value={t`- (not recorded this tick)`} />
           )}
           {maxOverpayAtEvent !== null && (
-            <Row
-              label={t`max overpay vs hashprice`}
-              value={`${formatNumber(Math.round(maxOverpayAtEvent))} sat/PH/day`}
-            />
+            <Row label={t`max overpay vs hashprice`} value={rate(maxOverpayAtEvent)} />
           )}
           {maxOverpayAtEvent !== null &&
             marketAtEvent.hashprice_sat_per_ph_day !== null && (
               <Row
                 label={t`hashprice + max overpay`}
-                value={`${formatNumber(
-                  Math.round(
-                    marketAtEvent.hashprice_sat_per_ph_day + maxOverpayAtEvent,
-                  ),
-                )} sat/PH/day`}
+                value={rate(marketAtEvent.hashprice_sat_per_ph_day + maxOverpayAtEvent)}
               />
             )}
           {marketAtEvent.max_bid_sat_per_ph_day !== null && (
-            <Row
-              label={t`max bid`}
-              value={`${formatNumber(Math.round(marketAtEvent.max_bid_sat_per_ph_day))} sat/PH/day`}
-            />
+            <Row label={t`max bid`} value={rate(marketAtEvent.max_bid_sat_per_ph_day)} />
           )}
           {effectiveCapAtEvent !== null && (
-            <Row
-              label={t`effective cap`}
-              value={`${formatNumber(Math.round(effectiveCapAtEvent))} sat/PH/day`}
-            />
+            <Row label={t`effective cap`} value={rate(effectiveCapAtEvent)} />
           )}
           {/* #224 (#222): deadband at the tick. Shown as a percentage
               with the equivalent sat/PH/day floor inline so the
@@ -3759,15 +4179,8 @@ function EventTooltip({
               <span className="font-mono tabular-nums">
                 {formatNumber(marketAtEvent.bid_edit_deadband_pct)}
                 <span className="text-slate-500 text-[11px] ml-1">% ≈</span>{' '}
-                {formatNumber(
-                  Math.round(
-                    (overpayAtEvent * marketAtEvent.bid_edit_deadband_pct) / 100,
-                  ),
-                )}
-                <span className="text-slate-500 text-[11px] ml-1">
-                  <SatSymbol className="opacity-70" />
-                  {t`/PH/day`}
-                </span>
+                {rateVal((overpayAtEvent * marketAtEvent.bid_edit_deadband_pct) / 100)}
+                <span className="text-slate-500 text-[11px] ml-1">{rateUnit}</span>
               </span>
             </div>
           )}
@@ -3784,7 +4197,7 @@ function EventTooltip({
         // long sentence doesn't blow the tooltip off-screen, but cap
         // the width so it stays readable.
         <div className="mt-2 text-[11px] text-slate-400 italic whitespace-normal max-w-[20rem]">
-          {e.reason}
+          <ReasonText reason={e.reason} denomination={denomination} />
         </div>
       )}
       {tip.pinned && (
@@ -3795,11 +4208,11 @@ function EventTooltip({
               /history. */}
           <button
             type="button"
-            onClick={() => navigate(`/history?focus_event=${e.id}`)}
+            onClick={() => navigate(`/history?focus_event=${e.id}&ts=${e.occurred_at}`)}
             className="text-[10px] text-amber-300 hover:underline"
             title={t`Open the History row for this event`}
           >
-            <Trans>Show in history</Trans>{' →'}
+            <Trans>Show in timeline</Trans>{' →'}
           </button>
           <button
             type="button"
@@ -3846,18 +4259,26 @@ function Row({ label, value }: { label: string; value: string }) {
  * doesn't import from pages/.
  */
 function splitUnit(v: string): { num: string; unit: string } | null {
-  const m = v.match(/^(.+?)\s+(sat\/PH\/day|PH\/s|PH·h|sat)(\s*(?:\(.*\))?)$/);
+  // Space-separated unit: any denomination rate ("48,288 sat/EH/day",
+  // "0.48288000 ₿/PH/day"), any hashrate ("3.00 EH/s"), legacy PH·h, or
+  // bare sat. The rate suffix now varies with the units toggle, so the
+  // hashrate portion is TH|PH|EH rather than a hardcoded PH.
+  const m = v.match(/^(.+?)\s+((?:sat|₿)\/(?:TH|PH|EH)\/day|(?:TH|PH|EH)\/s|PH·h|sat)(\s*(?:\(.*\))?)$/);
   if (m?.[1] && m[2]) return { num: m[1], unit: m[2] + (m[3] ?? '') };
-  const usdPhDay = v.match(/^(.+?)(\/PH\/day)$/);
-  if (usdPhDay?.[1] && usdPhDay[2]) return { num: usdPhDay[1], unit: usdPhDay[2] };
+  // USD rate has the symbol on the number and no space before the slash:
+  // "$28,756.80/EH/day".
+  const usd = v.match(/^(.+?)(\/(?:TH|PH|EH)\/day)$/);
+  if (usd?.[1] && usd[2]) return { num: usd[1], unit: usd[2] };
   return null;
 }
 
 function SatUnit({ unit }: { unit: string }) {
-  // Localize the `/PH/day` slug before rendering. Mirror of Status.tsx
-  // SatUnit so chart tooltips translate in NL/ES alongside the rest.
-  const phDayLabel = t`/PH/day`;
-  const localized = unit.replace('/PH/day', phDayLabel);
+  // Localize the trailing `day` slug for any hashrate unit (NL "dag",
+  // ES "dia") and swap a leading "sat" for the ≡ glyph. Mirror of
+  // Status.tsx SatUnit so chart tooltips translate alongside the rest.
+  const phDay = t`/PH/day`;
+  const dayWord = phDay.slice(phDay.lastIndexOf('/') + 1);
+  const localized = unit.replace(/day$/, dayWord);
   if (localized.startsWith('sat')) {
     return (
       <>
@@ -3981,8 +4402,10 @@ function EventLegend({ kinds, colors }: { kinds: readonly BidEventKind[]; colors
       {has('MODE_CHANGE') && (
         <span className="flex items-center gap-1 whitespace-nowrap">
           <svg {...iconProps} stroke={colors.MODE_CHANGE}>
-            <path d="M12 2v10" />
-            <path d="M18.4 6.6a9 9 0 1 1-12.77.04" />
+            <path d="M8 3 4 7l4 4" />
+            <path d="M4 7h16" />
+            <path d="m16 21 4-4-4-4" />
+            <path d="M20 17H4" />
           </svg>
           <Trans>mode change</Trans>
         </span>
@@ -4024,6 +4447,7 @@ function UnpaidDropTooltip({
   const { i18n } = useLingui();
   void i18n;
   const fmt = useFormatters();
+  const navigate = useNavigate();
   const { pinned } = tip;
   const ref = useRef<HTMLDivElement | null>(null);
   const [pos, setPos] = useState<{ left: number; top: number; ready: boolean }>({
@@ -4044,12 +4468,12 @@ function UnpaidDropTooltip({
   const formatVal = (sat: number) => {
     const btc = sat / 1e8;
     if (denomination.mode === 'usd' && denomination.btcPrice !== null) {
-      return `$${new Intl.NumberFormat(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(btc * denomination.btcPrice)}`;
+      return `$${cachedNumberFormat(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(btc * denomination.btcPrice)}`;
     }
     if (denomination.mode === 'btc') {
-      return `₿ ${new Intl.NumberFormat(locale, { minimumFractionDigits: 8, maximumFractionDigits: 8 }).format(btc)}`;
+      return `₿ ${cachedNumberFormat(locale, { minimumFractionDigits: 8, maximumFractionDigits: 8 }).format(btc)}`;
     }
-    return `${new Intl.NumberFormat(locale, { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(sat)} sat`;
+    return `${cachedNumberFormat(locale, { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(sat)} sat`;
   };
 
   return (
@@ -4088,6 +4512,18 @@ function UnpaidDropTooltip({
       <div className="mt-1 text-[10px] text-slate-500">
         <Trans>Ocean debited the unpaid balance. On-chain transaction follows shortly.</Trans>
       </div>
+      {pinned && (
+        <div className="mt-2 pt-2 border-t border-slate-800">
+          <button
+            type="button"
+            onClick={() => navigate(`/history?jump_ts=${tip.tick_at}`)}
+            className="text-amber-300 hover:text-amber-200 inline-flex items-center gap-1 text-[11px]"
+          >
+            <Trans>View in timeline</Trans>
+            <span aria-hidden="true">→</span>
+          </button>
+        </div>
+      )}
     </div>
   );
 }

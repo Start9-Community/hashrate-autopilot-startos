@@ -18,7 +18,7 @@
     "codegen": "openapi-typescript ./openapi.yml -o ./src/generated/types.ts"
   },
   "dependencies": {
-    "@hashrate-autopilot/shared": "workspace:*",
+    "@hashrate-autopilot/shared": "*",
     "openapi-fetch": "^0.17.0"
   },
   "devDependencies": {
