@@ -334,13 +334,13 @@ LIVE or create, edit, or cancel a marketplace bid during automated preparation.
 
 - [x] Clean-install the freshly built package on a supported StartOS device.
 - [x] Start the service successfully.
-- [ ] Open the setup wizard and dashboard UI.
-- [ ] Confirm the StartOS health check becomes green.
+- [x] Open the setup wizard and dashboard UI.
+- [x] Confirm the StartOS dashboard-listener health check passes.
 - [x] Confirm Bitcoin, Electrs, and Datum use their StartOS-assigned bridge endpoints and remain healthy after restart.
-- [ ] Confirm DRY-RUN prevents new create, edit, and cancel API mutations.
-- [ ] Verify active-bid safety: changing to DRY-RUN or PAUSED does not itself cancel an existing bid; independently confirm no active bid is spending before treating spend as stopped.
+- [x] Confirm DRY-RUN prevents new create, edit, and cancel API mutations.
+- [x] Verify active-bid safety: changing to DRY-RUN or PAUSED does not itself cancel an existing bid; independently confirm no active bid is spending before treating spend as stopped.
 - [x] Uninstall and reinstall cleanly.
-- [ ] Back up, restore, and verify persistent configuration/state.
+- [x] Back up, restore, and verify persistent configuration/state.
 
 ## Stage gates
 
