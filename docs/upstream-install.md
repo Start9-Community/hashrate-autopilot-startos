@@ -47,4 +47,4 @@ Use this only when you want to manage secrets with `sops` and `age` instead of t
 
 - Upstream repository: <https://github.com/rdouma/hashrate-autopilot>
 - Upstream releases: <https://github.com/rdouma/hashrate-autopilot/releases>
-- This StartOS fork: <https://github.com/mdubore/hashrate9>
+- This StartOS fork: <https://github.com/mdubore/hashrate-autopilot-startos>

@@ -37,8 +37,8 @@ changes, open an issue or discussion first so scope and upstream impact are clea
 
 ```bash
 # Prerequisites: Node 22+, pnpm 10+, StartOS start-cli for package builds
-git clone https://github.com/mdubore/hashrate9.git
-cd hashrate9
+git clone https://github.com/mdubore/hashrate-autopilot-startos.git
+cd hashrate-autopilot-startos
 pnpm install
 ```
 

@@ -11,6 +11,7 @@ concurrency:
 
 jobs:
   tag:
+    if: github.repository_owner == 'Start9-Community'
     uses: Start9Labs/start-technologies/.github/workflows/tagAndRelease.yml@master
     with:
       REFERENCE_REGISTRY: ${{ vars.REFERENCE_REGISTRY }}

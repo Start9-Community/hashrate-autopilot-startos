@@ -5,12 +5,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/mdubore/hashrate9.git"
+    "url": "https://github.com/mdubore/hashrate-autopilot-startos.git"
   },
   "bugs": {
-    "url": "https://github.com/mdubore/hashrate9/issues"
+    "url": "https://github.com/mdubore/hashrate-autopilot-startos/issues"
   },
-  "homepage": "https://github.com/mdubore/hashrate9#readme",
+  "homepage": "https://github.com/mdubore/hashrate-autopilot-startos#readme",
   "private": true,
   "workspaces": [
     "packages/*"

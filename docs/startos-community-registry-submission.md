@@ -1,9 +1,8 @@
 # StartOS Community Registry Submission Checklist
 
-> **STATUS: PREPARATION ONLY — NOT READY FOR THE INITIAL EMAIL.** The final Task 10 local rebuild and
-> fresh artifact build/inspection/checksum/commitment gates passed. Keep the initial email unsent
-> until the reviewed source is publicly reachable at an exact verified branch or commit URL and the
-> required physical-device validation has also passed. After Start9 responds and creates the
+> **STATUS: READY FOR THE INITIAL EMAIL AFTER THE CORRECTIVE SOURCE IS MERGED AND VERIFIED ON `main`.**
+> Local package verification and the required physical-device validation have passed. The draft remains
+> deliberately unsent so the maintainer controls the external submission. After Start9 responds and creates the
 > Start9-Community fork, the fork pull request and merge follow Start9's feedback and review. Request
 > production promotion only after a successful beta install, soak, and resolution of every beta finding.
 > Evidence snapshot: **2026-08-04**.
@@ -25,14 +24,14 @@ The following official Start9 sources were accessed and link-checked on 2026-08-
 
 | Field | Intended value |
 | --- | --- |
-| Public package repository | <https://github.com/mdubore/hashrate9> |
+| Public package repository | <https://github.com/mdubore/hashrate-autopilot-startos> |
 | Package ID | `hashrate-autopilot-9` |
 | Upstream release | [`v1.17.4`](https://github.com/rdouma/hashrate-autopilot/releases/tag/v1.17.4) |
 | Intended StartOS ExVer | `1.17.4:0` |
 | Intended StartOS tag | `v1.17.4_0` |
-| Preparation/source branch | `sync-upstream-v1.17.4` |
-| Initial submission | Public repository URL by email; no pull request exists yet |
-| Later Community pull requests | Open from this prepared branch, or its pushed equivalent, against the Start9-Community fork after Start9 creates it and provides feedback |
+| Reviewed public source | [`main`](https://github.com/mdubore/hashrate-autopilot-startos/tree/main) |
+| Initial submission | Ready for the maintainer to send the public repository URL by email; no Start9-Community fork or pull request exists yet |
+| Later Community pull requests | Open against the Start9-Community fork after Start9 creates it and provides feedback |
 
 Do not create or push `v1.17.4_0` during preparation. In the official Community flow, changes go to
 the Start9-Community fork, and a merged pull request drives the configured build, tag, and
@@ -40,7 +39,7 @@ the Start9-Community fork, and a merged pull request drives the configured build
 
 ## Reproducibility and history
 
-- `origin` is `https://github.com/mdubore/hashrate9.git`.
+- `origin` is `https://github.com/mdubore/hashrate-autopilot-startos.git`.
 - `upstream` is `https://github.com/rdouma/hashrate-autopilot.git`.
 - Local annotated tag object `refs/tags/v1.17.4` is
   `3933bbf5f69f7b5471d45f1682135c22df1ae69b` and peels to upstream commit
@@ -65,6 +64,10 @@ the Start9-Community fork, and a merged pull request drives the configured build
   (`chore: remove legacy StartOS packaging paths`). Its evidence-document successor is the immediately
   following `docs: finalize Community Registry evidence` commit; Git history records that successor's
   SHA without requiring the commit to embed its own recursive identifier.
+- The upstream sync, SDK 2 conversion, bridge-address correction, and completed physical gates were merged to
+  public `main` in `a7c24f0b9e8a1e9c79349007ff36184612a03967`. The corrective submission commit that follows updates
+  repository identity, standard package files, Docker CI, release metadata, and this handoff without changing
+  the package ID or unpublished ExVer.
 
 Identity commands:
 
@@ -318,7 +321,8 @@ These repository-level checks were reconfirmed for the bridge-migration rebuild:
 
 - [x] Version metadata uses ExVer `1.17.4:0`; the intended tag follows `v{upstream}_{downstream}` as `v1.17.4_0`.
 - [x] `.github/workflows/build.yml`, `tagAndRelease.yml`, and `release.yml` call the official Start9 reusable workflows.
-- [x] The pull-request workflow declares no persistent developer-key mapping; the release workflow files declare the required variable and secret mappings. Repository files do not prove that those external values are configured in a future Start9-Community fork.
+- [x] `AGENTS.md`, the one-line `CLAUDE.md` import, `TODO.md`, `UPDATING.md`, `assets/`, `instructions.md`, and the other standard package-root files are present.
+- [x] The pull-request workflow declares no persistent developer-key mapping; the release workflow files declare the required variable and secret mappings and are owner-guarded so publication runs only in the future Start9-Community fork. Repository files do not prove that those external values are configured in that fork.
 - [x] The Community tag trigger accepts `v*_*`, while the upstream Docker workflow excludes underscore tags.
 - [x] `README.md` follows the official package README role, documents runtime/image, volumes, interface, health, dependencies, backup/restore, limitations, and contains no release version.
 - [x] `instructions.md` is an operator quick-start, begins after installation, names real UI surfaces, contains no release version or secret, and keeps the operator in DRY-RUN until routing and decisions are verified.
@@ -346,14 +350,11 @@ LIVE or create, edit, or cancel a marketplace bid during automated preparation.
 
 ### Before the initial email
 
-- [ ] At the initial-email stage, reconfirm the final bridge-migration evidence and local artifacts are still current.
-- [ ] Push the reviewed preparation branch (or an explicitly approved successor) to the public package repository,
-      or merge it to the public default branch. The local preparation branch currently has no tracking branch; do
-      not treat local commits as publicly reviewable evidence.
-- [ ] Open and verify the exact public branch or commit URL for the reviewed source, then include that URL in the
-      initial email.
-- [ ] Complete every physical StartOS gate above in DRY-RUN, including active-bid safety and backup/restore.
-- [ ] Replace every email-draft placeholder with the completed local, package, device, and safety results.
+- [x] Reconfirm the final bridge-migration evidence and current local artifacts.
+- [x] Merge and push the reviewed source to the renamed public package repository's default branch.
+- [x] Use the verified public [`main`](https://github.com/mdubore/hashrate-autopilot-startos/tree/main) source URL in the initial email.
+- [x] Complete every physical StartOS gate above in DRY-RUN, including active-bid safety and backup/restore.
+- [x] Replace every email-draft validation placeholder with the completed local, package, device, and safety results.
 - [ ] Send the initial submission email. Later fork, beta, and promotion gates are not prerequisites for this email.
 
 ### After Start9 responds: fork, pull request, merge, and beta
@@ -397,9 +398,7 @@ LIVE or create, edit, or cancel a marketplace bid during automated preparation.
 
 ## UNSENT email draft
 
-> **UNSENT — DO NOT SEND until every placeholder below is replaced and the final Task 10 local,
-> fresh-package, signature, inspection, checksum, physical-device, and safety prerequisites are
-> complete.**
+> **UNSENT — validation is complete, but sending the email remains an explicit maintainer action.**
 
 ```text
 To: submissions@start9.com
@@ -408,25 +407,24 @@ Subject: Community Registry submission — Hashrate Autopilot for StartOS
 Hello Start9 team,
 
 Please consider Hashrate Autopilot for the Start9 Community Registry:
-https://github.com/mdubore/hashrate9
+https://github.com/mdubore/hashrate-autopilot-startos
 
-Reviewed public branch or commit URL: [replace with the exact verified public URL before sending]
+Reviewed public branch: https://github.com/mdubore/hashrate-autopilot-startos/tree/main
 
 Package ID: hashrate-autopilot-9
 Purpose: monitor and safely control an operator's Braiins Hashpower marketplace bid while routing rented hashrate to an operator-selected pool destination.
 Architectures: x86_64 and aarch64.
 
-Local validation: [replace with completed lint, typecheck, test, submission-contract, workflow, and clean-build results before sending]
-Package validation: [replace with completed dual-package, manifest, checksum, and signature results before sending]
-Physical StartOS validation: [replace with completed device results before sending]
-Safety validation: [replace with completed DRY-RUN and active-bid safety results before sending]
+Local validation: SDK lint, TypeScript checks, the full application test suite, the Community submission contract, workflow parsing, the regular Docker image build, and clean StartOS package builds pass.
+Package validation: fresh x86_64 and aarch64 packages report ID hashrate-autopilot-9, version 1.17.4:0, SDK 2.0.9, the expected architecture and dependencies, and verified SHA-256 checksums.
+Physical StartOS validation: clean installation, dependency integration, service start, dashboard access, restart, uninstall/reinstall, backup, and restore were verified on 2026-08-04.
+Safety validation: physical testing remained in DRY-RUN, new marketplace mutations were prevented, and active-bid behavior was checked separately.
 
-The service is configured to start in DRY-RUN. [Confirm here before sending that physical validation remained in DRY-RUN and did not mutate bids.]
+The service is configured to start in DRY-RUN. Physical validation remained in DRY-RUN and did not create, edit, or cancel marketplace bids.
 
 Regards,
-[MAINTAINER NAME]
+mdubore
 ```
 
-No package attachments are claimed or included by this draft. Leave it unsent until every placeholder
-is replaced and the initial-email prerequisites named above have passed. Fork/PR, beta, and promotion
-items will remain pending until their later stages of the official process.
+No package attachments are required or included. Fork/PR, beta, and promotion items remain pending until
+their later stages of the official process.
