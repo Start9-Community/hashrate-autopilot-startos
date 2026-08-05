@@ -328,17 +328,18 @@ These repository-level checks were reconfirmed for the bridge-migration rebuild:
 
 ## Physical StartOS gates
 
-All device work is deliberately pending. Keep the controller in **DRY-RUN** throughout testing. Never
-enable LIVE or create, edit, or cancel a marketplace bid during automated preparation.
+Device results below were reported by the package owner on `2026-08-04T21:47:55-07:00` using the
+recorded x86_64 artifact. Keep the controller in **DRY-RUN** throughout remaining testing. Never enable
+LIVE or create, edit, or cancel a marketplace bid during automated preparation.
 
-- [ ] Clean-install the freshly built package on a supported StartOS device.
-- [ ] Start the service successfully.
+- [x] Clean-install the freshly built package on a supported StartOS device.
+- [x] Start the service successfully.
 - [ ] Open the setup wizard and dashboard UI.
 - [ ] Confirm the StartOS health check becomes green.
-- [ ] Confirm Bitcoin, Electrs, and Datum use their StartOS-assigned bridge endpoints and remain healthy after restart.
+- [x] Confirm Bitcoin, Electrs, and Datum use their StartOS-assigned bridge endpoints and remain healthy after restart.
 - [ ] Confirm DRY-RUN prevents new create, edit, and cancel API mutations.
 - [ ] Verify active-bid safety: changing to DRY-RUN or PAUSED does not itself cancel an existing bid; independently confirm no active bid is spending before treating spend as stopped.
-- [ ] Uninstall and reinstall cleanly.
+- [x] Uninstall and reinstall cleanly.
 - [ ] Back up, restore, and verify persistent configuration/state.
 
 ## Stage gates
