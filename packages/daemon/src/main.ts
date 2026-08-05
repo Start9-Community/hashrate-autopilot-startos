@@ -34,7 +34,7 @@ import { RetentionService } from './services/retention.js';
 import { BtcPriceService } from './services/btc-price.js';
 import { BtcPriceRefresher } from './services/btc-price-refresher.js';
 import { BraiinsService } from './services/braiins-service.js';
-import { DatumPoller } from './services/datum.js';
+import { DatumPoller, resolveDatumApiUrl } from './services/datum.js';
 import { HashpriceCache } from './services/hashprice-cache.js';
 import { HashpriceRefresher } from './services/hashprice-refresher.js';
 import { createOceanClient } from './services/ocean.js';
@@ -485,7 +485,7 @@ async function bootOperational(
   // which the dashboard surfaces as a "not configured" empty state.
   const datumPoller = new DatumPoller(async () => {
     const c = await configRepo.get();
-    return c?.datum_api_url ?? null;
+    return resolveDatumApiUrl(c?.datum_api_url ?? null);
   });
   if (cfg.datum_api_url) {
     log(`datum:    polling ${cfg.datum_api_url}`);

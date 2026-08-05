@@ -92,33 +92,53 @@ git commit -m "fix: resolve StartOS dependency bridge addresses"
 ### Task 3: Update operator and submission documentation
 
 **Files:**
+- Modify: `packages/daemon/src/services/datum.test.ts`
+- Modify: `packages/daemon/src/services/datum.ts`
+- Modify: `packages/daemon/src/main.ts`
+- Modify: `packages/dashboard/src/pages/Config.tsx`
+- Modify: `packages/dashboard/src/pages/Setup.tsx`
+- Modify: `packages/dashboard/src/locales/*/messages.po`
 - Modify: `README.md`
 - Modify: `instructions.md`
 - Modify: `docs/startos-community-registry-submission.md`
 
-**Step 1: Document managed dependency routing**
+**Step 1: Write the failing DATUM precedence test**
+
+Test that `BHA_DATUM_API_URL` wins over the SQLite value on every poll, that a missing override preserves ordinary saved configuration, and that an explicitly empty override disables polling.
+
+Run: `npx vitest run packages/daemon/src/services/datum.test.ts`
+
+Expected: FAIL because the resolver does not exist.
+
+**Step 2: Make managed DATUM routing authoritative**
+
+Add a pure resolver and use it in the poller's live URL callback so dependency port changes cannot fall back to stale SQLite state.
+
+**Step 3: Document managed dependency routing**
 
 Explain that StartOS resolves the installed dependency bindings at runtime and injects their assigned bridge endpoints. Do not publish assigned bridge ports or legacy DNS names.
+Replace dashboard placeholders and help text that recommend legacy `.startos` service names, then regenerate locale catalogs.
 
-**Step 2: Refresh the submission checklist**
+**Step 4: Refresh the submission checklist**
 
 Record bridge-address verification as complete in source and leave physical sideload/uninstall/reinstall items open for the package owner.
 
-**Step 3: Verify documentation contracts**
+**Step 5: Verify implementation and documentation contracts**
 
 Run:
 
 ```bash
 npm run check:startos-submission
+npx vitest run packages/daemon/src/services/datum.test.ts
 npx prettier --check README.md instructions.md docs/startos-community-registry-submission.md
 ```
 
 Expected: both checks pass.
 
-**Step 4: Commit**
+**Step 6: Commit**
 
 ```bash
-git add README.md instructions.md docs/startos-community-registry-submission.md
+git add packages/daemon/src/services/datum.test.ts packages/daemon/src/services/datum.ts packages/daemon/src/main.ts packages/dashboard/src/pages/Config.tsx packages/dashboard/src/pages/Setup.tsx packages/dashboard/src/locales/*/messages.po README.md instructions.md docs/startos-community-registry-submission.md docs/plans/2026-08-04-startos-dependency-bridge-design.md docs/plans/2026-08-04-startos-dependency-bridge.md
 git commit -m "docs: describe managed StartOS dependency routing"
 ```
 

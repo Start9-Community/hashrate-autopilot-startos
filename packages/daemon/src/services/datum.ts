@@ -10,15 +10,26 @@
  * `reachable: false`; they never throw out of `poll()`.
  *
  * `DatumPoller` wraps a `DatumService` and re-reads `datum_api_url`
- * from config on every poll, so config edits take effect on the next
- * tick without a daemon restart. When the URL is empty, it returns
- * null - observe() translates that to `state.datum = null` and the
- * dashboard shows a "not configured" empty state.
+ * on every poll. A managed `BHA_DATUM_API_URL` environment override
+ * stays authoritative over saved config; otherwise config edits take
+ * effect on the next tick without a daemon restart. When the URL is
+ * empty, it returns null - observe() translates that to
+ * `state.datum = null` and the dashboard shows a "not configured"
+ * empty state.
  *
  * See docs/setup-datum-api.md for the Umbrel-side port-exposure recipe.
  */
 
 import type { DatumSnapshot } from '../controller/types.js';
+
+export function resolveDatumApiUrl(
+  configuredUrl: string | null,
+  env: Readonly<Record<string, string | undefined>> = process.env,
+): string | null {
+  const managedUrl = env['BHA_DATUM_API_URL'];
+  if (managedUrl === undefined) return configuredUrl;
+  return managedUrl.trim() || null;
+}
 
 export interface DatumPollResult {
   readonly reachable: boolean;

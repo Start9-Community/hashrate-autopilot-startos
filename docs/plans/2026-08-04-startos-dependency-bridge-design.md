@@ -23,6 +23,12 @@ Convert resolved HTTP addresses into full URLs for Bitcoin and DATUM. Split the
 Electrs bridge address into host and port because the daemon accepts those as
 separate settings. Keep the conversion logic pure and unit tested.
 
+DATUM normally re-reads its saved SQLite URL on every poll. While a
+`BHA_DATUM_API_URL` override is present, the poller must prefer that override on
+every read so an upgrade or newly assigned bridge port cannot fall back to a stale
+saved endpoint. Without an override, ordinary dashboard configuration behavior is
+unchanged.
+
 When a dependency is not installed or available, omit only that dependency's
 environment overrides. This preserves the application's existing safe no-data
 behavior, while `.const()` causes StartOS to regenerate and restart the main
@@ -41,6 +47,7 @@ action when the dependency later becomes available.
 - Unit-test resolved IPv4 and bracketed IPv6 Electrs addresses.
 - Unit-test omission of overrides for missing dependencies.
 - Include the StartOS wrapper as an isolated Vitest project.
+- Unit-test that the managed DATUM environment address wins over saved state.
 - Add a packaging regression check that rejects runtime `*.startos` service
   addresses and requires managed bridge resolution.
 - Run TypeScript checks, the full test suite, the Community Registry contract

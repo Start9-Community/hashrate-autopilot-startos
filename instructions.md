@@ -12,10 +12,11 @@ The Dashboard opens Hashrate Autopilot's setup wizard and, after setup, its moni
 interface. Your configuration, application secrets, SQLite state, and retained history persist in the
 service data volume and are included together when you back up the service.
 
-Bitcoin, Electrs, and Datum are required services. During fresh setup, the package pre-fills their
-internal StartOS addresses and selects Electrs for payout tracking. The saved Datum statistics URL is
-database-backed and read on every poll. Datum receives rented hashrate only when your public pool
-destination routes to it.
+Bitcoin, Electrs, and Datum are required services. StartOS resolves their installed-package bindings
+to managed bridge addresses; during fresh setup, Hashrate Autopilot pre-fills those values and selects
+Electrs for payout tracking. The managed Datum statistics URL is preferred on every poll so a saved
+value cannot retain an obsolete assigned bridge port. Datum receives rented hashrate only when your
+public pool destination routes to it.
 
 ## Getting set up
 
@@ -25,10 +26,10 @@ destination routes to it.
 2. Set the pool destination to the public Datum Stratum endpoint that Braiins can reach. Do not use the
    internal Datum statistics address as the pool destination. Confirm the hostname, port forwarding,
    worker identity, and Ocean payout address before continuing.
-3. Confirm that the wizard shows the expected StartOS dependency values and Electrs payout tracking.
-   The Bitcoin RPC URL, Electrs endpoint, and payout backend are startup settings; a restart rebuilds
-   those integrations with the package values. The Datum statistics URL is different: dashboard changes
-   take effect on the next poll, persist in SQLite, and remain effective after restart.
+3. Confirm that the wizard shows the package-provided StartOS dependency values and Electrs payout
+   tracking. The Bitcoin RPC URL, Electrs endpoint, and payout backend are startup settings; a restart
+   rebuilds those integrations with the SDK-resolved values. StartOS also manages the Datum statistics
+   URL, which remains authoritative over its saved dashboard value while the package supplies it.
 4. Complete the wizard and leave the controller in **DRY-RUN**. Check the Status page, service health,
    proposed decisions, price ceilings, target hashrate, and destination routing without issuing new bid
    mutations. Inspect the Braiins marketplace separately and confirm any existing bid is inactive if you
@@ -52,9 +53,9 @@ that backup restores the complete service data volume.
 
 ## Limitations
 
-- The Bitcoin RPC URL, Electrs endpoint, and payout backend are applied to boot-time clients; a restart
-  reconstructs them with package values. The saved Datum statistics URL remains effective across
-  restarts. Bitcoin RPC credentials are not included.
+- StartOS resolves the Bitcoin RPC, Electrs, and Datum bindings to assigned bridge endpoints. The
+  Bitcoin RPC URL, Electrs endpoint, and payout backend are applied to boot-time clients; the managed
+  Datum URL is preferred on every poll. Bitcoin RPC credentials are not included.
 - The internal Datum address is for statistics only. Public Stratum ingress, router forwarding, and
   dynamic DNS remain your responsibility.
 - Initial setup is not protected by the application password until you complete the wizard; use a

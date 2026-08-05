@@ -563,7 +563,7 @@ function MiningStep({
             <Field label={t`RPC URL`}>
               <input
                 type="text"
-                placeholder="http://bitcoind.startos:8332"
+                placeholder="http://bitcoin-rpc-host:8332"
                 value={form.bitcoind_rpc_url}
                 onChange={(e) => update('bitcoind_rpc_url', e.target.value)}
                 className={textInputCss}
@@ -594,7 +594,7 @@ function MiningStep({
                 <Field label={t`Host`}>
                   <input
                     type="text"
-                    placeholder="electrs.startos"
+                    placeholder="electrs-host"
                     value={form.electrs_host}
                     onChange={(e) => update('electrs_host', e.target.value)}
                     className={textInputCss}
@@ -614,9 +614,9 @@ function MiningStep({
             </div>
             <p className="text-xs text-slate-500">
               <Trans>
-                On StartOS use host <code>electrs.startos</code> and port <code>50001</code>.
-                Enter the host only, without <code>http://</code> or a path. Any
-                Electrum-protocol server works: electrs, Fulcrum, or ElectrumX.
+                On StartOS, keep the package-provided host and port. Enter the host only,
+                without <code>http://</code> or a path. Any Electrum-protocol server works:
+                electrs, Fulcrum, or ElectrumX.
               </Trans>
             </p>
           </div>

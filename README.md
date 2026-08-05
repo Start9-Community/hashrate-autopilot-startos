@@ -61,9 +61,10 @@ must be retained.
 
 On a fresh data volume, the daemon serves the dashboard setup wizard. The operator supplies the
 Braiins access token, dashboard password, hashrate and pricing limits, public pool destination, Ocean
-payout address, and related settings. The wizard pre-fills package-provided dependency values. It stores
-the selected Datum statistics URL in SQLite; the separate Bitcoin, Electrs, and payout settings seed
-boot-time clients.
+payout address, and related settings. StartOS resolves the installed Bitcoin, Electrs, and Datum
+bindings and the wizard pre-fills those package-managed dependency values. The application stores the
+selected Datum statistics URL in SQLite, but the managed StartOS value remains authoritative while the
+package supplies it; the separate Bitcoin, Electrs, and payout settings seed boot-time clients.
 
 Completing the wizard writes configuration and application secrets to SQLite and transitions the same
 daemon into normal operation. The controller starts in **DRY-RUN**, so proposed marketplace changes
@@ -84,20 +85,25 @@ The package also sets the following process environment variables in
 | `DB_PATH` | Places SQLite in the persistent `main` volume. |
 | `DASHBOARD_STATIC` | Selects the packaged dashboard asset directory. |
 | `APP_VERSION` | Exposes package build/version metadata to the application. |
-| `BHA_BITCOIND_RPC_URL` | Overrides the Bitcoin RPC URL in the boot-time integration configuration. |
-| `BHA_DATUM_API_URL` | Supplies the fresh-setup default for the database-backed Datum statistics URL. |
-| `BHA_ELECTRS_HOST` | Overrides the Electrs hostname used to construct the payout observer at boot. |
-| `BHA_ELECTRS_PORT` | Overrides the Electrs port used to construct the payout observer at boot. |
+| `BHA_BITCOIND_RPC_URL` | Supplies the SDK-resolved Bitcoin RPC bridge URL at boot. |
+| `BHA_DATUM_API_URL` | Supplies the SDK-resolved Datum statistics bridge URL. |
+| `BHA_ELECTRS_HOST` | Supplies the host from the SDK-resolved Electrs bridge address at boot. |
+| `BHA_ELECTRS_PORT` | Supplies the assigned port from the SDK-resolved Electrs bridge address at boot. |
 | `BHA_PAYOUT_SOURCE` | Selects Electrs in the boot-time integration configuration. |
 
-These variables contain routing and runtime values, not operator credentials. Four are boot-time
-integration overrides: `BHA_BITCOIND_RPC_URL`, `BHA_ELECTRS_HOST`, `BHA_ELECTRS_PORT`, and
-`BHA_PAYOUT_SOURCE`. The payout backend, Electrs endpoint, and Bitcoin client are constructed from that
-startup configuration, so a restart reconstructs them with the package-provided values.
+These variables contain routing and runtime values, not operator credentials. StartOS derives the
+dependency values from each installed package's published binding through
+`sdk.host.getBridgeAddress`; the wrapper does not assume a bridge port or use legacy service DNS.
+Four are boot-time integration overrides: `BHA_BITCOIND_RPC_URL`, `BHA_ELECTRS_HOST`,
+`BHA_ELECTRS_PORT`, and `BHA_PAYOUT_SOURCE`. The payout backend, Electrs endpoint, and Bitcoin client
+are constructed from that startup configuration, so a restart reconstructs them with the resolved
+package values.
 
 Datum is different. `BHA_DATUM_API_URL` pre-fills the fresh-setup value, which the wizard stores in
-SQLite. The Datum poller reads the saved URL on every poll. A dashboard change takes effect on the next
-poll, persists in SQLite, and remains effective after restart.
+SQLite, and remains authoritative on every poll while StartOS supplies it. This prevents a saved URL
+from retaining an obsolete assigned bridge port after a dependency change. Without that environment
+override, the Datum poller retains upstream behavior and reads dashboard changes from SQLite on every
+poll.
 
 ## Network Access and Interfaces
 
@@ -135,8 +141,10 @@ marketplace, pool, node, or payout services.
 
 ## Dependencies
 
-All three dependencies are required and declared as running services. The wrapper adds no separate
-dependency health checks and mounts no dependency volumes.
+All three dependencies are required and declared as running services. The wrapper resolves their
+published bindings to managed bridge addresses when StartOS generates the main action. Assigned bridge
+ports are deliberately not fixed in this package. The wrapper adds no separate dependency health checks
+and mounts no dependency volumes.
 
 | Package ID | Declared purpose |
 | --- | --- |
@@ -153,10 +161,11 @@ dependency health checks and mounts no dependency volumes.
    keep DRY-RUN enabled until targets, price ceilings, and observed decisions are correct.
 2. **Pool ingress is operator-managed.** The package does not expose a public Datum Stratum endpoint or
    configure router forwarding and dynamic DNS. Verify the exact public pool destination before LIVE.
-3. **Some integration overrides apply at startup.** The wrapper overlays the Bitcoin RPC URL, Electrs
-   endpoint, and Electrs payout selection when the daemon starts. A restart reconstructs those boot-time
-   integrations from package values. The Datum statistics URL is the exception: it is saved in SQLite,
-   read on every poll, and remains effective after restart. Bitcoin RPC credentials are not embedded.
+3. **Dependency endpoints are package-managed.** StartOS resolves the Bitcoin RPC, Electrs, and Datum
+   bindings and regenerates the main action when those bridge addresses change. The wrapper overlays the
+   Bitcoin RPC URL, Electrs endpoint, and Electrs payout selection when the daemon starts. The managed
+   Datum URL is preferred on every poll so saved configuration cannot retain an obsolete bridge port.
+   Bitcoin RPC credentials are not embedded.
 4. **The setup wizard is initially unauthenticated.** The application password takes effect after setup,
    so complete first-run setup from a trusted connection.
 5. **Uninstall removes persistent state.** Preserve the `main` volume with a backup before uninstalling
@@ -220,9 +229,9 @@ startup_integration_overrides:
     - BHA_PAYOUT_SOURCE
   applied: daemon-start
 datum_live_endpoint:
-  setup_default_env_var: BHA_DATUM_API_URL
-  storage: sqlite
+  managed_env_var: BHA_DATUM_API_URL
+  resolution: startos-sdk-bridge
+  precedence: managed-env-then-sqlite
   refresh: every-poll
-  persists_across_restart: true
 default_run_mode: DRY-RUN
 ```

@@ -69,6 +69,10 @@ assert_no_match \
     '\.startos([/:]|$)' \
     "StartOS runtime source must not dial deprecated .startos service names" \
     startos/*.ts
+assert_no_match \
+    '\.startos' \
+    "dashboard guidance must not recommend deprecated .startos service names" \
+    packages/dashboard/src/pages/*.tsx
 
 bridge_resolver_count="$(grep -Ec '\.getBridgeAddress' startos/main.ts || true)"
 assert_equal \

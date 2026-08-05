@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { DatumService } from './datum.js';
+import { DatumService, resolveDatumApiUrl } from './datum.js';
 
 function mockFetch(impl: () => unknown): void {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -17,6 +17,26 @@ const umbrelService = () =>
 
 afterEach(() => {
   vi.unstubAllGlobals();
+});
+
+describe('resolveDatumApiUrl', () => {
+  it('prefers the managed environment address over saved configuration', () => {
+    expect(resolveDatumApiUrl('http://saved.example:7152', {
+      BHA_DATUM_API_URL: 'http://10.0.3.1:18002',
+    })).toBe('http://10.0.3.1:18002');
+  });
+
+  it('uses saved configuration when no environment override exists', () => {
+    expect(resolveDatumApiUrl('http://saved.example:7152', {})).toBe(
+      'http://saved.example:7152',
+    );
+  });
+
+  it('treats an explicitly empty environment override as disabled', () => {
+    expect(resolveDatumApiUrl('http://saved.example:7152', {
+      BHA_DATUM_API_URL: '   ',
+    })).toBeNull();
+  });
 });
 
 describe('DatumService', () => {
