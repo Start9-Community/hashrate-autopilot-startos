@@ -65,6 +65,16 @@ assert_no_match \
     '^[[:space:]]*alerts[[:space:]]*:' \
     "SDK 2 manifest source must not declare the removed alerts field" \
     startos/manifest/index.ts
+assert_no_match \
+    '\.startos([/:]|$)' \
+    "StartOS runtime source must not dial deprecated .startos service names" \
+    startos/*.ts
+
+bridge_resolver_count="$(grep -Ec '\.getBridgeAddress' startos/main.ts || true)"
+assert_equal \
+    "$bridge_resolver_count" \
+    "3" \
+    "startos/main.ts must resolve all three dependency bindings through the SDK"
 
 assert_active_line \
     startos/versions/current.ts \
