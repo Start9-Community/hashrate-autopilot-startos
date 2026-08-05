@@ -40,6 +40,7 @@ action when the dependency later becomes available.
 
 - Unit-test resolved IPv4 and bracketed IPv6 Electrs addresses.
 - Unit-test omission of overrides for missing dependencies.
+- Include the StartOS wrapper as an isolated Vitest project.
 - Add a packaging regression check that rejects runtime `*.startos` service
   addresses and requires managed bridge resolution.
 - Run TypeScript checks, the full test suite, the Community Registry contract

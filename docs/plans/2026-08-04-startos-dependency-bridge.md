@@ -15,10 +15,11 @@
 **Files:**
 - Create: `startos/dependency-addresses.test.ts`
 - Create: `startos/dependency-addresses.ts`
+- Modify: `vitest.config.ts`
 
 **Step 1: Write the failing unit tests**
 
-Cover HTTP URL construction, Electrs host/port splitting, bracketed IPv6 parsing, and omission of overrides for null addresses.
+Add `startos` to the Vitest projects, then cover HTTP URL construction, Electrs host/port splitting, bracketed IPv6 parsing, and omission of overrides for null addresses.
 
 **Step 2: Verify RED**
 
@@ -39,7 +40,7 @@ Expected: all adapter tests pass.
 **Step 5: Commit**
 
 ```bash
-git add startos/dependency-addresses.ts startos/dependency-addresses.test.ts
+git add startos/dependency-addresses.ts startos/dependency-addresses.test.ts vitest.config.ts
 git commit -m "test: define StartOS dependency address mapping"
 ```
 
