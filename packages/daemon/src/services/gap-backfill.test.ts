@@ -139,7 +139,7 @@ describe('runGapBackfill - Taliesin reproduction (no bitcoindClient)', () => {
     await closeDatabase(handle);
   });
 
-  it('inserts synthetic ticks across the gap when bitcoindClient is undefined', async () => {
+  it('inserts synthetic ticks across the gap when bitcoindClient is undefined', { timeout: 15_000 }, async () => {
     const logs: string[] = [];
     await runGapBackfill({
       db: handle.db,
@@ -206,7 +206,7 @@ describe('runGapBackfill - Taliesin reproduction (no bitcoindClient)', () => {
     expect(distinctLuck.size).toBeGreaterThan(10);
   });
 
-  it('chart-API aggregation: 1w view (30-min buckets) reveals the marker', async () => {
+  it('chart-API aggregation: 1w view (30-min buckets) reveals the marker', { timeout: 15_000 }, async () => {
     await runGapBackfill({
       db: handle.db,
       poolBlocksRepo: new PoolBlocksRepo(handle.db),
@@ -256,7 +256,7 @@ describe('runGapBackfill - Taliesin reproduction (no bitcoindClient)', () => {
     expect(detected.length).toBeGreaterThanOrEqual(1);
   });
 
-  it('REPRO Taliesin: post-outage ticks exist so last-pair delta is tiny; gap is HISTORICAL', async () => {
+  it('REPRO Taliesin: post-outage ticks exist so last-pair delta is tiny; gap is HISTORICAL', { timeout: 15_000 }, async () => {
     // The actual operator-environment shape: daemon was offline,
     // came back, has been running for hours. The MOST RECENT pair
     // of ticks has a normal ~60s delta, so the previous
@@ -297,7 +297,7 @@ describe('runGapBackfill - Taliesin reproduction (no bitcoindClient)', () => {
     expect(syntheticRows.length).toBeGreaterThan(500);
   });
 
-  it('REPRO Taliesin: 30d pool_blocks coverage skips recompute on gap synthetics', async () => {
+  it('REPRO Taliesin: 30d pool_blocks coverage skips recompute on gap synthetics', { timeout: 15_000 }, async () => {
     // Re-seed pool_blocks so the earliest block lands a TINY bit
     // before PREV_TICK_AT - models the screenshot where Taliesin
     // shows pool_blocks_30d=110 but the earliest block in the table

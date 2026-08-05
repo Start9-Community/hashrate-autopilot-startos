@@ -72,7 +72,7 @@ RUN pnpm install --frozen-lockfile
 # Now copy source and build everything (daemon TS → JS, dashboard
 # Vite bundle, migrations stage-copied into dist).
 COPY . .
-RUN pnpm build
+RUN pnpm -r run build
 
 # NOTE: we intentionally do NOT run `pnpm prune --prod` here. In a
 # pnpm workspace, the daemon resolves sibling packages via symlinks

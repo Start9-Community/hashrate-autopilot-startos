@@ -52,7 +52,16 @@ required_files=(
     .github/workflows/build.yml
     .github/workflows/tagAndRelease.yml
     .github/workflows/release.yml
+    AGENTS.md
+    CLAUDE.md
+    LICENSE
+    README.md
+    TODO.md
+    UPDATING.md
+    assets/README.md
+    instructions.md
     package-lock.json
+    startos/manifest/index.ts
     startos/versions/current.ts
     startos/versions/index.ts
 )
@@ -61,6 +70,52 @@ for path in "${required_files[@]}"; do
 done
 
 assert_absent .github/workflows/startos-artifacts.yml
+
+claude_import="$(tr -d '\r' < CLAUDE.md)"
+assert_equal \
+    "$claude_import" \
+    "@AGENTS.md" \
+    "CLAUDE.md must contain only the package AGENTS.md import"
+
+stale_repo_path="github.com/mdubore/hashrate""9"
+if stale_repo_urls="$(git grep -nF "$stale_repo_path" -- ':!docs/plans/*' || true)"; then
+    test -z "$stale_repo_urls" || fail "tracked package files must use the renamed repository URL; matches: $stale_repo_urls"
+fi
+
+canonical_repo="https://github.com/mdubore/hashrate-autopilot-startos"
+manifest_package_repo="$(sed -n "s/^[[:space:]]*packageRepo: '\([^']*\)'.*/\1/p" startos/manifest/index.ts)"
+manifest_marketing_url="$(sed -n "s/^[[:space:]]*marketingUrl: '\([^']*\)'.*/\1/p" startos/manifest/index.ts)"
+assert_equal "$manifest_package_repo" "$canonical_repo" "manifest packageRepo must use the renamed repository"
+assert_equal "$manifest_marketing_url" "$canonical_repo" "manifest marketingUrl must use the renamed repository"
+
+package_repo="$(node -p "require('./package.json').repository?.url ?? ''")"
+assert_equal \
+    "$package_repo" \
+    "${canonical_repo}.git" \
+    "package.json repository must use the renamed repository"
+
+root_build_script="$(node -p "require('./package.json').scripts?.build ?? ''")"
+assert_equal \
+    "$root_build_script" \
+    "./scripts/build-release-inputs.sh" \
+    "the root package build must continue producing StartOS release inputs"
+assert_active_line \
+    Dockerfile \
+    '^[[:space:]]*RUN[[:space:]]+pnpm[[:space:]]+-r[[:space:]]+run[[:space:]]+build[[:space:]]*$' \
+    "the ordinary Docker image must use the upstream workspace build path"
+
+manual_release_tag="$(
+    set -a
+    # shellcheck disable=SC1091
+    source .github/release-profile.env
+    release_version="$(eval "$RELEASE_VERSION_COMMAND")"
+    printf '%s%s%s' "$RELEASE_TAG_PREFIX" "$release_version" "$RELEASE_TAG_SUFFIX"
+)"
+assert_equal \
+    "$manual_release_tag" \
+    "v1.17.4_0" \
+    "manual release metadata must derive the canonical StartOS tag"
+
 assert_no_match \
     '^[[:space:]]*alerts[[:space:]]*:' \
     "SDK 2 manifest source must not declare the removed alerts field" \
@@ -133,3 +188,10 @@ assert_equal \
     "$release_tags" \
     '["v*_*"]' \
     "Community release workflow push tags must contain only v*_*"
+
+for workflow in .github/workflows/tagAndRelease.yml .github/workflows/release.yml; do
+    assert_active_line \
+        "$workflow" \
+        "^[[:space:]]*if:[[:space:]]+github\\.repository_owner[[:space:]]*==[[:space:]]*'Start9-Community'[[:space:]]*$" \
+        "$workflow must publish only from the Start9-Community fork"
+done
