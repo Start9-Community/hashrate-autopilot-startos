@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-08-06
+
+### `[Infra]` Weekly dependency refresh, two more advisories closed
+
+Took the dev-deps group (vite 8.2.0, playwright 1.62.1, plugin-react, React types), the CodeQL action pin, and fastify 5.11.2. Two advisories are closed by pinning patched transitive dependencies: `fast-uri` (high, needs 4.1.2) and `brace-expansion` (high, needs 2.1.3). The better-sqlite3 13 major offered alongside fastify was declined again - it still cannot start the daemon on arm64, for the reasons recorded on 2026-07-29. No user-visible behavior change.
+
 ## 2026-07-29
 
 ### `[Fix]` Hold better-sqlite3 at 12.x - 13.x cannot start the daemon on arm64
