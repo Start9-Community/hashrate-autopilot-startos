@@ -2,6 +2,10 @@
 
 ## 2026-08-06
 
+### `[Release]` v1.17.5
+
+Security-maintenance patch since v1.17.4, with no user-visible behavior change. Eight dependency advisories are closed: `react-router`, `js-yaml`, `find-my-way`, `fast-uri` (twice), `@fastify/static` (twice), and `brace-expansion`. Three of those had no upstream release carrying the fix and are pinned via workspace overrides. The dashboard also moves to React Router v8, which removes the `react-router-dom` package but leaves every API the dashboard uses unchanged. better-sqlite3 is deliberately held at 12.x - its 13.x prebuilt binary cannot start the daemon on arm64.
+
 ### `[Infra]` Weekly dependency refresh, two more advisories closed
 
 Took the dev-deps group (vite 8.2.0, playwright 1.62.1, plugin-react, React types), the CodeQL action pin, and fastify 5.11.2. Two advisories are closed by pinning patched transitive dependencies: `fast-uri` (high, needs 4.1.2) and `brace-expansion` (high, needs 2.1.3). The better-sqlite3 13 major offered alongside fastify was declined again - it still cannot start the daemon on arm64, for the reasons recorded on 2026-07-29. No user-visible behavior change.
