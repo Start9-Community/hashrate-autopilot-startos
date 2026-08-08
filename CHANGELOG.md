@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-08-08
+
+### `[Fix]` Dashboard API no longer accepts cross-origin calls from other websites (#358)
+
+The daemon advertised that any website could make credentialed requests to its API and read the replies. Every endpoint still required your dashboard password, but browsers attach saved credentials automatically, so while you had the dashboard open another site could have driven authenticated endpoints in the background and read the results. The most useful one to abuse opens a connection to any address you name, which would let a page map the network your node sits on. The API now only answers browser requests that come from the dashboard itself. Nothing changes for how you reach the dashboard - a LAN address, a `.local` name, dynamic DNS, a VPN or a reverse proxy all keep working - and scripts or monitoring that call the API directly are unaffected.
+
 ## 2026-08-06
 
 ### `[Release]` v1.17.5

@@ -164,15 +164,59 @@ export interface HttpServer {
   stop(): Promise<void>;
 }
 
+/**
+ * Same-origin CORS policy (#358). Exported so the tests exercise the
+ * policy the server actually registers rather than a re-implementation.
+ *
+ * A request is same-origin when the host in its `Origin` header matches
+ * the `Host` it arrived on. Requests with no `Origin` (curl, scripts,
+ * monitoring) get no CORS headers and are unaffected - CORS is enforced
+ * by browsers, never by the server.
+ */
+export const sameOriginCorsDelegator =
+  () =>
+  (
+    req: { headers: { origin?: string | undefined; host?: string | undefined } },
+    cb: (err: Error | null, opts: { origin: boolean; credentials: boolean }) => void,
+  ): void => {
+    const origin = req.headers.origin;
+    if (!origin) {
+      cb(null, { origin: false, credentials: true });
+      return;
+    }
+    let sameOrigin: boolean;
+    try {
+      sameOrigin = new URL(origin).host === req.headers.host;
+    } catch {
+      // Malformed Origin header - treat as cross-origin.
+      sameOrigin = false;
+    }
+    cb(null, { origin: sameOrigin, credentials: true });
+  };
+
 export async function createHttpServer(deps: HttpServerDeps): Promise<HttpServer> {
   const app = Fastify({ logger: false, disableRequestLogging: true });
 
-  // CORS only matters for dev: dashboard Vite dev server on :5173 calling
-  // daemon on :3000. In prod they're same-origin.
-  await app.register(fastifyCors, {
-    origin: true,
-    credentials: true,
-  });
+  // CORS: same-origin only (#358). Nothing legitimate is cross-origin -
+  // in production Fastify serves the dashboard and the API from one
+  // origin, and in dev the Vite config proxies /api server-side
+  // (changeOrigin), so the browser only ever talks to Vite. The previous
+  // `origin: true` reflected ANY origin and, paired with
+  // `credentials: true`, told browsers that any website may make
+  // credentialed calls here and read the replies. Browsers attach cached
+  // HTTP-auth credentials to cross-origin fetches, so while an operator
+  // had a live dashboard session another tab could drive authenticated
+  // endpoints - most usefully POST /api/electrs/test, which opens a TCP
+  // connection to an arbitrary host:port and is thus a scanner for the
+  // daemon's network (CodeQL js/request-forgery).
+  //
+  // Matching on Host rather than an allowlist is deliberate: operators
+  // reach the dashboard on a LAN IP, a .local name, a dynamic-DNS
+  // hostname, a VPN address or through a reverse proxy, and all of those
+  // are same-origin with the page that issued the request. Requests with
+  // no Origin header (curl, scripts, monitoring) are untouched - CORS is
+  // a browser mechanism and never gated them.
+  await app.register(fastifyCors, sameOriginCorsDelegator);
 
   // Response compression. /api/metrics returns up to multi-MB JSON
   // bodies re-polled every minute; on a remote/Umbrel link the
