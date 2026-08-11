@@ -900,12 +900,22 @@ export class TickMetricsRepo {
    *   - cur < residualThresholdSat AND next < residualThresholdSat
    *     (a real payout leaves residual near zero on BOTH ticks)
    *   - next < prev * (1 - dropFraction) (the balance did not bounce
-   *     back - the glitch discriminator)
+   *     back on the very next reading)
+   *   - no reading inside recoveryWindowMs after the drop climbs back
+   *     to recoveryFraction of the pre-drop balance (#362 - the real
+   *     glitch discriminator). The `next <` gate above only inspects
+   *     ONE reading ahead, so a two-tick glitch that recovers on the
+   *     third tick slipped straight through it.
+   *   - every reading involved is >= 0 (#362). A negative unpaid
+   *     balance is impossible, but a stored one used to satisfy each
+   *     upper-bounded gate trivially and inflate the payout amount
+   *     via `prev - cur`.
    *
    * NULL readings (Ocean outage, pre-#89 rows, the bogus-value
    * cleanup) are bridged over: LAG/LEAD run on the non-null series
    * only, so a drop across daemon downtime is still one candidate at
-   * the first low tick after the gap.
+   * the first low tick after the gap. Negative readings are excluded
+   * from the series the same way, so they bridge rather than split it.
    *
    * Window functions keep the scan in SQLite - the full-history pass
    * walks the whole table without materialising it in JS.
@@ -916,6 +926,8 @@ export class TickMetricsRepo {
       dropFraction: number;
       residualThresholdSat: number;
       minPreDropSat: number;
+      recoveryWindowMs: number;
+      recoveryFraction: number;
     },
   ): Promise<Array<{ tick_at: number; pre_drop_unpaid_sat: number; post_drop_unpaid_sat: number }>> {
     // The window functions only see rows from `innerSince` on, so the
@@ -927,7 +939,7 @@ export class TickMetricsRepo {
     const DAY = 24 * 60 * 60 * 1000;
     const innerSince = sinceMs > 0 ? sinceMs - 4 * DAY : 0;
     const queryText = `
-      SELECT tick_at, prev_unpaid AS pre_drop_unpaid_sat, cur AS post_drop_unpaid_sat
+      SELECT d.tick_at, d.prev_unpaid AS pre_drop_unpaid_sat, d.cur AS post_drop_unpaid_sat
       FROM (
         SELECT
           tick_at,
@@ -936,18 +948,28 @@ export class TickMetricsRepo {
           LEAD(ocean_unpaid_sat) OVER w AS next_unpaid
         FROM tick_metrics
         WHERE ocean_unpaid_sat IS NOT NULL
+          AND ocean_unpaid_sat >= 0
           AND tick_at >= ${innerSince}
         WINDOW w AS (ORDER BY tick_at)
-      )
-      WHERE tick_at >= ${sinceMs}
-        AND prev_unpaid IS NOT NULL
-        AND next_unpaid IS NOT NULL
-        AND prev_unpaid >= ${opts.minPreDropSat}
-        AND cur < ${opts.residualThresholdSat}
-        AND next_unpaid < ${opts.residualThresholdSat}
-        AND (prev_unpaid - cur) * 1.0 / prev_unpaid > ${opts.dropFraction}
-        AND next_unpaid < prev_unpaid * ${1 - opts.dropFraction}
-      ORDER BY tick_at ASC
+      ) AS d
+      WHERE d.tick_at >= ${sinceMs}
+        AND d.prev_unpaid IS NOT NULL
+        AND d.next_unpaid IS NOT NULL
+        AND d.prev_unpaid >= ${opts.minPreDropSat}
+        AND d.cur >= 0
+        AND d.next_unpaid >= 0
+        AND d.cur < ${opts.residualThresholdSat}
+        AND d.next_unpaid < ${opts.residualThresholdSat}
+        AND (d.prev_unpaid - d.cur) * 1.0 / d.prev_unpaid > ${opts.dropFraction}
+        AND d.next_unpaid < d.prev_unpaid * ${1 - opts.dropFraction}
+        AND COALESCE((
+          SELECT MAX(t2.ocean_unpaid_sat)
+          FROM tick_metrics t2
+          WHERE t2.ocean_unpaid_sat IS NOT NULL
+            AND t2.tick_at > d.tick_at
+            AND t2.tick_at <= d.tick_at + ${opts.recoveryWindowMs}
+        ), 0) < d.prev_unpaid * ${opts.recoveryFraction}
+      ORDER BY d.tick_at ASC
     `;
     const res = await sql.raw(queryText).execute(this.db);
     const rows = (res as unknown as {

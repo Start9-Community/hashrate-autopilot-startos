@@ -320,6 +320,86 @@ describe('DeducedPayoutsScanner (#343)', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]!.net_sat).toBe(200_000);
   });
+  /**
+   * #362: transient readings used to mint permanent phantom payouts.
+   * The reported case is reproduced verbatim from the operator's own
+   * tick_metrics export - a negative reading is impossible, but it
+   * cleared every gate (all of which bounded the reading from above
+   * only) and was absorbed into the amount as `prev - (-1)`.
+   */
+  describe('transient dips do not mint phantom payouts (#362)', () => {
+    it('REPRO: the reported -1 glitch produces no deduced payout', async () => {
+      const dropAt = 10 * DAY;
+      // Exact shape from the report: steady, two ticks at -1, immediate
+      // recovery to the same balance, then normal accrual.
+      await tick(dropAt - 2 * MIN, 679_776);
+      await tick(dropAt - MIN, 679_776);
+      await tick(dropAt, -1);
+      await tick(dropAt + MIN, -1);
+      await tick(dropAt + 2 * MIN, 679_776);
+      await tick(dropAt + 3 * MIN, 690_061);
+
+      await scanner(12 * DAY).scan(true);
+
+      const rows = await payoutsRepo.listForAddressSince(ADDR, 0);
+      expect(rows).toHaveLength(0);
+      // The phantom was 679,777 sat (679,776 - (-1)); collected stays 0.
+      expect(await payoutsRepo.sumNetUpTo(ADDR, 13 * DAY)).toBe(0);
+    });
+
+    it('rejects a positive dip that bounces back inside the recovery window', async () => {
+      const dropAt = 10 * DAY;
+      // No negative involved: Ocean briefly reports ~0 for two ticks,
+      // then the balance returns. The old `next <` gate saw only one
+      // reading ahead, so a two-tick dip slipped through.
+      await tick(dropAt - MIN, 700_000);
+      await tick(dropAt, 0);
+      await tick(dropAt + MIN, 0);
+      await tick(dropAt + 2 * MIN, 700_000);
+
+      await scanner(12 * DAY).scan(true);
+
+      expect(await payoutsRepo.listForAddressSince(ADDR, 0)).toHaveLength(0);
+    });
+
+    it('still deduces a real payout whose balance re-accrues after the window', async () => {
+      const dropAt = 10 * DAY;
+      await tick(dropAt - MIN, 700_000);
+      await tick(dropAt, 0);
+      await tick(dropAt + MIN, 120);
+      // Real re-accrual: back near the old level only well beyond the
+      // 30-minute recovery window, which must NOT disqualify the payout.
+      await tick(dropAt + 45 * MIN, 300_000);
+      await tick(dropAt + 90 * MIN, 700_500);
+
+      await scanner(12 * DAY).scan(true);
+
+      const rows = await payoutsRepo.listForAddressSince(ADDR, 0);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]!.net_sat).toBe(700_000);
+      expect(rows[0]!.ts).toBe(dropAt);
+    });
+
+    it('bridges over a negative reading instead of splitting the series', async () => {
+      const dropAt = 10 * DAY;
+      // A glitch reading sits between two good ones BEFORE a genuine
+      // payout. Excluding negatives must close the series up, leaving
+      // the real drop detectable with its correct amount.
+      await tick(dropAt - 3 * MIN, 500_000);
+      await tick(dropAt - 2 * MIN, -1);
+      await tick(dropAt - MIN, 500_000);
+      await tick(dropAt, 0);
+      await tick(dropAt + MIN, 90);
+      await tick(dropAt + 2 * MIN, 210);
+
+      await scanner(12 * DAY).scan(true);
+
+      const rows = await payoutsRepo.listForAddressSince(ADDR, 0);
+      expect(rows).toHaveLength(1);
+      // 500,000 - 0, NOT 500,001 (which is what absorbing the -1 gave).
+      expect(rows[0]!.net_sat).toBe(500_000);
+    });
+  });
 });
 
 describe('collapseCooldown', () => {
@@ -338,4 +418,5 @@ describe('collapseCooldown', () => {
     expect(collapsed[0]!.post_drop_unpaid_sat).toBe(0);
     expect(collapsed[1]!.post_drop_unpaid_sat).toBe(50);
   });
+
 });

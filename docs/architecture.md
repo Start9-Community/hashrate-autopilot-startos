@@ -970,7 +970,13 @@ concern (not by order; the file names are authoritative):
   DeducedPayoutsScanner infers them from confirmed drops of
   `tick_metrics.ocean_unpaid_sat` to ~zero and stores them here with
   `deduced = 1` and rail `'unknown'` -> `'lightning'` (superseded by the
-  real settlement if one ever matches).
+  real settlement if one ever matches). 0121 (#362) repairs installs
+  where a negative `ocean_unpaid_sat` reading minted a phantom deduced
+  payout: it deletes deduced rows whose drop tick sits within the
+  scanner's 30-minute cooldown of a negative reading, then nulls the
+  negatives. Targeted rather than "delete all and re-derive" so the
+  AUTOINCREMENT ids of legitimate deduced rows survive and their
+  `payout:<id>` Timeline notes stay attached.
 
 - **Gap-backfill + boot-time payout refresh (0104-0105):** 0104 (#241)
   adds `tick_metrics.synthetic INTEGER NOT NULL DEFAULT 0` marking rows

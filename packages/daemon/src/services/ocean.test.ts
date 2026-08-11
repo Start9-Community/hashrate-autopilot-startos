@@ -53,6 +53,26 @@ describe('OceanClient (JSON API)', () => {
     expect(stats!.unpaid_sat).toBe(385_090);
   });
 
+  it('#362: reports a negative unpaid balance as unknown, not as a value', async () => {
+    // A negative unpaid balance is impossible. Storing one used to read
+    // as a >100% balance drop downstream, so two consecutive negatives
+    // minted a permanent phantom Lightning payout in P&L.
+    const client = createOceanClient({
+      fetch: fakeApiFetch({ statsnap: { result: { ...STATSNAP.result, unpaid: '-0.00000001' } } }),
+    });
+    const stats = await client.fetchStats('bc1qaddress');
+    expect(stats).not.toBeNull();
+    expect(stats!.unpaid_sat).toBeNull();
+  });
+
+  it('#362: keeps a legitimate zero balance as zero, not unknown', async () => {
+    const client = createOceanClient({
+      fetch: fakeApiFetch({ statsnap: { result: { ...STATSNAP.result, unpaid: '0.00000000' } } }),
+    });
+    const stats = await client.fetchStats('bc1qaddress');
+    expect(stats!.unpaid_sat).toBe(0);
+  });
+
   it('parses estimated next-block earnings', async () => {
     const client = createOceanClient({ fetch: fakeApiFetch() });
     const stats = await client.fetchStats('bc1qaddress');

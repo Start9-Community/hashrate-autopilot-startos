@@ -542,7 +542,14 @@ Persistent ledger (SQLite) of:
   empirically it does not, and Ocean support confirmed (2026-07-15) the API has no way to fetch Lightning payouts
   yet.** Lightning payouts are therefore **deduced** by the `DeducedPayoutsScanner` (daemon-internal): a sharp
   drop of `tick_metrics.ocean_unpaid_sat` (>30% of the previous reading, residual below the 1,048,576-sat
-  threshold) confirmed by **two consecutive low ticks** (a single-tick API glitch never mints a payout) with no
+  threshold) confirmed by **two consecutive low ticks** and by the balance **not climbing back to 90% of its
+  pre-drop level within 30 minutes** (#362 - after a real payout the balance restarts near zero and re-accrues
+  over hours, so a quick return to the old level is a reporting glitch; the two-tick gate alone only inspected
+  one reading ahead and so let a two-tick glitch through). Every reading involved must be **non-negative**: a
+  negative unpaid balance is impossible, and one that reached the database used to clear each gate trivially
+  (they bound readings from above only) and inflate the amount via `pre - cur`. Negative readings are now
+  rejected at ingest and excluded from the series, and migration 0121 repairs installs that stored them. A
+  qualifying drop with no
   earnpay settlement matching within ±24h and ±25% amount is inserted into `ocean_payouts` with `deduced = 1`
   (migration 0120) and the **balance decrease** across the drop (pre-drop reading minus the residual left on the drop tick) as its approximate amount - not the full pre-drop reading, since a Lightning payout can settle the older balance while leaving a freshly-credited block unpaid, and that residual is not part of the payout (#343). A multi-step drop within the 30-minute cooldown folds into one payout whose amount spans the whole group. Already-stored deduced rows whose amount predates this correction are repaired in place on the next scan, so history self-corrects without a hard reset. Deduced rows start as rail
   `'unknown'`; past the 24h correction window with no match they resolve to `'lightning'` by elimination, and a
