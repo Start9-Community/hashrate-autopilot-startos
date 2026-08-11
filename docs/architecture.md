@@ -310,6 +310,18 @@ Two tiers of config:
 - **Routing**: `react-router`. Pages: `/status`, `/config`, `/alerts`, `/setup`, `/login`. Per-decision inspection is on the Status page: clicking a marker on the price chart pins its tooltip and exposes a "copy JSON" button that copies the underlying bid event. The `/alerts` page is a chronological audit trail of every notification the daemon evaluated (see spec.md 12.3).
 - **Auth**: single shared password, checked by Fastify middleware; session cookie. Tailscale/VPN is the real
   perimeter; the password is a second factor against someone on the LAN.
+- **CORS: same-origin only (#358).** The `Origin` header is reflected back only when its host matches the `Host`
+  the request arrived on; any other origin gets no CORS headers, and requests carrying no `Origin` (curl, scripts,
+  monitoring) are untouched, since CORS is enforced by browsers and never gated them. Matching on `Host` rather
+  than a fixed allowlist is deliberate: operators reach the dashboard on a LAN IP, a `.local` name, a dynamic-DNS
+  hostname, a VPN address or through a reverse proxy, and in every one of those cases the page and the API share
+  an origin, so a static list would break real setups. Nothing legitimate is cross-origin - in production Fastify
+  serves the dashboard and the API from one origin, and in development the Vite config proxies `/api` server-side
+  (`changeOrigin`), so the browser only ever talks to Vite. The previous `origin: true` reflected ANY origin and,
+  paired with `credentials: true`, told browsers that any website could make credentialed calls and read the
+  replies; because browsers attach cached HTTP-auth credentials to cross-origin fetches, a page in another tab
+  could drive authenticated endpoints while an operator had a live session. The policy is exported as
+  `sameOriginCorsDelegator` from `http/server.ts` so its tests exercise the registered code rather than a copy.
 - **Live updates**: polling via TanStack Query (`refetchInterval` ~5s on status screens). No WebSocket/SSE in v1.
 
 ## 5. Data model (SQLite, better-sqlite3)
