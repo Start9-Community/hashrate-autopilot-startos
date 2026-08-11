@@ -2,6 +2,10 @@
 
 ## 2026-08-11
 
+### `[Release]` v1.17.6
+
+Two fixes since v1.17.5. Profit & Loss no longer invents Lightning payouts from a brief glitch in Ocean's reported unpaid balance - previously even the hard reset could not clear one, because the entry was recalculated from tick history on every scan; existing false entries are deleted on upgrade and cannot return (#362). The dashboard API now only answers browser requests originating from the dashboard itself, closing a path where another site could act on your behalf using your saved login while you had the dashboard open (#358). Also includes routine dependency maintenance. No new settings and no user-visible behavior change beyond those two fixes.
+
 ### `[Fix]` Phantom Lightning payouts removed from Profit & Loss (#362)
 
 A brief glitch in Ocean's reported unpaid balance could invent a Lightning payout you never received, inflating your "collected" total and understating your loss rate. Two bad readings in a row were enough, and because the entry was recalculated from your tick history on every scan, even the Profit & Loss hard reset could not remove it - it came straight back. Impossible readings (a negative balance) are now discarded rather than stored, and a drop only counts as a payout if the balance stays down: if it climbs back near its previous level within half an hour, it is treated as a reporting glitch instead. Existing phantom entries are deleted on upgrade, and the readings behind them are cleared so they cannot be recreated. Genuine payouts, and any personal notes you attached to them, are left untouched.
