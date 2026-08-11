@@ -2,6 +2,10 @@
 
 ## 2026-08-11
 
+### `[Infra]` js-yaml pinned to 4.3.1 for a newly published advisory
+
+A new advisory (quadratic CPU consumption resolving `!!omap`) covers every js-yaml below 4.3.1, including the 4.3.0 the workspace override was holding since the previous advisory. The pin moves to `>=4.3.1 <5`. Reachable only through the OpenAPI type-generation tooling, which is a development dependency, so nothing in the running daemon or dashboard is affected.
+
 ### `[Release]` v1.17.6
 
 Two fixes since v1.17.5. Profit & Loss no longer invents Lightning payouts from a brief glitch in Ocean's reported unpaid balance - previously even the hard reset could not clear one, because the entry was recalculated from tick history on every scan; existing false entries are deleted on upgrade and cannot return (#362). The dashboard API now only answers browser requests originating from the dashboard itself, closing a path where another site could act on your behalf using your saved login while you had the dashboard open (#358). Also includes routine dependency maintenance. No new settings and no user-visible behavior change beyond those two fixes.
