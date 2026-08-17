@@ -20,6 +20,8 @@ export interface ConfigTable {
   minimum_floor_hashrate_ph: number;
   destination_pool_url: string;
   destination_pool_worker_name: string;
+  /** #363: which Ocean sharelog to follow since the 8/8 chain split. */
+  ocean_chain: 'mainstream' | 'bip110';
   max_bid_sat_per_eh_day: number;
   /** @deprecated Legacy column - kept for NOT NULL; ignored by the app. */
   emergency_max_bid_sat_per_eh_day: number;
@@ -447,6 +449,12 @@ export interface TickMetricsTable {
   braiins_total_spent_sat: number | null;
   /** Ocean unpaid earnings at tick, sat. Sharp drop = TIDES payout. */
   ocean_unpaid_sat: number | null;
+  /** #363: which Ocean sharelog this tick's Ocean reading came from
+   * ('mainstream' | 'bip110'). Null = no Ocean reading this tick, or
+   * a pre-split row (historically mainstream; readers COALESCE). The
+   * deduced-payouts drop scan partitions by this so a chain flip's
+   * unpaid discontinuity never reads as a payout. */
+  ocean_chain: string | null;
   /** #102: cumulative on-chain payout total at tick, sat. Monotonically
    * non-decreasing (sum of reward_events.value_sat, reorged=0, detected_at <= tick_at).
    * Pair with ocean_unpaid_sat for the lifetime-earnings derivation. */

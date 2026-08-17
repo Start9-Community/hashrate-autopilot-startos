@@ -46,6 +46,9 @@ export interface InsertTickMetricArgs {
   readonly braiins_total_deposited_sat: number | null;
   readonly braiins_total_spent_sat: number | null;
   readonly ocean_unpaid_sat: number | null;
+  /** #363: sharelog the Ocean reading came from ('mainstream' |
+   * 'bip110'); null = no Ocean reading this tick or pre-split row. */
+  readonly ocean_chain: string | null;
   /** #102: cumulative on-chain payout total at tick, sat. */
   readonly paid_total_sat: number | null;
   readonly btc_usd_price: number | null;
@@ -938,11 +941,18 @@ export class TickMetricsRepo {
     // picked up by the daily full-history pass instead.
     const DAY = 24 * 60 * 60 * 1000;
     const innerSince = sinceMs > 0 ? sinceMs - 4 * DAY : 0;
+    // #363: the window partitions by the sharelog chain the reading
+    // came from (NULL rows predate the column and were always
+    // mainstream). Readings from different chains never become
+    // LAG/LEAD neighbours, so an `ocean_chain` config flip's balance
+    // discontinuity (e.g. BIP110 0.19 BTC -> mainstream 0.009 BTC,
+    // a "95% drop below residual") can never mint a phantom payout.
     const queryText = `
       SELECT d.tick_at, d.prev_unpaid AS pre_drop_unpaid_sat, d.cur AS post_drop_unpaid_sat
       FROM (
         SELECT
           tick_at,
+          COALESCE(ocean_chain, 'mainstream') AS chain,
           ocean_unpaid_sat AS cur,
           LAG(ocean_unpaid_sat) OVER w AS prev_unpaid,
           LEAD(ocean_unpaid_sat) OVER w AS next_unpaid
@@ -950,7 +960,7 @@ export class TickMetricsRepo {
         WHERE ocean_unpaid_sat IS NOT NULL
           AND ocean_unpaid_sat >= 0
           AND tick_at >= ${innerSince}
-        WINDOW w AS (ORDER BY tick_at)
+        WINDOW w AS (PARTITION BY COALESCE(ocean_chain, 'mainstream') ORDER BY tick_at)
       ) AS d
       WHERE d.tick_at >= ${sinceMs}
         AND d.prev_unpaid IS NOT NULL
@@ -966,6 +976,7 @@ export class TickMetricsRepo {
           SELECT MAX(t2.ocean_unpaid_sat)
           FROM tick_metrics t2
           WHERE t2.ocean_unpaid_sat IS NOT NULL
+            AND COALESCE(t2.ocean_chain, 'mainstream') = d.chain
             AND t2.tick_at > d.tick_at
             AND t2.tick_at <= d.tick_at + ${opts.recoveryWindowMs}
         ), 0) < d.prev_unpaid * ${opts.recoveryFraction}

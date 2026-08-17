@@ -37,7 +37,7 @@ import { BraiinsService } from './services/braiins-service.js';
 import { DatumPoller } from './services/datum.js';
 import { HashpriceCache } from './services/hashprice-cache.js';
 import { HashpriceRefresher } from './services/hashprice-refresher.js';
-import { createOceanClient } from './services/ocean.js';
+import { createChainAwareOceanClient } from './services/ocean-bip110.js';
 import { DeducedPayoutsScanner } from './services/deduced-payouts.js';
 import { OceanPayoutsService } from './services/ocean-payouts-service.js';
 import { PayoutObserver } from './services/payout-observer.js';
@@ -617,7 +617,13 @@ async function bootOperational(
   // `state.ocean_hashrate_ph`, issue #36) and the /api/ocean HTTP
   // route. The internal 60 s cache means both callers share one
   // underlying HTTP round-trip per tick instead of firing two.
-  const oceanClient = createOceanClient();
+  // #363: chain-aware since the 8/8 split - dispatches to the JSON
+  // API (mainstream) or the bip110.ocean.xyz scraper per the live
+  // `ocean_chain` config value, read on every call so a dashboard
+  // save takes effect within one cache TTL, no restart needed.
+  const oceanClient = createChainAwareOceanClient({
+    getChain: () => cfgRefHolder.value.ocean_chain,
+  });
 
   // #323: earnpay-based payout tracking. Keeps `ocean_payouts` in sync
   // with Ocean's authoritative settlement list (on-chain + Lightning),
@@ -1212,6 +1218,43 @@ async function bootOperational(
       if (ddnsChanged) {
         log('[ddns] config changed, kicking immediate tick');
         void ddnsUpdater.tick();
+      }
+      // #363: when the Ocean chain flips, the pool_blocks table holds
+      // the OTHER chain's blocks - and post-fork heights exist on both
+      // chains with different hashes, so leaving them in place means
+      // silent cross-chain upsert collisions (height is the PK). Wipe
+      // and re-backfill from the newly selected chain's source. The
+      // pre-fork history is identical on both chains, so most of the
+      // table comes back unchanged. Historical tick_metrics luck
+      // snapshots are left alone here; the boot-time recompute will
+      // eventually re-derive them from the new chain's table, which
+      // for a real chain-switcher (whose old-era counts are mostly
+      // pre-fork = shared) is close to a no-op. Payout ledgers are
+      // NOT wiped: bip110 settlements have distinct txids and simply
+      // coexist - mixing is documented, same family of accepted
+      // limitation as an address change mid-history.
+      const chainChanged =
+        prevCfg !== null && prevCfg.ocean_chain !== newCfg.ocean_chain;
+      if (chainChanged) {
+        log(
+          `[ocean] chain changed from ${prevCfg!.ocean_chain} to ` +
+            `${newCfg.ocean_chain}; wiping pool_blocks and re-backfilling`,
+        );
+        void (async () => {
+          try {
+            await handle.db.deleteFrom('pool_blocks').execute();
+            await runPoolBlocksBackfill({
+              oceanClient,
+              poolBlocksRepo,
+              db: handle.db,
+              log: (m) => log(m),
+            });
+          } catch (err) {
+            log(
+              `[ocean] post-chain-change pool_blocks rebuild failed: ${(err as Error).message}`,
+            );
+          }
+        })();
       }
       // #240: when the payout address changes, the existing
       // reward_events rows belong to the old address and the

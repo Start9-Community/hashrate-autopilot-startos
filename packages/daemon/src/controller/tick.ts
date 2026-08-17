@@ -250,6 +250,7 @@ export class Controller {
         braiins_total_deposited_sat: state.braiins_total_deposited_sat,
         braiins_total_spent_sat: state.braiins_total_spent_sat,
         ocean_unpaid_sat: state.ocean_unpaid_sat,
+        ocean_chain: state.ocean_chain,
         paid_total_sat: state.paid_total_sat,
         btc_usd_price: state.btc_usd_price,
         btc_usd_price_source: state.btc_usd_price_source,

@@ -203,6 +203,28 @@ function useSections(): Section[] {
             fullWidth: true,
           },
           {
+            // #363: since the 8/8 chain split Ocean keeps separate
+            // stats per chain; a BIP110 miner reads as "no such user"
+            // on the mainstream API, so their received hashrate shows 0
+            // unless the daemon follows the right sharelog.
+            key: 'ocean_chain',
+            label: t`Ocean chain`,
+            kind: 'radio',
+            fullWidth: true,
+            options: [
+              {
+                value: 'mainstream',
+                label: t`Mainstream chain (default)`,
+                help: t`The chain Ocean's default endpoint mines. Stats come from Ocean's JSON API.`,
+              },
+              {
+                value: 'bip110',
+                label: t`BIP110 chain`,
+                help: t`For miners pointed at Ocean's BIP110 endpoint (or a BIP110 node with DATUM). Ocean publishes no API for this chain, so the daemon reads the bip110.ocean.xyz pages directly; a few pool stats are unavailable, and all earnings figures are BIP110-chain coins.`,
+              },
+            ],
+          },
+          {
             key: 'datum_api_url',
             label: t`Datum stats API (optional)`,
             kind: 'text',

@@ -852,6 +852,11 @@ msgstr "Bloque que señaliza BIP 110"
 msgid "BIP-110 scan"
 msgstr "Escaneo BIP-110"
 
+#: src/pages/Config.tsx
+#: src/pages/Status.tsx
+msgid "BIP110 chain"
+msgstr "Cadena BIP110"
+
 #: src/components/TilesBar.tsx
 msgid "Bitaxe best diff"
 msgstr "Mejor diff Bitaxe"
@@ -2226,6 +2231,10 @@ msgid "Following new events live - click to stop"
 msgstr "Siguiendo nuevos eventos en vivo - haz clic para detener"
 
 #: src/pages/Config.tsx
+msgid "For miners pointed at Ocean's BIP110 endpoint (or a BIP110 node with DATUM). Ocean publishes no API for this chain, so the daemon reads the bip110.ocean.xyz pages directly; a few pool stats are unavailable, and all earnings figures are BIP110-chain coins."
+msgstr "Para mineros que apuntan al endpoint BIP110 de Ocean (o un nodo BIP110 con DATUM). Ocean no publica una API para esta cadena, así que el daemon lee directamente las páginas de bip110.ocean.xyz; algunas estadísticas del pool no están disponibles y todas las cifras de ganancias son monedas de la cadena BIP110."
+
+#: src/pages/Config.tsx
 #: src/pages/Setup.tsx
 msgid "Format: <btc-address>.<label>. Ocean TIDES credits shares by the address prefix - anything else routes shares to nobody."
 msgstr "Formato: <dirección-btc>.<etiqueta>. Ocean TIDES acredita shares por el prefijo de la dirección - cualquier otra cosa envía las shares a nadie."
@@ -2709,6 +2718,10 @@ msgstr "suerte despues"
 msgid "luck before"
 msgstr "suerte antes"
 
+#: src/pages/Config.tsx
+msgid "Mainstream chain (default)"
+msgstr "Cadena principal (predeterminada)"
+
 #: src/components/BidEventDrawer.tsx
 #: src/components/PriceChart.tsx
 msgid "manual"
@@ -3135,6 +3148,10 @@ msgstr "Ocean"
 #: src/components/TilesBar.tsx
 msgid "Ocean blocks found in the past 30 days. Used by the pool-luck calculation as the numerator. Colour reflects the 30-day pool luck (actual ÷ expected): green >=1.0, amber 0.9-1.0, red below 0.9."
 msgstr "Bloques de Ocean encontrados en los últimos 30 días. Usado como numerador en el cálculo de la suerte del grupo. El color refleja la suerte del grupo a 30 días (real ÷ esperado): verde >=1,0, ámbar 0,9-1,0, rojo por debajo de 0,9."
+
+#: src/pages/Config.tsx
+msgid "Ocean chain"
+msgstr "Cadena de Ocean"
 
 #: src/components/PriceChart.tsx
 msgid "Ocean debited the unpaid balance. On-chain transaction follows shortly."
@@ -4547,6 +4564,14 @@ msgstr "La oferta sigue al precio de venta más barato con profundidad suficient
 #: src/pages/Config.tsx
 msgid "The BTC address Ocean TIDES credits payouts to. Editing this auto-updates the worker identity below."
 msgstr "La dirección BTC a la que Ocean TIDES acredita los pagos. Editar esto actualiza automáticamente la identidad del worker abajo."
+
+#: src/pages/Config.tsx
+msgid "The chain Ocean's default endpoint mines. Stats come from Ocean's JSON API."
+msgstr "La cadena que mina el endpoint predeterminado de Ocean. Las estadísticas provienen de la API JSON de Ocean."
+
+#: src/pages/Status.tsx
+msgid "The daemon follows Ocean's BIP110 sharelog (bip110.ocean.xyz). All earnings figures on this panel are BIP110-chain coins. Selected under Config → Pool destination."
+msgstr "El daemon sigue el sharelog BIP110 de Ocean (bip110.ocean.xyz). Todas las cifras de ganancias en este panel son monedas de la cadena BIP110. Se selecciona en Config → Destino del pool."
 
 #: src/pages/Setup.tsx
 msgid "The daemon may not be in setup mode. Reload the page or check the daemon logs."

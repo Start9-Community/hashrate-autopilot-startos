@@ -2947,12 +2947,25 @@ function OceanPanel() {
       title="Ocean"
       nextRefreshAtMs={nextOceanRefreshMs}
       badges={
-        <ReachabilityBadge
-          label={t`API reachable`}
-          reachable={o.fetched_at_ms !== null && o.pool !== null}
-          downLabel={t`API DOWN`}
-          title={t`Ocean stats API - reachable when the last /api/ocean fetch returned a pool snapshot.`}
-        />
+        <>
+          {/* #363: make the followed sharelog visible whenever it is
+              not the default - a support-question saver when earnings
+              figures are BIP110-chain coins. */}
+          {configQuery.data?.config?.ocean_chain === 'bip110' && (
+            <span
+              className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs border border-amber-700 bg-amber-900/30 text-amber-300"
+              title={t`The daemon follows Ocean's BIP110 sharelog (bip110.ocean.xyz). All earnings figures on this panel are BIP110-chain coins. Selected under Config → Pool destination.`}
+            >
+              <Trans>BIP110 chain</Trans>
+            </span>
+          )}
+          <ReachabilityBadge
+            label={t`API reachable`}
+            reachable={o.fetched_at_ms !== null && o.pool !== null}
+            downLabel={t`API DOWN`}
+            title={t`Ocean stats API - reachable when the last /api/ocean fetch returned a pool snapshot.`}
+          />
+        </>
       }
     >
       {/* Current observations - same genre as Datum's "datum hashrate"

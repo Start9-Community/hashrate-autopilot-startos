@@ -443,6 +443,8 @@ export interface AppConfig {
   minimum_floor_hashrate_ph: number;
   destination_pool_url: string;
   destination_pool_worker_name: string;
+  /** #363: which Ocean sharelog the daemon follows since the 8/8 chain split. */
+  ocean_chain: 'mainstream' | 'bip110';
   max_bid_sat_per_eh_day: number;
   // Nullable dynamic-cap config. Server coerces 0 → null via Zod
   // preprocess; keep the wider type here so existing callers don't

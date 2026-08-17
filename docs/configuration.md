@@ -93,6 +93,9 @@ on the next boot. See [`credential-rotation.md`](credential-rotation.md).
 | `BHA_DESTINATION_POOL_URL` | `destination_pool_url` |
 | `BHA_DESTINATION_POOL_WORKER_NAME` | `destination_pool_worker_name` |
 | `BHA_BTC_PAYOUT_ADDRESS` | `btc_payout_address` |
+| `BHA_OCEAN_CHAIN` | `ocean_chain` |
+
+`ocean_chain` (#363, migrations 0122/0123): which Ocean sharelog the daemon follows since the 8/8/2026 chain split - `mainstream` (default; JSON API at `api.ocean.xyz`) or `bip110` (no JSON API exists for that chain, so the daemon scrapes `bip110.ocean.xyz`'s HTML template fragments; `active_users` / `active_workers` are unavailable there, block rewards are subsidy-only estimates, and every earnings figure is denominated in BIP110-chain coins). Flipping the value wipes and re-backfills `pool_blocks` (post-fork heights collide across chains), stamps each tick's Ocean reading with its chain so the deduced-payouts scanner never reads the cross-chain balance jump as a payout, and takes effect within one 60 s cache TTL - no restart needed.
 
 ## Boot + run mode
 

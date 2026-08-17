@@ -81,6 +81,8 @@ const APP_CONFIG_ENV: {
   minimum_floor_hashrate_ph: { varName: 'BHA_MINIMUM_FLOOR_HASHRATE_PH', coerce: asNumber },
   destination_pool_url: { varName: 'BHA_DESTINATION_POOL_URL', coerce: asString },
   destination_pool_worker_name: { varName: 'BHA_DESTINATION_POOL_WORKER_NAME', coerce: asString },
+  // #363: 'mainstream' | 'bip110' - validated by the schema enum.
+  ocean_chain: { varName: 'BHA_OCEAN_CHAIN', coerce: asString },
   max_bid_sat_per_eh_day: { varName: 'BHA_MAX_BID_SAT_PER_EH_DAY', coerce: asInt },
   max_overpay_vs_hashprice_sat_per_eh_day: {
     varName: 'BHA_MAX_OVERPAY_VS_HASHPRICE_SAT_PER_EH_DAY',

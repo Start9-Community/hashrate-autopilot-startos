@@ -182,6 +182,10 @@ export async function observe(deps: ObserveDeps, inputs: ObserveInputs): Promise
   const pool_hashrate_ph = oceanStats?.pool.pool_hashrate_ph ?? null;
   const pool_active_workers = oceanStats?.pool.active_workers ?? null;
   const ocean_unpaid_sat = oceanStats?.unpaid_sat ?? null;
+  // #363: stamp which sharelog the reading came from. Null when the
+  // Ocean poll failed - a failed poll has no chain, and the deduced-
+  // payouts scan bridges over nulls the same way it does for unpaid.
+  const ocean_chain = oceanStats !== null ? config.ocean_chain : null;
   // #102: cumulative on-chain payout total at this tick. Sum of every
   // non-reorged reward_events row up to tick_at. Null when the
   // payout-observer isn't wired (payout_source = 'none') so the
@@ -569,6 +573,7 @@ export async function observe(deps: ObserveDeps, inputs: ObserveInputs): Promise
     braiins_total_deposited_sat,
     braiins_total_spent_sat,
     ocean_unpaid_sat,
+    ocean_chain,
     paid_total_sat,
     btc_usd_price,
     btc_usd_price_source,

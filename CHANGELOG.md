@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-08-17
+
+### `[Feature]` Choose which Ocean chain the daemon follows (#363)
+
+Since the August 8 chain split, Ocean keeps separate stats per chain - and miners on Ocean's BIP110 endpoint saw their received hashrate drop to zero because the daemon only read the mainstream chain's API. A new "Ocean chain" setting under Config → Pool destination selects the chain: mainstream (default, unchanged) or BIP110. On the BIP110 chain, Ocean publishes no API, so the daemon reads the bip110.ocean.xyz pages directly; hashrate, share log, unpaid earnings, payout history, and pool blocks all follow the selected chain, while a couple of pool-wide stats (active users/workers) are unavailable there and block rewards are subsidy-only estimates. The Ocean panel shows a badge whenever the BIP110 chain is selected, as a reminder that its earnings figures are BIP110-chain coins. Switching chains rebuilds the pool-blocks history from the newly selected chain and takes effect within a minute - no restart needed. Historical charts are protected against the switch being misread as a payout.
+
 ## 2026-08-11
 
 ### `[Infra]` js-yaml pinned to 4.3.1 for a newly published advisory

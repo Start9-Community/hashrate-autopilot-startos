@@ -67,6 +67,18 @@ export const AppConfigSchema = z.object({
   ),
   destination_pool_worker_name: nonEmptyString,
 
+  // #363: which Ocean sharelog the operator mines on. Since the 8/8
+  // chain split Ocean runs dual TIDES accounting - one sharelog per
+  // chain - and the JSON API at api.ocean.xyz only covers the
+  // mainstream (non-BIP110) chain. Miners pointed at
+  // bip110.mine.ocean.xyz (or a BIP110 node + DATUM) are invisible
+  // there ("No such user"), so their received-Ocean hashrate reads 0.
+  // 'bip110' switches the Ocean stats source to bip110.ocean.xyz,
+  // which has no JSON API; that client scrapes the site's HTML
+  // template fragments instead, and fields with no BIP110-side
+  // source degrade to null.
+  ocean_chain: z.enum(['mainstream', 'bip110']).default('mainstream'),
+
   // Pricing ceilings (sat per EH per day)
   max_bid_sat_per_eh_day: positiveInt,
   // Hashprice-relative cap (issue #27). When set, the effective price
@@ -586,6 +598,10 @@ export const APP_CONFIG_DEFAULTS: Omit<
 > = {
   target_hashrate_ph: 1.0,
   minimum_floor_hashrate_ph: 0.5,
+
+  // #363: mainstream = api.ocean.xyz JSON API; bip110 = scrape
+  // bip110.ocean.xyz. Mainstream is Ocean's default endpoint chain.
+  ocean_chain: 'mainstream',
 
   // Pricing caps. sat/EH/day internally; the dashboard displays them
   // in sat/PH/day (1 sat/PH/day = 1,000 sat/EH/day).
