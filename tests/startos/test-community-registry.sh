@@ -56,7 +56,6 @@ required_files=(
     CLAUDE.md
     LICENSE
     README.md
-    TODO.md
     UPDATING.md
     assets/README.md
     instructions.md
