@@ -1,5 +1,44 @@
 # Changelog
 
+## 2026-08-11
+
+### `[Release]` v1.17.6
+
+Two fixes since v1.17.5. Profit & Loss no longer invents Lightning payouts from a brief glitch in Ocean's reported unpaid balance - previously even the hard reset could not clear one, because the entry was recalculated from tick history on every scan; existing false entries are deleted on upgrade and cannot return (#362). The dashboard API now only answers browser requests originating from the dashboard itself, closing a path where another site could act on your behalf using your saved login while you had the dashboard open (#358). Also includes routine dependency maintenance. No new settings and no user-visible behavior change beyond those two fixes.
+
+### `[Fix]` Phantom Lightning payouts removed from Profit & Loss (#362)
+
+A brief glitch in Ocean's reported unpaid balance could invent a Lightning payout you never received, inflating your "collected" total and understating your loss rate. Two bad readings in a row were enough, and because the entry was recalculated from your tick history on every scan, even the Profit & Loss hard reset could not remove it - it came straight back. Impossible readings (a negative balance) are now discarded rather than stored, and a drop only counts as a payout if the balance stays down: if it climbs back near its previous level within half an hour, it is treated as a reporting glitch instead. Existing phantom entries are deleted on upgrade, and the readings behind them are cleared so they cannot be recreated. Genuine payouts, and any personal notes you attached to them, are left untouched.
+
+## 2026-08-08
+
+### `[Fix]` Dashboard API no longer accepts cross-origin calls from other websites (#358)
+
+The daemon advertised that any website could make credentialed requests to its API and read the replies. Every endpoint still required your dashboard password, but browsers attach saved credentials automatically, so while you had the dashboard open another site could have driven authenticated endpoints in the background and read the results. The most useful one to abuse opens a connection to any address you name, which would let a page map the network your node sits on. The API now only answers browser requests that come from the dashboard itself. Nothing changes for how you reach the dashboard - a LAN address, a `.local` name, dynamic DNS, a VPN or a reverse proxy all keep working - and scripts or monitoring that call the API directly are unaffected.
+
+## 2026-08-06
+
+### `[Release]` v1.17.5
+
+Security-maintenance patch since v1.17.4, with no user-visible behavior change. Eight dependency advisories are closed: `react-router`, `js-yaml`, `find-my-way`, `fast-uri` (twice), `@fastify/static` (twice), and `brace-expansion`. Three of those had no upstream release carrying the fix and are pinned via workspace overrides. The dashboard also moves to React Router v8, which removes the `react-router-dom` package but leaves every API the dashboard uses unchanged. better-sqlite3 is deliberately held at 12.x - its 13.x prebuilt binary cannot start the daemon on arm64.
+
+### `[Infra]` Weekly dependency refresh, two more advisories closed
+
+Took the dev-deps group (vite 8.2.0, playwright 1.62.1, plugin-react, React types), the CodeQL action pin, and fastify 5.11.2. Two advisories are closed by pinning patched transitive dependencies: `fast-uri` (high, needs 4.1.2) and `brace-expansion` (high, needs 2.1.3). The better-sqlite3 13 major offered alongside fastify was declined again - it still cannot start the daemon on arm64, for the reasons recorded on 2026-07-29. No user-visible behavior change.
+
+## 2026-07-29
+
+### `[Fix]` Hold better-sqlite3 at 12.x - 13.x cannot start the daemon on arm64
+
+better-sqlite3 13 moved its native bindings to prebuildify, shipping precompiled binaries inside the npm package instead of compiling on install. Its `linux-arm64` binary is linked against GLIBC_2.38, while the daemon's runtime image (and most self-hosted arm64 boxes) is Debian bookworm with glibc 2.36 - so the daemon would have failed at startup with "version `GLIBC_2.38' not found" the moment it opened the database. The `linux-x64` binary only needs GLIBC_2.34 and would have worked, which is why this hid on x64. The dependency is pinned to 12.x, whose arm64 prebuild tops out at GLIBC_2.29, and Dependabot is told not to offer the major again until the base image moves to a newer Debian.
+
+### `[Infra]` React Router upgraded to v8, closing the last open advisory
+
+The dashboard moves from `react-router-dom` 7.18.1 to `react-router` 8.3.0. v8 removes the `react-router-dom` re-export package, so the 16 import lines now point at `react-router` directly; every component and hook the dashboard uses (`BrowserRouter`, `Routes`, `Route`, `Navigate`, `Link`, `Outlet`, `useNavigate`, `useLocation`, `useSearchParams`) is unchanged in v8. The advisory this closes only affects the unstable RSC APIs, which the dashboard does not use, so there was no real exposure - but it clears the alert rather than leaving it to age.
+
+### `[Infra]` Dependency refresh with four security advisories closed
+
+Merged the pending dependency updates: production deps (fastify plugins, better-sqlite3 13, kysely, lingui 6.6, react 19.2.8, react-query) and dev deps (eslint 10.8, vite 8.1.5, playwright 1.62, tailwind 4.3.3, typescript-eslint 8.65). Four advisories are closed in the process - `@fastify/static` path traversal (high + medium), `find-my-way` and `fast-uri` (high), and `js-yaml` (high) - the last three by pinning patched versions of transitive dependencies that no upstream release had picked up yet. No user-visible behavior change.
 ## 2026-08-04
 
 ### `[Docs]` StartOS package guidance follows the registry format

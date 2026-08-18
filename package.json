@@ -5,12 +5,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/mdubore/hashrate-autopilot-startos.git"
+    "url": "https://github.com/Start9-Community/hashrate-autopilot-startos.git"
   },
   "bugs": {
-    "url": "https://github.com/mdubore/hashrate-autopilot-startos/issues"
+    "url": "https://github.com/Start9-Community/hashrate-autopilot-startos/issues"
   },
-  "homepage": "https://github.com/mdubore/hashrate-autopilot-startos#readme",
+  "homepage": "https://github.com/Start9-Community/hashrate-autopilot-startos#readme",
   "private": true,
   "workspaces": [
     "packages/*"
@@ -31,23 +31,19 @@
     "test:watch": "vitest",
     "check": "npm run check:lock-consistency && npm run lint && npm run typecheck && npm run test",
     "check:lock-consistency": "node scripts/check-lock-consistency.mjs",
-    "check:startos-submission": "bash tests/startos/test-community-registry.sh",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "release:preflight": "./scripts/release-github.sh preflight",
-    "release:artifacts": "./scripts/release-github.sh build",
-    "release:checksums": "./scripts/release-github.sh checksums",
-    "release:dry-run": "./scripts/release-github.sh dry-run",
-    "release:verify": "./scripts/release-github.sh verify",
-    "release:github": "./scripts/release-github.sh release",
     "smoke": "tsx scripts/smoke-braiins.ts",
     "setup": "tsx scripts/setup.ts",
     "daemon": "tsx packages/daemon/src/main.ts"
   },
   "dependencies": {
-    "@start9labs/start-sdk": "2.0.9"
+    "@start9labs/start-sdk": "2.0.9",
+    "bitcoin-core-startos": "github:Start9Labs/bitcoin-core-startos#next/28.x",
+    "datum-gateway-startos": "github:Start9Labs/datum-gateway-startos#next",
+    "electrs-startos": "github:Start9-Community/electrs-startos#next"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -55,21 +51,25 @@
     "@hashrate-autopilot/daemon": "*",
     "@hashrate-autopilot/shared": "*",
     "@inquirer/prompts": "^8.5.2",
-    "@types/node": "^26.1.0",
+    "@types/node": "^22.19.0",
     "@vercel/ncc": "0.38.4",
-    "eslint": "^10.7.0",
-    "playwright": "^1.61.1",
-    "prettier": "^3.9.5",
-    "tsx": "^4.23.1",
+    "eslint": "^10.8.1",
+    "playwright": "^1.62.1",
+    "prettier": "^3.9.6",
+    "tsx": "^4.23.11",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.64.0",
+    "typescript-eslint": "^8.66.0",
     "vitest": "^4.1.10",
     "yaml": "^2.9.0"
   },
   "overrides": {
     "@start9labs/start-sdk": "$@start9labs/start-sdk",
-    "fast-uri": ">=3.1.2",
+    "fast-uri": ">=4.1.2",
     "esbuild": ">=0.28.1",
-    "js-yaml": "4.3.0"
+    "minimatch@5": {
+      "brace-expansion": ">=2.1.3 <3"
+    },
+    "js-yaml": ">=4.3.0 <5",
+    "find-my-way": ">=9.7.0"
   }
 }

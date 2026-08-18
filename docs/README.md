@@ -12,9 +12,8 @@ for StartOS.
 
 ## StartOS Maintainers
 
-- [`startos-packaging.md`](startos-packaging.md) - package metadata, manifest, backup, dependency, and build notes.
-- [`startos-community-registry-submission.md`](startos-community-registry-submission.md) - preparation status,
-  verification evidence, pending device/package gates, and the unsent Community Registry email draft.
+- [`../AGENTS.md`](../AGENTS.md) - how the StartOS package is built, released, and what is upstream's versus ours.
+- [`../UPDATING.md`](../UPDATING.md) - merging an upstream release into this fork.
 - [`architecture.md`](architecture.md) - daemon, dashboard, persistence, deployment, and testing architecture.
 - [`spec.md`](spec.md) - bidding model, safety constraints, configuration model, and shipped feature history.
 

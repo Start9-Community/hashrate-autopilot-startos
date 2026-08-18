@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
-import { buildDependencyEnv } from './dependency-addresses'
+import { describe, expect, it } from 'vitest';
+import { buildDependencyEnv } from './dependency-addresses';
 
 describe('buildDependencyEnv', () => {
   it('maps resolved bridge addresses to daemon environment overrides', () => {
@@ -15,8 +15,8 @@ describe('buildDependencyEnv', () => {
       BHA_ELECTRS_HOST: '10.0.3.1',
       BHA_ELECTRS_PORT: '18003',
       BHA_PAYOUT_SOURCE: 'electrs',
-    })
-  })
+    });
+  });
 
   it('splits a bracketed IPv6 Electrs address', () => {
     expect(
@@ -29,8 +29,8 @@ describe('buildDependencyEnv', () => {
       BHA_ELECTRS_HOST: 'fd00::1234',
       BHA_ELECTRS_PORT: '50001',
       BHA_PAYOUT_SOURCE: 'electrs',
-    })
-  })
+    });
+  });
 
   it('omits overrides for unresolved dependencies', () => {
     expect(
@@ -39,6 +39,6 @@ describe('buildDependencyEnv', () => {
         datumApi: null,
         electrs: null,
       }),
-    ).toEqual({})
-  })
-})
+    ).toEqual({});
+  });
+});

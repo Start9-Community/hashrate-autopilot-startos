@@ -80,6 +80,22 @@ export const MATCH_AMOUNT_TOLERANCE = 0.25;
 export const DROP_COOLDOWN_MS = 30 * 60 * 1000;
 /** Incremental scan window; anything older is the full pass's job. */
 export const RECENT_SCAN_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
+/**
+ * #362: how far past a candidate drop to look for the balance climbing
+ * back. After a real payout the balance restarts near zero and accrues
+ * over hours, so a return to near the pre-drop level within minutes is
+ * a reporting glitch, not a settlement. 30 minutes is far longer than
+ * any observed glitch and far shorter than real re-accrual.
+ */
+export const RECOVERY_WINDOW_MS = 30 * 60 * 1000;
+/**
+ * #362: the fraction of the pre-drop balance that counts as "bounced
+ * back". 0.9 tolerates the small accrual that can happen inside the
+ * recovery window while still catching a glitch that returns to the
+ * pre-drop reading exactly (the reported case returned to the same
+ * value one minute later).
+ */
+export const RECOVERY_FRACTION = 0.9;
 
 export interface DropCandidate {
   readonly tick_at: number;
@@ -185,6 +201,8 @@ export class DeducedPayoutsScanner {
       dropFraction: DROP_FRACTION,
       residualThresholdSat: RESIDUAL_THRESHOLD_SAT,
       minPreDropSat: MIN_PRE_DROP_SAT,
+      recoveryWindowMs: RECOVERY_WINDOW_MS,
+      recoveryFraction: RECOVERY_FRACTION,
     });
     const candidates = collapseCooldown(raw);
     const amountByTick = new Map(candidates.map((c) => [c.tick_at, candidateAmountSat(c)]));

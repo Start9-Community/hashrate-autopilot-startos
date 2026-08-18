@@ -146,6 +146,7 @@ describe('openDatabase - migrations', () => {
       '0118_event_notes.sql',
       '0119_alerts_condition_started_at.sql',
       '0120_deduced_payouts.sql',
+      '0121_negative_unpaid_repair.sql',
     ]);
     expect(handle.migrations.skipped).toEqual([]);
   });

@@ -1,64 +1,59 @@
 # Hashrate Autopilot
 
+> [!WARNING]
+> **This service spends real money on your behalf.** It bids on the Braiins Hashpower marketplace and pays for the hashrate it wins. It starts in **DRY-RUN**, where it only proposes decisions, and it stays there until you switch it to LIVE yourself. Leave it in DRY-RUN until the decisions it is proposing look right to you.
+
+> [!IMPORTANT]
+> **Install Bitcoin, Electrs and Datum Gateway first, and let them finish syncing.** Hashrate Autopilot will not start until all three are up and synced. They find each other automatically — there is nothing for you to copy across.
+
 ## Documentation
 
-- [Upstream repository](https://github.com/rdouma/hashrate-autopilot) — the project README and source of truth for application behavior.
-- [Upstream documentation](https://github.com/rdouma/hashrate-autopilot/tree/main/docs) — detailed operating, architecture, and safety guidance.
-- [Configuration reference](https://github.com/rdouma/hashrate-autopilot/blob/main/docs/configuration.md) — dashboard settings and supported environment overrides.
+- [Hashrate Autopilot README](https://github.com/rdouma/hashrate-autopilot#readme) — what the project is and how the controller decides what to bid.
+- [Upstream documentation](https://github.com/rdouma/hashrate-autopilot/tree/main/docs) — operating, architecture and safety guidance.
+- [Configuration reference](https://github.com/rdouma/hashrate-autopilot/blob/main/docs/configuration.md) — every dashboard setting, explained.
 
 ## What you get on StartOS
 
-The Dashboard opens Hashrate Autopilot's setup wizard and, after setup, its monitoring and control
-interface. Your configuration, application secrets, SQLite state, and retained history persist in the
-service data volume and are included together when you back up the service.
-
-Bitcoin, Electrs, and Datum are required services. StartOS resolves their installed-package bindings
-to managed bridge addresses; during fresh setup, Hashrate Autopilot pre-fills those values and selects
-Electrs for payout tracking. The managed Datum statistics URL is preferred on every poll so a saved
-value cannot retain an obsolete assigned bridge port. Datum receives rented hashrate only when your
-public pool destination routes to it.
+- The full Hashrate Autopilot dashboard — bidding, charts, alerts, payout tracking and the setup wizard — on one address.
+- Bitcoin, Electrs and Datum Gateway wired up for you, including Bitcoin's RPC login. You will not be asked for a node address or credentials anywhere in the wizard.
+- Everything the service knows — your settings, your Braiins token, and the whole history of what it bid and what it earned — in a single database that your server backs up with the rest of the service.
 
 ## Getting set up
 
-1. Open the Dashboard and complete the setup wizard. Enter your Braiins owner token, a dashboard
-   password, hashrate targets, price limits, public pool destination, Ocean worker identity, and payout
-   address. The optional read-only Braiins token can also be entered here.
-2. Set the pool destination to the public Datum Stratum endpoint that Braiins can reach. Do not use the
-   internal Datum statistics address as the pool destination. Confirm the hostname, port forwarding,
-   worker identity, and Ocean payout address before continuing.
-3. Confirm that the wizard shows the package-provided StartOS dependency values and Electrs payout
-   tracking. The Bitcoin RPC URL, Electrs endpoint, and payout backend are startup settings; a restart
-   rebuilds those integrations with the SDK-resolved values. StartOS also manages the Datum statistics
-   URL, which remains authoritative over its saved dashboard value while the package supplies it.
-4. Complete the wizard and leave the controller in **DRY-RUN**. Check the Status page, service health,
-   proposed decisions, price ceilings, target hashrate, and destination routing without issuing new bid
-   mutations. Inspect the Braiins marketplace separately and confirm any existing bid is inactive if you
-   expect delivery and spend to be stopped.
-5. Verify independently that the public Datum/pool destination accepts traffic for the intended Ocean
-   worker. Switch to **LIVE** only after the DRY-RUN decisions and the public destination are correct.
+1. **Open the Dashboard.** On a fresh install it opens the setup wizard rather than the dashboard.
+
+   > The wizard is not password-protected — the password it asks you for is what protects everything afterwards. Do this from a device and network you trust.
+2. **Fill in the wizard.** It asks for your Braiins access token, a dashboard password, your hashrate target and price ceiling, your public pool destination, and your Ocean worker name and payout address. The read-only Braiins token is optional.
+3. **Get the pool destination right — this is the step people get wrong.** It must be the **public** Stratum address Braiins will deliver hashrate to, reachable from the internet. It is *not* the Datum address shown elsewhere in the dashboard, which is only used to read your pool's statistics. Arranging that public address — port forwarding, dynamic DNS, the hostname itself — is up to you, and your server does not do it for you.
+4. **Leave it in DRY-RUN and watch it.** On the Status page you will see the decisions it *would* make: what it would bid, at what price, and why. Check them against your own expectations, along with your target hashrate and price ceiling.
+5. **Confirm your public pool destination actually accepts traffic** for the worker name you entered, from outside your network.
+6. **Switch to LIVE** on the Status page, once and only once steps 4 and 5 both look right. From that moment it bids with real funds.
 
 ## Using Hashrate Autopilot
 
-Use the Dashboard to monitor marketplace, Datum, Ocean, and payout information; change configuration;
-review proposed or executed bid decisions; and select DRY-RUN, LIVE, or PAUSED. The package adds no
-separate StartOS actions.
+Everything happens on the Dashboard: monitoring the marketplace, your pool and your payouts; changing settings; reviewing decisions; and switching between DRY-RUN, LIVE and PAUSED. This package adds no separate controls of its own.
 
-Keep DRY-RUN as the boot mode until the setup is proven. DRY-RUN and PAUSED prevent the controller from
-issuing new create, edit, or cancel API mutations. Switching modes does not cancel an already-active
-Braiins bid or stop its ongoing delivery and spend. Inspect and cancel existing marketplace bids
-separately, then confirm they are inactive. LIVE permits real bid mutations with real funds.
+### Switching to DRY-RUN or PAUSED does not cancel a bid you already have
 
-Back up the service before uninstalling if you need to retain its configuration or history. Restoring
-that backup restores the complete service data volume.
+This is the most important thing to know about the run modes. DRY-RUN and PAUSED stop it from making **new** changes — creating, editing or cancelling bids. Neither one retracts a bid that is already live, and that bid keeps delivering hashrate and keeps costing you money.
+
+To actually stop spending, go to the Braiins marketplace, cancel the bid there, and confirm it shows as inactive. Only then is the spending stopped.
+
+### A few settings are managed for you
+
+The Bitcoin, Electrs and Datum addresses — and Bitcoin's login — are filled in from your installed services every time Hashrate Autopilot starts, so they keep working when those services move or are reinstalled. If you edit one of them in the dashboard it will look like it saved, and then go back on the next restart. That is deliberate. Everything else in the dashboard is yours.
+
+### Alerts are the application's, not your server's
+
+A green health check on the service page only means the dashboard is answering. It does not mean a bid is live, that your pool is receiving hashrate, or that payouts are arriving. Hashrate Autopilot raises its own alerts for those, on the dashboard and the Alerts page — that is where to look.
+
+## Restoring from a backup
+
+A restore brings back everything: your settings, your Braiins token, and the full history of decisions and payouts. The connections to Bitcoin, Electrs and Datum are worked out afresh on every start, so they still work even if those services came back on different addresses.
+
+One thing to decide before you restore: **a backup taken while it was LIVE comes back LIVE**, and starts bidding again as soon as its dependencies are healthy.
 
 ## Limitations
 
-- StartOS resolves the Bitcoin RPC, Electrs, and Datum bindings to assigned bridge endpoints. The
-  Bitcoin RPC URL, Electrs endpoint, and payout backend are applied to boot-time clients; the managed
-  Datum URL is preferred on every poll. Bitcoin RPC credentials are not included.
-- The internal Datum address is for statistics only. Public Stratum ingress, router forwarding, and
-  dynamic DNS remain your responsibility.
-- Initial setup is not protected by the application password until you complete the wizard; use a
-  trusted connection.
-- LIVE mode can spend marketplace funds, and uninstalling without a backup removes all persistent
-  service data.
+- **Uninstalling deletes everything**, including your Braiins token and the whole history. Back up first if you want any of it.
+- **Public Stratum ingress is yours to arrange.** This service does not open a port, forward one, or manage a hostname for you.

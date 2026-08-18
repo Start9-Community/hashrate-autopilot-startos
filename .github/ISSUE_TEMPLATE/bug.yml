@@ -14,7 +14,7 @@ body:
         details - have a look before posting.
 
         If this is a security issue, **don't post here.** See
-        [SECURITY.md](https://github.com/mdubore/hashrate-autopilot-startos/blob/main/SECURITY.md).
+        [SECURITY.md](https://github.com/Start9-Community/hashrate-autopilot-startos/blob/main/SECURITY.md).
 
   - type: input
     id: version
