@@ -3,11 +3,10 @@ name: Release
 on:
   push:
     tags:
-      - 'v*_*'
+      - 'v*.*'
 
 jobs:
   release:
-    if: github.repository_owner == 'Start9-Community'
     uses: Start9Labs/start-technologies/.github/workflows/release.yml@master
     with:
       RELEASE_REGISTRY: ${{ vars.RELEASE_REGISTRY }}

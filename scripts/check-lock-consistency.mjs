@@ -40,8 +40,20 @@ function discoverWorkspaceImporters(rootManifest) {
     return importers;
 }
 
+// Git dependencies (the sibling `*-startos` packages) carry no `version` in
+// either lockfile — npm records a `git+ssh://…#<sha>` and pnpm a codeload
+// tarball URL ending in the same sha. The commit is what the two have to agree
+// on, so both sides reduce to it.
+const COMMIT = /([0-9a-f]{40})(?:\.tar\.gz)?$/;
+
+function commitOf(reference) {
+    return typeof reference === 'string' ? COMMIT.exec(reference)?.[1] : undefined;
+}
+
 function normalizePnpmVersion(version) {
     if (typeof version !== 'string') return undefined;
+    const commit = commitOf(version);
+    if (commit) return commit;
     const peerContextStart = version.indexOf('(');
     return peerContextStart === -1 ? version : version.slice(0, peerContextStart);
 }
@@ -54,7 +66,8 @@ function resolveNpmVersion(npmPackages, importerKey, dependencyName) {
     candidates.push(`node_modules/${dependencyName}`);
 
     for (const candidate of candidates) {
-        const version = npmPackages[candidate]?.version;
+        const entry = npmPackages[candidate];
+        const version = entry?.version ?? commitOf(entry?.resolved);
         if (version) return version;
     }
 

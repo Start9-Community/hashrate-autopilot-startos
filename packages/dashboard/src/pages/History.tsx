@@ -83,7 +83,7 @@ import { DatePicker } from '../components/DatePicker';
 import { BidEventDrawer } from '../components/BidEventDrawer';
 import { AlertSpanDrawer } from '../components/AlertSpanDrawer';
 import { EventNoteField } from '../components/EventNoteField';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router';
 import { createPortal } from 'react-dom';
 
 const PAGE_SIZE = 100;

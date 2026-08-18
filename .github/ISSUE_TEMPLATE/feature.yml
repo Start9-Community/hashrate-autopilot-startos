@@ -12,7 +12,7 @@ body:
           integration. General application behavior requests may belong
           upstream at `rdouma/hashrate-autopilot`.
         - For open-ended questions ("could it support X?", "would it
-          make sense to do Y?"), [Discussions](https://github.com/mdubore/hashrate-autopilot-startos/discussions)
+          make sense to do Y?"), [Discussions](https://github.com/Start9-Community/hashrate-autopilot-startos/discussions)
           is usually a better fit than an issue.
         - The application is scoped to non-custodial mining via
           Datum-compatible pools, with Braiins as the first hashpower

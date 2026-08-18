@@ -1,14 +1,20 @@
 import { setupManifest } from '@start9labs/start-sdk';
 import { appVersion } from '../utils';
-import { short, long } from './i18n';
+import {
+  depBitcoindDescription,
+  depDatumDescription,
+  depElectrsDescription,
+  long,
+  short,
+} from './i18n';
 
 export const manifest = setupManifest({
-  id: 'hashrate-autopilot-9',
-  title: 'Hashrate Autopilot for StartOS',
+  id: 'hashrate-autopilot',
+  title: 'Hashrate Autopilot',
   license: 'MIT',
-  packageRepo: 'https://github.com/mdubore/hashrate-autopilot-startos',
+  packageRepo: 'https://github.com/Start9-Community/hashrate-autopilot-startos',
   upstreamRepo: 'https://github.com/rdouma/hashrate-autopilot',
-  marketingUrl: 'https://github.com/mdubore/hashrate-autopilot-startos',
+  marketingUrl: 'https://github.com/rdouma/hashrate-autopilot',
   donationUrl: null,
   description: { short, long },
   volumes: ['main'],
@@ -28,22 +34,28 @@ export const manifest = setupManifest({
   },
   dependencies: {
     bitcoind: {
-      description:
-        'Provides the local Bitcoin node used by Datum Gateway and optional BIP 110 block-header checks.',
+      description: depBitcoindDescription,
       optional: false,
-      s9pk: null,
+      metadata: {
+        title: 'Bitcoin',
+        icon: 'https://raw.githubusercontent.com/Start9Labs/bitcoin-core-startos/refs/heads/31.x/icon.svg',
+      },
     },
     electrs: {
-      description:
-        'Provides Electrum lookups for Ocean payout tracking and historical payout backfill.',
+      description: depElectrsDescription,
       optional: false,
-      s9pk: null,
+      metadata: {
+        title: 'Electrs',
+        icon: 'https://raw.githubusercontent.com/Start9-Community/electrs-startos/refs/heads/master/icon.svg',
+      },
     },
     datum: {
-      description:
-        'Receives rented hashrate from Braiins and exposes Datum Gateway statistics for the dashboard.',
+      description: depDatumDescription,
       optional: false,
-      s9pk: null,
+      metadata: {
+        title: 'Datum Gateway',
+        icon: 'https://raw.githubusercontent.com/Start9Labs/datum-gateway-startos/refs/heads/master/icon.svg',
+      },
     },
   },
 });

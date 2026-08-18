@@ -239,10 +239,18 @@ export function createOceanClient(opts: OceanClientOptions = {}): OceanClient {
         const pool = (poolStat?.result ?? {}) as Record<string, string>;
         const poolHr = (poolHashrateResp?.result ?? {}) as Record<string, string>;
 
+        // #362: a negative unpaid balance is not physically possible,
+        // but Ocean occasionally emits one (a tiny negative rounds to
+        // -1 sat). Storing it is worse than storing nothing: a negative
+        // reads as a >100% balance drop, so two consecutive ones clear
+        // every deduced-payout gate and mint a permanent phantom
+        // Lightning payout. Treat it as unknown instead - the series
+        // already bridges over NULLs.
         const unpaidBtc = parseFloat(snap.unpaid ?? '');
-        const unpaid_sat = Number.isFinite(unpaidBtc)
-          ? Math.round(unpaidBtc * SAT_PER_BTC)
-          : null;
+        const unpaid_sat =
+          Number.isFinite(unpaidBtc) && unpaidBtc >= 0
+            ? Math.round(unpaidBtc * SAT_PER_BTC)
+            : null;
 
         const nextBlockBtc = parseFloat(snap.estimated_total_earn_next_block ?? '');
         const next_block_sat = Number.isFinite(nextBlockBtc)

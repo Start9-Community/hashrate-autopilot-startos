@@ -15,7 +15,7 @@ import { t } from '@lingui/core/macro';
 import { useLingui } from '@lingui/react';
 import type React from 'react';
 import { createPortal } from 'react-dom';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 import type { AlertConditionSpanView } from '../lib/api';
 import { conditionColor, conditionLabel } from '../lib/alertConditions';

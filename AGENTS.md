@@ -26,16 +26,17 @@ verified, tried, and decided belongs in the commit message and the PR body.
 
 ## This repo
 
-- **The package id is `hashrate-autopilot-9`; keep it stable.** Upstream is <https://github.com/rdouma/hashrate-autopilot>, whose application source is retained here so the StartOS image can be built locally.
+- **This is a fork of the upstream application, not a wrapper around a released image.** `packages/`, `scripts/`, `docs/` (except the StartOS pages), `Dockerfile`, `rdouma-hashrate-autopilot/`, `umbrel-app-store.yml`, `CHANGELOG.md`, `FAQ.md` and `SECURITY.md` are upstream's and are merged in from <https://github.com/rdouma/hashrate-autopilot>. Don't restructure or delete them: an upstream bump is a `git merge`, and anything moved here becomes a conflict on every sync. The StartOS surface is `startos/`, `Dockerfile.startos`, `Makefile`, `tsconfig.json`, `icon.png`, and the four package docs. `UPDATING.md` has the merge procedure.
+- **`make` builds the application, not just the bundle.** `s9pk.mk` calls `npm run build`, which this repo points at `scripts/build-release-inputs.sh` — it compiles every workspace `dist/` and *then* runs ncc. `Dockerfile.startos` copies those `dist/` directories, which are gitignored, so nothing but that script makes a clean checkout buildable. Don't repoint the root `build` script.
+- **Keep `@types/node` on the major the runtime actually is.** Upstream floats it to `^26.x` while `.nvmrc` and `engines` say 22; that types-vs-runtime gap is invisible in the app but breaks the sibling `*-startos` sources this package's `tsconfig.json` type-checks (`fs.rmdir`'s options parameter is gone in the 26 types). Hold it at `^22.x` through every upstream merge.
+- **Three things an upstream merge will try to take back, all of them fork-only.** `linkWorkspacePackages: true` in `pnpm-workspace.yaml` — the StartOS build runs `npm ci`, so this fork rewrites every `workspace:*` to `*`, and pnpm only links a bare `*` to a workspace package with that flag on; resolving that file with `--theirs` drops it and `pnpm install` then goes to the registry for `@hashrate-autopilot/*` and fails. The `*` protocol itself in each `packages/*/package.json`. And `@types/node` above. Take upstream's side on everything else in those files.
+- **Both lockfiles have to be regenerated after a merge, and they drift.** `npm install` resolves patch versions freshly while pnpm keeps whatever the merged lockfile already had, so `check:lock-consistency` fails on a handful of packages; `pnpm update -r --lockfile-only <pkg>...` pulls pnpm up to match. Keep the npm `overrides` in `package.json` mirroring the pnpm `overrides` in `pnpm-workspace.yaml` — npm expresses pnpm's scoped `"minimatch@5>brace-expansion"` as a nested `"minimatch@5": { "brace-expansion": … }`.
+- **bitcoind's RPC credentials come from its cookie, not from the operator.** `main.ts` mounts bitcoind's volume read-only, reads `.cookie`, and splits it into `BHA_BITCOIND_RPC_USER` / `BHA_BITCOIND_RPC_PASSWORD`. The read is reactive, so a cookie rotated on bitcoind's restart restarts the daemon with the new one. Don't ask the operator to paste RPC credentials into the dashboard.
+- **All three dependencies are required, so an unresolved address throws.** Omitting the environment variable instead would start a daemon that reports no chain tip, no payouts and no pool statistics — a silent failure that looks like an application bug.
+- **Import each dependency's host id and port from its own package** (`bitcoin-core-startos`, `electrs-startos`, `datum-gateway-startos`), so a change on their side is a build failure here rather than a silent misconnection.
+- **`docs/agent-conventions.md` describes the upstream project's own release process** — its GHCR image pins, Umbrel manifest, issue labels and `data/diagnostics.json` credential file. None of it governs this repo: StartOS releases are cut by the reusable CI in `.github/workflows/`, and nothing here should read an operator credential file.
+- **Default branch is `main`, not `master`.** Its CI workflows reference `main`; leave them.
 
-## Working on the package
+## Inspecting a running install
 
-- Use `UPDATING.md` for upstream release bumps, and this repo's GitHub issues for pending work.
-- Keep `README.md` and `instructions.md` synchronized with every change to package behavior, interfaces, dependencies, volumes, health checks, actions, or limitations.
-- Preserve DRY-RUN as the safe first-run mode. Never create, edit, or cancel a live marketplace bid during automated testing.
-- Run `npm run check`, `npm run check:startos-submission`, and the relevant `make` architecture target before release.
-- Do not manually tag or publish a Community Registry release. Start9's merge automation owns the canonical tag, package build, and `community-beta` publication.
-
-## Repository-specific conventions
-
-Read `docs/agent-conventions.md` before changing issue state, changelog entries, build numbers, GitHub release behavior, or the Umbrel image pin. Those rules coexist with the StartOS Community pipeline and remain load-bearing for the upstream-compatible application paths retained here.
+`start-cli package attach hashrate-autopilot -n hashrate-autopilot-sub -- <cmd>` — the package runs one subcontainer, named `hashrate-autopilot-sub`.

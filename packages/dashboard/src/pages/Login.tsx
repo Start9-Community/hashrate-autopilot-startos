@@ -2,7 +2,7 @@ import { Trans } from '@lingui/react/macro';
 import { t } from '@lingui/core/macro';
 import { useLingui } from '@lingui/react';
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 import { api, UnauthorizedError } from '../lib/api';
 import { clearPassword, setPassword } from '../lib/auth';
