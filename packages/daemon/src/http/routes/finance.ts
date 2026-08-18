@@ -67,6 +67,12 @@ export interface FinanceResponse {
   readonly spent_sat: number;
   /** Which scope produced `spent_sat`. Mirrors the config field. */
   readonly spent_scope: 'autopilot' | 'account';
+  /** #363: which Ocean sharelog the daemon follows. On 'bip110' the
+   * Ocean-sourced income rows (unpaid earnings) can never populate -
+   * Ocean provides no API for that chain - so P&L is incomplete and
+   * the dashboard says so. On-chain collected still works via the
+   * operator's own node. */
+  readonly ocean_chain: 'mainstream' | 'bip110';
   /**
    * Breakdown of `spent_sat` into closed (terminal) vs active
    * (is_current) bids. Only populated under `spent_scope = 'account'`;
@@ -403,6 +409,7 @@ export async function registerFinanceRoute(
     return {
       spent_sat,
       spent_scope: scope,
+      ocean_chain: config?.ocean_chain ?? 'mainstream',
       spent_closed_sat,
       spent_active_sat,
       collected_sat,

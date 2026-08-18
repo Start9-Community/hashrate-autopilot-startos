@@ -2936,6 +2936,36 @@ function OceanPanel() {
     );
   }
 
+  // #363: on the BIP110 chain there is nothing to show - Ocean
+  // provides no API for that chain (confirmed by Ocean support) and
+  // the daemon deliberately does not poll. Explain that instead of
+  // rendering zeros or an API-DOWN badge.
+  if (o.chain === 'bip110') {
+    return (
+      <Card
+        title="Ocean"
+        badges={
+          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs border border-amber-700 bg-amber-900/30 text-amber-300">
+            <Trans>BIP110 chain</Trans>
+          </span>
+        }
+      >
+        <div className="text-slate-400 text-sm space-y-2">
+          <p>
+            <Trans>
+              Ocean provides no API for the BIP110 chain, so hashrate, share log, and earnings can't be shown here. Your workers' stats are on the BIP110 Ocean website.
+            </Trans>
+          </p>
+          <p className="text-slate-500">
+            <Trans>
+              On-chain payouts to your payout address are still tracked through your own Bitcoin node. Selected under Config → Pool destination.
+            </Trans>
+          </p>
+        </div>
+      </Card>
+    );
+  }
+
   // Ocean refreshes every minute client-side (and server caches for
   // the same). Countdown = last fetch + 1 min; reachable whenever
   // the last response carried data.
@@ -2947,25 +2977,12 @@ function OceanPanel() {
       title="Ocean"
       nextRefreshAtMs={nextOceanRefreshMs}
       badges={
-        <>
-          {/* #363: make the followed sharelog visible whenever it is
-              not the default - a support-question saver when earnings
-              figures are BIP110-chain coins. */}
-          {configQuery.data?.config?.ocean_chain === 'bip110' && (
-            <span
-              className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs border border-amber-700 bg-amber-900/30 text-amber-300"
-              title={t`The daemon follows Ocean's BIP110 sharelog (bip110.ocean.xyz). All earnings figures on this panel are BIP110-chain coins. Selected under Config → Pool destination.`}
-            >
-              <Trans>BIP110 chain</Trans>
-            </span>
-          )}
-          <ReachabilityBadge
-            label={t`API reachable`}
-            reachable={o.fetched_at_ms !== null && o.pool !== null}
-            downLabel={t`API DOWN`}
-            title={t`Ocean stats API - reachable when the last /api/ocean fetch returned a pool snapshot.`}
-          />
-        </>
+        <ReachabilityBadge
+          label={t`API reachable`}
+          reachable={o.fetched_at_ms !== null && o.pool !== null}
+          downLabel={t`API DOWN`}
+          title={t`Ocean stats API - reachable when the last /api/ocean fetch returned a pool snapshot.`}
+        />
       }
     >
       {/* Current observations - same genre as Datum's "datum hashrate"
@@ -3537,6 +3554,17 @@ function FinancePanel({
             {/* #343: concrete confirmation - how many payouts + the collected total now. */}
             <Trans>
               {finResult.payouts} payouts · collected {denomination.formatSat(finResult.collected_sat, intlLocale)}
+            </Trans>
+          </div>
+        )}
+        {/* #363: on the BIP110 chain the Ocean-sourced income rows can
+            never populate (Ocean provides no API for that chain), so
+            the net line systematically understates income. Say so
+            up front rather than letting the dashes read as "zero". */}
+        {data.ocean_chain === 'bip110' && (
+          <div className="mb-2 px-2 py-1.5 rounded border border-amber-700 bg-amber-900/30 text-amber-300 text-xs">
+            <Trans>
+              Incomplete on the BIP110 chain: Ocean provides no API for it, so unpaid earnings can't be read and the net line understates income. On-chain payouts are still tracked via your Bitcoin node.
             </Trans>
           </div>
         )}

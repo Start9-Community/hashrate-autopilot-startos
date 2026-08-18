@@ -1469,6 +1469,8 @@ export interface FinanceRangeResponse {
 export interface FinanceResponse {
   spent_sat: number;
   spent_scope: 'autopilot' | 'account';
+  /** #363: 'bip110' = Ocean income rows can never populate (no API for that chain); P&L is incomplete. */
+  ocean_chain: 'mainstream' | 'bip110';
   spent_closed_sat: number | null;
   spent_active_sat: number | null;
   collected_sat: number | null;
@@ -1538,6 +1540,9 @@ export interface OurBlockMarker {
 
 export interface OceanResponse {
   configured: boolean;
+  /** #363: which Ocean sharelog the daemon follows. On 'bip110' no
+   * Ocean data exists (Ocean provides no API for that chain). */
+  chain: 'mainstream' | 'bip110';
   last_block: {
     height: number;
     timestamp_ms: number;

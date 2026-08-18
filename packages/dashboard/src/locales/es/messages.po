@@ -2231,8 +2231,8 @@ msgid "Following new events live - click to stop"
 msgstr "Siguiendo nuevos eventos en vivo - haz clic para detener"
 
 #: src/pages/Config.tsx
-msgid "For miners pointed at Ocean's BIP110 endpoint (or a BIP110 node with DATUM). Ocean publishes no API for this chain, so the daemon reads the bip110.ocean.xyz pages directly; a few pool stats are unavailable, and all earnings figures are BIP110-chain coins."
-msgstr "Para mineros que apuntan al endpoint BIP110 de Ocean (o un nodo BIP110 con DATUM). Ocean no publica una API para esta cadena, así que el daemon lee directamente las páginas de bip110.ocean.xyz; algunas estadísticas del pool no están disponibles y todas las cifras de ganancias son monedas de la cadena BIP110."
+msgid "For miners pointed at Ocean's BIP110 endpoint (or a BIP110 node with DATUM). Ocean provides no API for this chain, so the dashboard cannot show Ocean hashrate, share log, or earnings, and Profit & Loss is incomplete. The hashprice-based dynamic price cap is bypassed (your fixed Maximum still applies). On-chain payouts are still tracked via your Bitcoin node."
+msgstr "Para mineros que apuntan al endpoint BIP110 de Ocean (o un nodo BIP110 con DATUM). Ocean no ofrece una API para esta cadena, así que el panel no puede mostrar hashrate, sharelog ni ganancias de Ocean, y Pérdidas y Ganancias queda incompleto. El tope de precio dinámico basado en hashprice se omite (tu Máximo fijo sigue aplicando). Los pagos on-chain se siguen rastreando a través de tu nodo de Bitcoin."
 
 #: src/pages/Config.tsx
 #: src/pages/Setup.tsx
@@ -2481,6 +2481,10 @@ msgstr "Incluir pagos históricos de Ocean en las ganancias totales"
 #: src/pages/Status.tsx
 msgid "income/day est."
 msgstr "ingreso/día est."
+
+#: src/pages/Status.tsx
+msgid "Incomplete on the BIP110 chain: Ocean provides no API for it, so unpaid earnings can't be read and the net line understates income. On-chain payouts are still tracked via your Bitcoin node."
+msgstr "Incompleto en la cadena BIP110: Ocean no ofrece una API para ella, así que las ganancias no pagadas no se pueden leer y la línea neta subestima los ingresos. Los pagos on-chain se siguen rastreando a través de tu nodo de Bitcoin."
 
 #: src/pages/Login.tsx
 msgid "incorrect password"
@@ -3203,6 +3207,10 @@ msgid "Ocean pool-block credited"
 msgstr "Bloque del pool de Ocean acreditado"
 
 #: src/pages/Status.tsx
+msgid "Ocean provides no API for the BIP110 chain, so hashrate, share log, and earnings can't be shown here. Your workers' stats are on the BIP110 Ocean website."
+msgstr "Ocean no ofrece una API para la cadena BIP110, así que el hashrate, el sharelog y las ganancias no se pueden mostrar aquí. Las estadísticas de tus workers están en el sitio web BIP110 de Ocean."
+
+#: src/pages/Status.tsx
 msgid "Ocean stats API - reachable when the last /api/ocean fetch returned a pool snapshot."
 msgstr "API de estadísticas de Ocean - accesible cuando el último fetch a /api/ocean devolvió un snapshot del pool."
 
@@ -3296,6 +3304,10 @@ msgstr "Seguimiento de pagos on-chain (opcional)"
 #: src/pages/Config.tsx
 msgid "On-chain payouts"
 msgstr "Pagos on-chain"
+
+#: src/pages/Status.tsx
+msgid "On-chain payouts to your payout address are still tracked through your own Bitcoin node. Selected under Config → Pool destination."
+msgstr "Los pagos on-chain a tu dirección de pago se siguen rastreando a través de tu propio nodo de Bitcoin. Se selecciona en Config → Destino del pool."
 
 #: src/pages/Config.tsx
 msgid "One-click support bundle: probes every external service the daemon talks to (marketplace, pool, node, price providers) and snapshots the configuration with all secrets stripped. Use \"Copy as Markdown\" to paste the result into a bug report."
@@ -4568,10 +4580,6 @@ msgstr "La dirección BTC a la que Ocean TIDES acredita los pagos. Editar esto a
 #: src/pages/Config.tsx
 msgid "The chain Ocean's default endpoint mines. Stats come from Ocean's JSON API."
 msgstr "La cadena que mina el endpoint predeterminado de Ocean. Las estadísticas provienen de la API JSON de Ocean."
-
-#: src/pages/Status.tsx
-msgid "The daemon follows Ocean's BIP110 sharelog (bip110.ocean.xyz). All earnings figures on this panel are BIP110-chain coins. Selected under Config → Pool destination."
-msgstr "El daemon sigue el sharelog BIP110 de Ocean (bip110.ocean.xyz). Todas las cifras de ganancias en este panel son monedas de la cadena BIP110. Se selecciona en Config → Destino del pool."
 
 #: src/pages/Setup.tsx
 msgid "The daemon may not be in setup mode. Reload the page or check the daemon logs."

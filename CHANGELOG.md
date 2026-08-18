@@ -1,10 +1,10 @@
 # Changelog
 
-## 2026-08-17
+## 2026-08-18
 
-### `[Feature]` Choose which Ocean chain the daemon follows (#363)
+### `[Feature]` Choose which Ocean chain you mine on (#363)
 
-Since the August 8 chain split, Ocean keeps separate stats per chain - and miners on Ocean's BIP110 endpoint saw their received hashrate drop to zero because the daemon only read the mainstream chain's API. A new "Ocean chain" setting under Config → Pool destination selects the chain: mainstream (default, unchanged) or BIP110. On the BIP110 chain, Ocean publishes no API, so the daemon reads the bip110.ocean.xyz pages directly; hashrate, share log, unpaid earnings, payout history, and pool blocks all follow the selected chain, while a couple of pool-wide stats (active users/workers) are unavailable there and block rewards are subsidy-only estimates. The Ocean panel shows a badge whenever the BIP110 chain is selected, as a reminder that its earnings figures are BIP110-chain coins. Switching chains rebuilds the pool-blocks history from the newly selected chain and takes effect within a minute - no restart needed. Historical charts are protected against the switch being misread as a payout.
+Since the August 8 chain split, Ocean keeps separate stats per chain - and miners on Ocean's BIP110 endpoint saw their received hashrate stuck at zero because the daemon read the mainstream chain's API, which has no record of them. A new "Ocean chain" setting under Config → Pool destination lets you declare which chain you mine on: mainstream (default, unchanged) or BIP110. Ocean has confirmed there is no API for the BIP110 chain, no plan to build one, and no supported alternative - so on BIP110 the daemon stops asking Ocean entirely, and the dashboard is honest about the gap instead of showing misleading zeros: the Ocean panel explains why hashrate and earnings can't be shown, and Profit & Loss is marked incomplete (unpaid earnings can't be read; on-chain payouts are still tracked through your own Bitcoin node). The hashprice-based dynamic price cap is bypassed on BIP110 since its reference can never arrive - your fixed Maximum remains the ceiling, so the autopilot keeps bidding. Takes effect within a minute of saving - no restart needed. (An earlier development build briefly read the BIP110 website directly; that approach was withdrawn after Ocean stated scraping is not supported, and it never shipped in a release.)
 
 ## 2026-08-11
 

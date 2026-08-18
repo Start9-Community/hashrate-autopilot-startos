@@ -134,6 +134,40 @@ export interface OceanClientOptions {
   readonly now?: () => number;
 }
 
+export type OceanChain = 'mainstream' | 'bip110';
+
+export interface ChainGatedOceanClientOptions extends OceanClientOptions {
+  /** Read live on every call so a dashboard config save takes effect
+   *  on the very next fetch, no daemon restart needed. */
+  readonly getChain: () => OceanChain;
+}
+
+/**
+ * #363: since the 8/8 chain split Ocean runs dual TIDES accounting,
+ * and the JSON API at api.ocean.xyz only covers the mainstream chain -
+ * a BIP110-side miner returns "No such user" there. Ocean support
+ * confirmed (2026-08-18) there is NO API for the BIP110 chain, none is
+ * planned, and scraping the site is not supported. So when the
+ * operator selects the BIP110 chain the daemon simply stops asking:
+ * every call short-circuits to the empty result without HTTP, and the
+ * dashboard explains why Ocean data is unavailable instead of showing
+ * zeros or API-DOWN noise.
+ */
+export function createChainGatedOceanClient(
+  opts: ChainGatedOceanClientOptions,
+): OceanClient {
+  const { getChain, ...clientOpts } = opts;
+  const mainstream = createOceanClient(clientOpts);
+  return {
+    fetchStats: (address) =>
+      getChain() === 'bip110' ? Promise.resolve(null) : mainstream.fetchStats(address),
+    fetchBlocksPage: (page, pageSize) =>
+      getChain() === 'bip110' ? Promise.resolve([]) : mainstream.fetchBlocksPage(page, pageSize),
+    fetchPayouts: (address, start, end) =>
+      getChain() === 'bip110' ? Promise.resolve(null) : mainstream.fetchPayouts(address, start, end),
+  };
+}
+
 export function createOceanClient(opts: OceanClientOptions = {}): OceanClient {
   const fetchImpl = opts.fetch ?? fetch;
   const ttl = opts.cacheTtlMs ?? DEFAULT_CACHE_TTL_MS;

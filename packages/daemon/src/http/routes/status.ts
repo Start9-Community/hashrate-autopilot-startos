@@ -421,8 +421,12 @@ function describeNextAction(state: State, runMode: State['run_mode']): NextActio
   // configured max_overpay_vs_hashprice but Ocean hashprice is
   // unknown/stale, decide() refuses to trade. Surface that up front
   // so the operator doesn't wonder why nothing is happening.
+  // #363: on the BIP110 chain hashprice can never arrive (Ocean has
+  // no API for that chain), so decide() bypasses the dynamic cap
+  // there - mirror that here or this state would show forever.
   if (
     state.config.max_overpay_vs_hashprice_sat_per_eh_day !== null &&
+    state.config.ocean_chain !== 'bip110' &&
     state.hashprice_sat_per_ph_day === null
   ) {
     return {

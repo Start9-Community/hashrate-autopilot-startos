@@ -58,6 +58,10 @@ export interface OurBlock {
 
 export interface OceanResponse {
   configured: boolean;
+  /** #363: which Ocean sharelog the daemon follows. On 'bip110' no
+   * Ocean data exists (Ocean provides no API for that chain) - the
+   * panel renders an explanation instead of an API-DOWN state. */
+  chain: 'mainstream' | 'bip110';
   last_block: {
     height: number;
     timestamp_ms: number;
@@ -134,6 +138,7 @@ export async function registerOceanRoute(
     if (!deps.oceanClient) {
       return {
         configured: false,
+        chain: 'mainstream',
         last_block: null,
         blocks_24h: 0,
         blocks_7d: 0,
@@ -152,10 +157,12 @@ export async function registerOceanRoute(
     }
 
     const config = await deps.configRepo.get();
+    const chain = config?.ocean_chain ?? 'mainstream';
     const address = config?.btc_payout_address;
     if (!address) {
       return {
         configured: false,
+        chain,
         last_block: null,
         blocks_24h: 0,
         blocks_7d: 0,
@@ -177,6 +184,7 @@ export async function registerOceanRoute(
     if (!stats) {
       return {
         configured: true,
+        chain,
         last_block: null,
         blocks_24h: 0,
         blocks_7d: 0,
@@ -328,6 +336,7 @@ export async function registerOceanRoute(
 
     const response: OceanResponse = {
       configured: true,
+      chain,
       last_block: lastBlock
         ? {
             height: lastBlock.height,
