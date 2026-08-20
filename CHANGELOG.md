@@ -2,6 +2,10 @@
 
 ## 2026-08-20
 
+### `[Release]` v1.18.0
+
+The BIP110 release. A new "Ocean chain" setting (Config → Pool & Payout) lets miners on Ocean's BIP110 endpoint declare their chain: the daemon stops asking Ocean's API (which covers only the mainstream chain - Ocean has confirmed no BIP110 API exists and scraping is unsupported), collected earnings derive from on-chain payouts seen by your own Bitcoin node, the hashprice-dependent dynamic cap and cheap mode are disabled with clear explanations (your fixed Maximum stays the ceiling and bidding continues), and every Ocean/hashprice dashboard surface is marked "n/a on BIP110" rather than showing dashes - with pre-switch history still plotting. Mainstream-chain operators see no behavior change. Also includes routine dependency maintenance and a js-yaml security pin. See the new README chapter "Mining on Ocean's BIP110 chain".
+
 ### `[UI]` BIP110 chain: charts and tiles mark what can't update instead of showing dashes (#368)
 
 Everything Ocean-API or hashprice sourced now says so on the BIP110 chain, while staying visible and keeping pre-switch history: dead stat tiles show an amber "n/a" chip (with the reason in the tooltip) instead of quiet grey text, the tile picker annotates them with "(n/a on BIP110)" but keeps them pickable, the chart right-axis dropdowns mark Ocean-sourced options the same way while leaving them selectable so mainstream-era history still plots, and the chart legends dim the "received (Ocean)", "hashprice", and "effective cap" chips with a hover note that they show pre-switch history only. Network difficulty, paid earnings, and all Braiins/Datum/Bitaxe surfaces are unaffected.

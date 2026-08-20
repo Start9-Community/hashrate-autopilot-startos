@@ -7,7 +7,7 @@ manifestVersion: 1
 id: rdouma-hashrate-autopilot
 category: bitcoin
 name: Hashrate Autopilot
-version: "1.17.6"
+version: "1.18.0"
 tagline: Autopilot for renting hashrate to mine on Ocean Mining
 icon: https://raw.githubusercontent.com/rdouma/hashrate-autopilot/main/assets/icon-512.png
 # Umbrel renders description literally - no YAML folding of soft
@@ -53,6 +53,16 @@ defaultPassword: ""
 submitter: Remco Douma
 submission: https://github.com/rdouma/hashrate-autopilot
 releaseNotes: |
+  v1.18.0 - choose which Ocean chain you mine on: full support for miners on Ocean's BIP110 endpoint.
+
+  NEW
+  - Ocean chain selector (Config, Pool & Payout). Since the August 8 chain split, Ocean mines two chains with separate accounting, and miners on the BIP110 endpoint saw their Ocean stats stuck at zero because the dashboard read the mainstream chain's API. Declare which chain you mine on and the app adapts. Mainstream (the default) is unchanged.
+  - On the BIP110 chain, Ocean provides no API (confirmed by Ocean support - none exists, none is planned, and scraping is not supported), so the app is honest about the gap instead of showing misleading zeros: the Ocean panel explains why hashrate, share log, and unpaid earnings can't be shown, and your collected earnings are derived directly from on-chain payouts seen by your own Bitcoin node. Lightning payouts can't be tracked there, and the panel says so. An Electrum server pointed at a node following the BIP110 chain is recommended.
+  - No hashprice exists on the BIP110 chain, so the hashprice-based dynamic price cap and cheap mode are disabled there with a clear explanation - your fixed Maximum bid remains the only price ceiling and the autopilot keeps bidding. Stats tiles and chart options that need Ocean data are marked "n/a on BIP110" instead of showing dashes, and anything recorded before you switched chains still plots.
+  - New README chapter "Mining on Ocean's BIP110 chain" walks through setup and summarizes exactly what changes.
+
+  Also includes routine dependency maintenance (including a js-yaml security pin). Switching the chain setting takes effect within a minute - no restart needed. Safe to upgrade from any 1.17.x release; if you mine mainstream Ocean, nothing changes.
+
   v1.17.6 - phantom Lightning payouts removed from Profit & Loss, and the dashboard API is locked to the dashboard itself.
 
   FIXED
