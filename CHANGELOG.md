@@ -2,6 +2,10 @@
 
 ## 2026-08-20
 
+### `[UI]` BIP110 chain: hashprice removed from the product surface (#367)
+
+There is no hashprice on the BIP110 chain - Ocean provides none, and deriving one would compare BIP110-chain sats against the mainstream sats you spend on Braiins, which are different assets. The dashboard now reflects that instead of dangling dead controls and eternal "calculating…" rows: the "Max premium over hashprice" setting and the cheap-mode section render disabled with an explanation (saved values are kept and apply again on the mainstream chain), the Profit & Loss per-day card hides all hashprice-derived projections and says why, and the Braiins card no longer shows the "max over hashprice" / "effective cap" rows. Also fixes a stale-data leak where the last mainstream hashprice seen before switching chains kept feeding the bid-vs-hashprice tile and tick metrics indefinitely.
+
 ### `[Fix]` BIP110 chain: collected earnings now read from the blockchain (#366)
 
 On the BIP110 chain, Profit & Loss showed collected as 0 forever - even with substantial payouts at the payout address - because collected still came from Ocean's payout ledger, which the daemon can never fetch on that chain (Ocean provides no API for it), and the hard-reset button silently did nothing for the same reason. Collected is now derived purely from on-chain payouts observed via your own Bitcoin node, labeled "collected (on-chain)", and the net line is computed without the unavailable unpaid-earnings term instead of staying blank. Lightning payouts can't be tracked on the BIP110 chain, and the panel says so explicitly. The rebuild and hard-reset buttons now re-scan the payout address history from the blockchain (and report an error instead of a fake "0 payouts" success when the scan can't run). A balance-check backend under Config → Pool & Payout (Electrum recommended) pointed at a BIP110-following node is required.

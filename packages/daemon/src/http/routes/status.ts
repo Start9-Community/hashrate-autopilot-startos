@@ -103,7 +103,16 @@ export async function registerStatusRoute(
         live_effective_sat_per_ph_day: liveEffectiveSatPhDay,
         below_floor_since: null,
         last_proposals: [],
-        config_summary: summariseConfig(config, deps.hashpriceCache?.getFresh(Infinity) ?? null, null),
+        config_summary: summariseConfig(
+          config,
+          // #367: the cache can hold a pre-flip mainstream value forever
+          // (Infinity freshness); on bip110 hashprice is meaningless, so
+          // never surface it.
+          config.ocean_chain === 'bip110'
+            ? null
+            : deps.hashpriceCache?.getFresh(Infinity) ?? null,
+          null,
+        ),
         // No tick has run yet (pre-first-tick / cold cache); the
         // bid-vs-hashprice tile shows a dash until the controller has
         // a market + hashprice to compare.
@@ -172,7 +181,16 @@ export async function registerStatusRoute(
       ? cheapestAskForDepth(state.market.orderbook.asks, config.target_hashrate_ph)
       : null;
 
-    const hashpriceSatPerPhDay = deps.hashpriceCache?.getFresh(Infinity) ?? null;
+    // #367: on the BIP110 chain there is no hashprice - Ocean provides
+    // none and none can be soundly derived (the chains' sats aren't
+    // comparable). The cache may still hold the last pre-flip
+    // mainstream value (Infinity freshness), which would otherwise keep
+    // feeding the bid-vs-hashprice tile, the cheap-mode mirror, and the
+    // next-action overlay forever. Null it at the source.
+    const hashpriceSatPerPhDay =
+      config.ocean_chain === 'bip110'
+        ? null
+        : deps.hashpriceCache?.getFresh(Infinity) ?? null;
 
     // Overlay the live hashprice cache onto the tick-captured state
     // so describeNextAction sees it even if the cache was cold when
@@ -595,10 +613,16 @@ function summariseConfig(
     destination_pool_url: string;
     cheap_target_hashrate_ph: number;
     cheap_threshold_pct: number;
+    ocean_chain: 'mainstream' | 'bip110';
   },
   hashpriceSatPerPhDay: number | null,
   cheapestAskSatEhDay: number | null,
 ): StatusResponse['config_summary'] {
+  // #367: no hashprice exists on the BIP110 chain, so the dynamic cap
+  // is bypassed in decide() - report it as not-configured here so the
+  // dashboard's "max over hashprice" / "effective cap" rows (and the
+  // chart's cap overlay) don't advertise a ceiling that isn't applied.
+  const bip110 = config.ocean_chain === 'bip110';
   // Mirror the cheap-mode logic from decide.ts to expose which
   // target is active in the status summary.
   const hashpriceSatEh =
@@ -623,7 +647,9 @@ function summariseConfig(
   // max_overpay) is binding right now.
   const fixedCapEh = config.max_bid_sat_per_eh_day;
   const dynamicCapEh =
-    config.max_overpay_vs_hashprice_sat_per_eh_day !== null && hashpriceSatEh !== null
+    !bip110 &&
+    config.max_overpay_vs_hashprice_sat_per_eh_day !== null &&
+    hashpriceSatEh !== null
       ? hashpriceSatEh + config.max_overpay_vs_hashprice_sat_per_eh_day
       : null;
   const effectiveCapEh =
@@ -636,7 +662,7 @@ function summariseConfig(
     minimum_floor_hashrate_ph: config.minimum_floor_hashrate_ph,
     max_bid_sat_per_ph_day: fixedCapEh / EH_PER_PH,
     max_overpay_vs_hashprice_sat_per_ph_day:
-      config.max_overpay_vs_hashprice_sat_per_eh_day !== null
+      !bip110 && config.max_overpay_vs_hashprice_sat_per_eh_day !== null
         ? config.max_overpay_vs_hashprice_sat_per_eh_day / EH_PER_PH
         : null,
     effective_cap_sat_per_ph_day: effectiveCapEh / EH_PER_PH,

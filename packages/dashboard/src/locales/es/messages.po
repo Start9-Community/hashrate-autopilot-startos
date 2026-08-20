@@ -604,6 +604,10 @@ msgid "Average break-even unit price over the selected range. Multiplied by avg 
 msgstr "Precio unitario de equilibrio promedio en el rango seleccionado. Multiplicado por el promedio entregado para obtener el ingreso proyectado. Distinto del hashprice spot de la fila inferior - este es el que la proyección realmente usa."
 
 #: src/pages/Status.tsx
+msgid "Average delivered hashrate over the selected chart range, as reported by Braiins."
+msgstr "Hashrate medio entregado en el rango de gráfico seleccionado, según lo reporta Braiins."
+
+#: src/pages/Status.tsx
 msgid "Average delivered hashrate over the selected chart range. Multiplied by avg hashprice to get projected income. Spend is measured directly (primary_bid_consumed_sat deltas), so this is not a factor on the spend side."
 msgstr "Hashrate entregado promedio en el rango del gráfico seleccionado. Multiplicado por el hashprice promedio para obtener el ingreso proyectado. El gasto se mide directamente (deltas de primary_bid_consumed_sat), así que esto no es un factor en el lado del gasto."
 
@@ -2243,8 +2247,8 @@ msgid "Following new events live - click to stop"
 msgstr "Siguiendo nuevos eventos en vivo - haz clic para detener"
 
 #: src/pages/Config.tsx
-msgid "For miners pointed at Ocean's BIP110 endpoint (or a BIP110 node with DATUM). Ocean provides no API for this chain, so the dashboard cannot show Ocean hashrate, share log, or unpaid earnings, and Lightning payouts can't be tracked. Collected earnings are derived purely from on-chain payouts seen by your Bitcoin node - a balance-check backend (Electrum recommended, set below) pointed at a BIP110-following node is required. The hashprice-based dynamic price cap is bypassed (your fixed Maximum still applies)."
-msgstr "Para mineros apuntados al endpoint BIP110 de Ocean (o a un nodo BIP110 con DATUM). Ocean no ofrece API para esta cadena, así que el panel no puede mostrar el hashrate de Ocean, el registro de shares ni las ganancias no pagadas, y los pagos por Lightning no se pueden seguir. Las ganancias cobradas se derivan puramente de los pagos on-chain que ve tu nodo Bitcoin - se requiere un backend de comprobación de saldo (Electrum recomendado, se configura abajo) apuntado a un nodo que siga la cadena BIP110. El límite de precio dinámico basado en hashprice se omite (tu Máximo fijo sigue aplicando)."
+msgid "For miners pointed at Ocean's BIP110 endpoint (or a BIP110 node with DATUM). Ocean provides no API for this chain, so the dashboard cannot show Ocean hashrate, share log, or unpaid earnings, and Lightning payouts can't be tracked. Collected earnings are derived purely from on-chain payouts seen by your Bitcoin node - a balance-check backend (Electrum recommended, set below) pointed at a BIP110-following node is required. There is no hashprice reference on this chain, so the dynamic price cap and cheap mode are unavailable - your fixed Maximum is the only price ceiling."
+msgstr "Para mineros apuntados al endpoint BIP110 de Ocean (o a un nodo BIP110 con DATUM). Ocean no ofrece API para esta cadena, así que el panel no puede mostrar el hashrate de Ocean, el registro de shares ni las ganancias no pagadas, y los pagos por Lightning no se pueden seguir. Las ganancias cobradas se derivan puramente de los pagos on-chain que ve tu nodo Bitcoin - se requiere un backend de comprobación de saldo (Electrum recomendado, se configura abajo) apuntado a un nodo que siga la cadena BIP110. No hay referencia de hashprice en esta cadena, así que el límite de precio dinámico y el modo barato no están disponibles - tu Máximo fijo es el único techo de precio."
 
 #: src/pages/Config.tsx
 #: src/pages/Setup.tsx
@@ -2497,6 +2501,10 @@ msgstr "En curso"
 #: src/pages/Config.tsx
 msgid "Include historical Ocean payouts in lifetime earnings"
 msgstr "Incluir pagos históricos de Ocean en las ganancias totales"
+
+#: src/pages/Status.tsx
+msgid "Income projections aren't available on the BIP110 chain - there is no hashprice reference. Spend is still measured from Braiins."
+msgstr "Las proyecciones de ingresos no están disponibles en la cadena BIP110 - no hay referencia de hashprice. El gasto se sigue midiendo desde Braiins."
 
 #: src/pages/Status.tsx
 msgid "income/day est."
@@ -3123,6 +3131,14 @@ msgstr "No es una dirección de Bitcoin válida. Usa una dirección mainnet bech
 #: src/pages/Status.tsx
 msgid "Not available on the BIP110 chain - Ocean provides no API for it, so unpaid earnings can't be read. Excluded from the net line."
 msgstr "No disponible en la cadena BIP110 - Ocean no ofrece API para ella, así que las ganancias no pagadas no se pueden leer. Excluido de la línea de neto."
+
+#: src/pages/Config.tsx
+msgid "Not available on the BIP110 chain. Cheap mode compares your bid against Ocean's hashprice, and there is no hashprice reference for that chain. Your saved settings are kept and apply again when you switch back to the mainstream chain."
+msgstr "No disponible en la cadena BIP110. El modo barato compara tu puja con el hashprice de Ocean, y no hay referencia de hashprice para esa cadena. Tus ajustes guardados se conservan y vuelven a aplicarse cuando cambias de nuevo a la cadena mainstream."
+
+#: src/pages/Config.tsx
+msgid "Not available on the BIP110 chain. Ocean provides no hashprice for it, so this dynamic cap is bypassed - your fixed Maximum is the only price ceiling. Your saved value is kept and applies again when you switch back to the mainstream chain."
+msgstr "No disponible en la cadena BIP110. Ocean no ofrece hashprice para ella, así que este límite dinámico se omite - tu Máximo fijo es el único techo de precio. Tu valor guardado se conserva y vuelve a aplicarse cuando cambias de nuevo a la cadena mainstream."
 
 #: src/pages/Config.tsx
 msgid "not configured"

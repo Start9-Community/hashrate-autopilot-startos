@@ -3468,20 +3468,30 @@ function FinancePanel({
                       ? denomination.formatHashrate(rangeData.avg_delivered_ph, intlLocale)
                       : t`calculating…`
                   }
-                  tooltip={t`Average delivered hashrate over the selected chart range. Multiplied by avg hashprice to get projected income. Spend is measured directly (primary_bid_consumed_sat deltas), so this is not a factor on the spend side.`}
-                />
-                <FinanceFootnote
-                  label={t`avg hashprice (${rangeLabel})`}
-                  value={
-                    rangeData.avg_hashprice_sat_per_ph_day !== null
-                      ? denomination.formatSatPerPhDay(
-                          rangeData.avg_hashprice_sat_per_ph_day,
-                          intlLocale,
-                        )
-                      : t`calculating…`
+                  tooltip={
+                    bip110
+                      ? t`Average delivered hashrate over the selected chart range, as reported by Braiins.`
+                      : t`Average delivered hashrate over the selected chart range. Multiplied by avg hashprice to get projected income. Spend is measured directly (primary_bid_consumed_sat deltas), so this is not a factor on the spend side.`
                   }
-                  tooltip={t`Average break-even unit price over the selected range. Multiplied by avg delivered to get projected income. Different from the spot hashprice row below - this is what the projection actually uses.`}
                 />
+                {/* #367: no hashprice exists on the BIP110 chain - hide
+                    every hashprice-derived row (avg hashprice, projected
+                    income, net/day, Ocean's estimate) instead of pinning
+                    them on a "calculating…" that never finishes. */}
+                {!bip110 && (
+                  <FinanceFootnote
+                    label={t`avg hashprice (${rangeLabel})`}
+                    value={
+                      rangeData.avg_hashprice_sat_per_ph_day !== null
+                        ? denomination.formatSatPerPhDay(
+                            rangeData.avg_hashprice_sat_per_ph_day,
+                            intlLocale,
+                          )
+                        : t`calculating…`
+                    }
+                    tooltip={t`Average break-even unit price over the selected range. Multiplied by avg delivered to get projected income. Different from the spot hashprice row below - this is what the projection actually uses.`}
+                  />
+                )}
               </>
             )}
             {/* Derivations - built from the three averages above. */}
@@ -3492,17 +3502,19 @@ function FinancePanel({
                   : 'space-y-1.5'
               }
             >
-            <FinanceFootnote
-              label={t`projected income/day (${rangeLabel})`}
-              value={
-                projectedDailyIncomeSat !== null
-                  ? denomination.formatSat(Math.round(projectedDailyIncomeSat), intlLocale)
-                  : rangeFallback
-                    ? t`insufficient history`
-                    : t`calculating…`
-              }
-              tooltip={t`Projection: avg hashprice × avg delivered (rows above), both averaged over the selected chart range. Range-aware counterpart to Ocean's own 3h estimate.`}
-            />
+            {!bip110 && (
+              <FinanceFootnote
+                label={t`projected income/day (${rangeLabel})`}
+                value={
+                  projectedDailyIncomeSat !== null
+                    ? denomination.formatSat(Math.round(projectedDailyIncomeSat), intlLocale)
+                    : rangeFallback
+                      ? t`insufficient history`
+                      : t`calculating…`
+                }
+                tooltip={t`Projection: avg hashprice × avg delivered (rows above), both averaged over the selected chart range. Range-aware counterpart to Ocean's own 3h estimate.`}
+              />
+            )}
             <FinanceFootnote
               label={rangeFallback ? t`spend/day (${localizedRangeLabel('3h', i18n.locale)})` : t`spend/day (${rangeLabel})`}
               value={denomination.formatSat(Math.round(dailySpendSat), intlLocale)}
@@ -3512,22 +3524,34 @@ function FinancePanel({
                   : t`Actual sat consumed across the selected range, scaled to a 24h rate. Derived from primary_bid_consumed_sat deltas (what Braiins charged us), not a modelled bid \u00d7 delivered.`
               }
             />
-            <FinanceFootnote
-              label={rangeFallback ? t`net/day (${localizedRangeLabel('3h', i18n.locale)})` : t`net/day (${rangeLabel})`}
-              value={
-                dailyNetSat !== null
-                  ? denomination.mode === 'usd' && denomination.btcPrice !== null
-                    ? `${dailyNetSat >= 0 ? '+' : ''}${denomination.formatSat(dailyNetSat, intlLocale)}`
-                    : `${dailyNetSat >= 0 ? '+' : ''}${formatNumber(dailyNetSat, {}, intlLocale)} sat`
-                  : t`calculating\u2026`
-              }
-              tooltip={t`Projected income \u2212 actual spend (rows above). Positive = the autopilot is profitable at current rates; negative = burning money per day. Income is a projection (avg hashprice \u00d7 avg delivered); spend is measured. Don\u2019t confuse with the lifetime net on the other panel.`}
-              valueClass={dailyNetColor}
-            />
+            {!bip110 && (
+              <FinanceFootnote
+                label={rangeFallback ? t`net/day (${localizedRangeLabel('3h', i18n.locale)})` : t`net/day (${rangeLabel})`}
+                value={
+                  dailyNetSat !== null
+                    ? denomination.mode === 'usd' && denomination.btcPrice !== null
+                      ? `${dailyNetSat >= 0 ? '+' : ''}${denomination.formatSat(dailyNetSat, intlLocale)}`
+                      : `${dailyNetSat >= 0 ? '+' : ''}${formatNumber(dailyNetSat, {}, intlLocale)} sat`
+                    : t`calculating\u2026`
+                }
+                tooltip={t`Projected income \u2212 actual spend (rows above). Positive = the autopilot is profitable at current rates; negative = burning money per day. Income is a projection (avg hashprice \u00d7 avg delivered); spend is measured. Don\u2019t confuse with the lifetime net on the other panel.`}
+                valueClass={dailyNetColor}
+              />
+            )}
+            {bip110 && (
+              <div className="text-xs text-slate-500">
+                {t`Income projections aren't available on the BIP110 chain - there is no hashprice reference. Spend is still measured from Braiins.`}
+              </div>
+            )}
             </div>
             {/* Reference rows - alternate views (pool-side estimate,
                 spot hashprice, lifetime) that the projection doesn't
                 derive from. */}
+            {/* #367: the whole reference block (Ocean's estimate, spot
+                hashprice, Ocean lifetime) is Ocean-sourced and can never
+                arrive on bip110 - hiding it beats an eternal
+                "calculating…" and a stray divider. */}
+            {!bip110 && (
             <div className="pt-2 mt-2 border-t border-slate-800 space-y-1.5">
               <FinanceFootnote
                 label={t`ocean est. income/day (${localizedRangeLabel('3h', i18n.locale)})`}
@@ -3553,6 +3577,7 @@ function FinancePanel({
                 />
               )}
             </div>
+            )}
           </div>
         ) : (
           <div className="text-sm text-slate-600"><Trans>no active bids</Trans></div>

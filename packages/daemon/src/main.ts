@@ -721,7 +721,13 @@ async function bootOperational(
     poolBlocksRepo,
     rewardEventsRepo,
     now: () => Date.now(),
-    getHashprice: () => hashpriceCache.getFresh(HASHPRICE_STALENESS_MS),
+    // #367: on the BIP110 chain hashprice doesn't exist; the cache may
+    // still hold the last pre-flip mainstream value within the staleness
+    // window, which would stamp bip110 ticks with a mainstream hashprice.
+    getHashprice: () =>
+      cfgRefHolder.value.ocean_chain === 'bip110'
+        ? null
+        : hashpriceCache.getFresh(HASHPRICE_STALENESS_MS),
   });
   // Restore floor-tracking state so the escalation timer keeps counting
   // across daemon restarts (#11).

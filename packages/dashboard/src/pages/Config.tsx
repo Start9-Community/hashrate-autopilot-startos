@@ -222,7 +222,7 @@ function useSections(): Section[] {
               {
                 value: 'bip110',
                 label: t`BIP110 chain`,
-                help: t`For miners pointed at Ocean's BIP110 endpoint (or a BIP110 node with DATUM). Ocean provides no API for this chain, so the dashboard cannot show Ocean hashrate, share log, or unpaid earnings, and Lightning payouts can't be tracked. Collected earnings are derived purely from on-chain payouts seen by your Bitcoin node - a balance-check backend (Electrum recommended, set below) pointed at a BIP110-following node is required. The hashprice-based dynamic price cap is bypassed (your fixed Maximum still applies).`,
+                help: t`For miners pointed at Ocean's BIP110 endpoint (or a BIP110 node with DATUM). Ocean provides no API for this chain, so the dashboard cannot show Ocean hashrate, share log, or unpaid earnings, and Lightning payouts can't be tracked. Collected earnings are derived purely from on-chain payouts seen by your Bitcoin node - a balance-check backend (Electrum recommended, set below) pointed at a BIP110-following node is required. There is no hashprice reference on this chain, so the dynamic price cap and cheap mode are unavailable - your fixed Maximum is the only price ceiling.`,
               },
             ],
           },
@@ -1599,6 +1599,17 @@ function CheapModeBody({
   onChange: <K extends keyof AppConfig>(k: K, v: AppConfig[K]) => void;
   gridCls: string;
 }) {
+  // #367: cheap mode compares the bid against Ocean's hashprice, which
+  // doesn't exist on the BIP110 chain - the whole section is inert
+  // there. Say so instead of rendering tunable-but-dead knobs.
+  if (draft.ocean_chain === 'bip110') {
+    return (
+      <div className="text-xs text-amber-300/90 border border-amber-800/60 bg-amber-950/20 rounded px-2 py-1.5">
+        {t`Not available on the BIP110 chain. Cheap mode compares your bid against Ocean's hashprice, and there is no hashprice reference for that chain. Your saved settings are kept and apply again when you switch back to the mainstream chain.`}
+      </div>
+    );
+  }
+
   const enabled = draft.cheap_threshold_pct > 0;
   const toggle = (next: boolean) => {
     // On: write a sensible default. The operator's prior config
@@ -4622,6 +4633,25 @@ function Field({
 
   if (spec.key === 'bid_budget_sat' && spec.kind === 'integer') {
     return <BidBudgetField spec={spec} value={value as number} locale={locale} onChange={onChange} />;
+  }
+
+  // #367: the dynamic hashprice cap has no reference on the BIP110
+  // chain - Ocean provides no hashprice for it and none can be soundly
+  // derived (the chains' sats aren't comparable) - so decide() bypasses
+  // it. Render the field disabled with the reason instead of letting
+  // the operator tune a knob that does nothing.
+  if (
+    spec.key === 'max_overpay_vs_hashprice_sat_per_eh_day' &&
+    draft.ocean_chain === 'bip110'
+  ) {
+    return (
+      <div>
+        <span className="block text-sm text-slate-500 mb-1">{spec.label}</span>
+        <div className="text-xs text-amber-300/90 border border-amber-800/60 bg-amber-950/20 rounded px-2 py-1.5">
+          {t`Not available on the BIP110 chain. Ocean provides no hashprice for it, so this dynamic cap is bypassed - your fixed Maximum is the only price ceiling. Your saved value is kept and applies again when you switch back to the mainstream chain.`}
+        </div>
+      </div>
+    );
   }
 
   if (
