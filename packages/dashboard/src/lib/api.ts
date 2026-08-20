@@ -443,6 +443,8 @@ export interface AppConfig {
   minimum_floor_hashrate_ph: number;
   destination_pool_url: string;
   destination_pool_worker_name: string;
+  /** #363: which Ocean sharelog the daemon follows since the 8/8 chain split. */
+  ocean_chain: 'mainstream' | 'bip110';
   max_bid_sat_per_eh_day: number;
   // Nullable dynamic-cap config. Server coerces 0 → null via Zod
   // preprocess; keep the wider type here so existing callers don't
@@ -1467,6 +1469,8 @@ export interface FinanceRangeResponse {
 export interface FinanceResponse {
   spent_sat: number;
   spent_scope: 'autopilot' | 'account';
+  /** #363: 'bip110' = Ocean income rows can never populate (no API for that chain); P&L is incomplete. */
+  ocean_chain: 'mainstream' | 'bip110';
   spent_closed_sat: number | null;
   spent_active_sat: number | null;
   collected_sat: number | null;
@@ -1536,6 +1540,9 @@ export interface OurBlockMarker {
 
 export interface OceanResponse {
   configured: boolean;
+  /** #363: which Ocean sharelog the daemon follows. On 'bip110' no
+   * Ocean data exists (Ocean provides no API for that chain). */
+  chain: 'mainstream' | 'bip110';
   last_block: {
     height: number;
     timestamp_ms: number;

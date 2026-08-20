@@ -226,3 +226,7 @@ later fetch can fill a previously-missing txid.
 7. Existing `historical_payouts_offset_sat` is unchanged after upgrade;
    a one-time notice explains the offset may now double-count.
 8. en/nl/es catalogs carry every new string (no raw Lingui hash IDs).
+
+## BIP110-chain exception (#366, 2026-08-20)
+
+Everything above assumes the earnpay endpoint exists for the operator's address. On `ocean_chain = bip110` it does not - Ocean provides no API for that chain (see `research.md` §5.3) - and the chain-gated Ocean client short-circuits `fetchPayouts` to null, which this design correctly treats as "ledger unreadable, keep last-known" forever. So on the BIP110 chain the earnpay pipeline is dormant by construction and P&L `collected` reverts to the pre-#323 on-chain derivation: the sum of non-reorged `reward_events` (the payout observer's address-history ledger via the operator's own node), labeled "collected (on-chain)". Lightning payouts are untrackable there (no ledger to read, no unpaid feed for the deduction scanner, which never runs since it only fires after a successful earnpay sync) and are reported as unknown, never 0. The P&L *rebuild* and *hard reset* routes detect the chain and re-run the on-chain address-history backfill instead of the earnpay fetch, keeping the fetch-before-delete safety property (probe scan first, wipe only on success). Switching back to `mainstream` reactivates everything in this document unchanged.

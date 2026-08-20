@@ -101,8 +101,15 @@ export function decide(state: State): readonly Proposal[] {
   const hashpriceSatPerPhDay = state.hashprice_sat_per_ph_day;
   const hashpriceSatEh =
     hashpriceSatPerPhDay !== null ? hashpriceSatPerPhDay * 1000 : null;
+  // #363: on the BIP110 chain hashprice can never become available -
+  // Ocean provides no API for that chain (confirmed by Ocean support,
+  // 2026-08-18), so the daemon has no earnings reference at all. The
+  // refuse-to-trade rule would permanently halt bidding; instead the
+  // dynamic cap is bypassed (the fixed max_bid still applies) and the
+  // Config UI says so on the chain selector.
   const dynamicCapConfigured =
-    config.max_overpay_vs_hashprice_sat_per_eh_day !== null;
+    config.max_overpay_vs_hashprice_sat_per_eh_day !== null &&
+    config.ocean_chain !== 'bip110';
   if (dynamicCapConfigured && hashpriceSatEh === null) return [];
 
   const fixedCap = config.max_bid_sat_per_eh_day;

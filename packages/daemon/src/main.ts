@@ -37,7 +37,7 @@ import { BraiinsService } from './services/braiins-service.js';
 import { DatumPoller, resolveDatumApiUrl } from './services/datum.js';
 import { HashpriceCache } from './services/hashprice-cache.js';
 import { HashpriceRefresher } from './services/hashprice-refresher.js';
-import { createOceanClient } from './services/ocean.js';
+import { createChainGatedOceanClient } from './services/ocean.js';
 import { DeducedPayoutsScanner } from './services/deduced-payouts.js';
 import { OceanPayoutsService } from './services/ocean-payouts-service.js';
 import { PayoutObserver } from './services/payout-observer.js';
@@ -617,7 +617,14 @@ async function bootOperational(
   // `state.ocean_hashrate_ph`, issue #36) and the /api/ocean HTTP
   // route. The internal 60 s cache means both callers share one
   // underlying HTTP round-trip per tick instead of firing two.
-  const oceanClient = createOceanClient();
+  // #363: chain-gated since the 8/8 split - Ocean has no API for the
+  // BIP110 chain (and scraping is unsupported, per Ocean support), so
+  // when the operator selects BIP110 every Ocean call short-circuits
+  // to "no data" without HTTP. The chain is read live on every call,
+  // so a dashboard save takes effect within one cache TTL, no restart.
+  const oceanClient = createChainGatedOceanClient({
+    getChain: () => cfgRefHolder.value.ocean_chain,
+  });
 
   // #323: earnpay-based payout tracking. Keeps `ocean_payouts` in sync
   // with Ocean's authoritative settlement list (on-chain + Lightning),
@@ -714,7 +721,13 @@ async function bootOperational(
     poolBlocksRepo,
     rewardEventsRepo,
     now: () => Date.now(),
-    getHashprice: () => hashpriceCache.getFresh(HASHPRICE_STALENESS_MS),
+    // #367: on the BIP110 chain hashprice doesn't exist; the cache may
+    // still hold the last pre-flip mainstream value within the staleness
+    // window, which would stamp bip110 ticks with a mainstream hashprice.
+    getHashprice: () =>
+      cfgRefHolder.value.ocean_chain === 'bip110'
+        ? null
+        : hashpriceCache.getFresh(HASHPRICE_STALENESS_MS),
   });
   // Restore floor-tracking state so the escalation timer keeps counting
   // across daemon restarts (#11).
@@ -1211,6 +1224,11 @@ async function bootOperational(
         log('[ddns] config changed, kicking immediate tick');
         void ddnsUpdater.tick();
       }
+      // #363: no special handling on an ocean_chain flip. On BIP110
+      // the daemon ingests no Ocean data at all (no API exists), so
+      // pool_blocks can never mix chains; flipping back to mainstream
+      // just resumes ingestion, leaving an honest gap for the BIP110
+      // era.
       // #240: when the payout address changes, the existing
       // reward_events rows belong to the old address and the
       // tick_metrics.paid_total_sat values were derived from those.

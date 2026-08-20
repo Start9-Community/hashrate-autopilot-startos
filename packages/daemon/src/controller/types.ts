@@ -190,6 +190,9 @@ export interface State {
   readonly braiins_total_deposited_sat: number | null;
   readonly braiins_total_spent_sat: number | null;
   readonly ocean_unpaid_sat: number | null;
+  /** #363: sharelog the Ocean reading came from ('mainstream' |
+   * 'bip110'); null when the Ocean poll failed this tick. */
+  readonly ocean_chain: string | null;
   /** #102: cumulative on-chain payout total at tick, sat. */
   readonly paid_total_sat: number | null;
   readonly btc_usd_price: number | null;

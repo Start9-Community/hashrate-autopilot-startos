@@ -22,6 +22,12 @@
  *                  will land at the next payout (when above threshold)
  *                  or has already been earned but is below threshold.
  *
+ * #366: on `ocean_chain = bip110` the earnpay/statsnap sources above
+ * can never populate (Ocean provides no API for that chain), so
+ * collected is instead the sum of non-reorged `reward_events` - pure
+ * on-chain derivation via the operator's own node - Lightning is
+ * explicitly untrackable (null), and net drops the expected term.
+ *
  * net = collected + expected − spent.  Positive = autopilot is in the
  * black, negative = still digging out of the initial deposit.
  *
@@ -49,6 +55,7 @@ import type { PayoutObserver } from '../../services/payout-observer.js';
 import type { OwnedBidsRepo } from '../../state/repos/owned_bids.js';
 import type { ConfigRepo } from '../../state/repos/config.js';
 import type { OceanPayoutsRepo } from '../../state/repos/ocean_payouts.js';
+import type { RewardEventsRepo } from '../../state/repos/reward_events.js';
 import type { TickMetricsRepo } from '../../state/repos/tick_metrics.js';
 
 const EH_PER_PH = 1000;
@@ -67,6 +74,12 @@ export interface FinanceResponse {
   readonly spent_sat: number;
   /** Which scope produced `spent_sat`. Mirrors the config field. */
   readonly spent_scope: 'autopilot' | 'account';
+  /** #363: which Ocean sharelog the daemon follows. On 'bip110' the
+   * Ocean-sourced income rows (unpaid earnings) can never populate -
+   * Ocean provides no API for that chain - so P&L is incomplete and
+   * the dashboard says so. On-chain collected still works via the
+   * operator's own node. */
+  readonly ocean_chain: 'mainstream' | 'bip110';
   /**
    * Breakdown of `spent_sat` into closed (terminal) vs active
    * (is_current) bids. Only populated under `spent_scope = 'account'`;
@@ -136,6 +149,14 @@ export interface FinanceDeps {
   readonly oceanPayoutsRepo: OceanPayoutsRepo;
   /** #323: provides the collected computing/ready/idle status for the panel. */
   readonly oceanPayoutsService: OceanPayoutsService;
+  /**
+   * #366: source of truth for lifetime collected on the BIP110 chain,
+   * where earnpay can never sync (Ocean provides no API for that
+   * chain). Sum of non-reorged on-chain outputs at the payout address,
+   * as observed by the operator's own node - the same ledger that
+   * drives the chart's lifetime-earnings line.
+   */
+  readonly rewardEventsRepo: RewardEventsRepo;
 }
 
 /**
@@ -289,7 +310,34 @@ export async function registerFinanceRoute(
     return { ok: true };
   });
 
+  // #366: BIP110-chain counterpart of the earnpay-backed rebuild. Ocean
+  // has no API for that chain, so the payout ledger is the on-chain
+  // reward_events table instead - re-derive it with a fresh walk of the
+  // payout address's history via the operator's own node.
+  const rebuildOnchain = async (): Promise<
+    { ok: true; payouts: number; collected_sat: number } | { ok: false; error: string }
+  > => {
+    if (!deps.payoutObserver) {
+      return {
+        ok: false,
+        error:
+          'no on-chain scanner configured - pick a balance-check backend (Electrum recommended) under Config → Pool & Payout',
+      };
+    }
+    const result = await deps.payoutObserver.runHistoricalBackfill();
+    if (result.error) return { ok: false, error: result.error };
+    const [payouts, collected_sat] = await Promise.all([
+      deps.rewardEventsRepo.countNonReorged(),
+      deps.rewardEventsRepo.sumPaidUpTo(Date.now()),
+    ]);
+    return { ok: true, payouts, collected_sat };
+  };
+
   app.post('/api/finance/payouts/rebuild', async () => {
+    const config = await deps.configRepo.get();
+    if (config?.ocean_chain === 'bip110') {
+      return rebuildOnchain();
+    }
     // #343: force a full re-fetch of Ocean's earnpay payout history and
     // upsert it, healing a `collected` figure that ended up short because
     // the one-shot backfill captured a partial list. Safe + idempotent.
@@ -301,6 +349,26 @@ export async function registerFinanceRoute(
   });
 
   app.post('/api/finance/hard-reset', async () => {
+    const config = await deps.configRepo.get();
+    if (config?.ocean_chain === 'bip110') {
+      // #366: wipe + rebuild the on-chain ledger from scratch, so stale
+      // rows (previous address, previous chain) can't survive. Probe
+      // the address-history walk FIRST - fetch-before-delete, same
+      // safety property as the earnpay hard reset: an unreachable
+      // Electrum leaves the data intact.
+      const probe = deps.payoutObserver
+        ? await deps.payoutObserver.runHistoricalBackfill()
+        : { error: 'no on-chain scanner configured' };
+      if (probe.error) {
+        return { ok: false, error: probe.error };
+      }
+      await deps.rewardEventsRepo.deleteAll();
+      const [summary] = await Promise.all([
+        rebuildOnchain(),
+        deps.accountSpend?.rebuild() ?? Promise.resolve(),
+      ]);
+      return summary;
+    }
     // #343: hard reset of the whole P&L dataset - wipe + rebuild the Ocean
     // payout store from scratch (exact copy of the earnpay ledger, no
     // stale rows) AND re-paginate the Braiins spend cache. The payout wipe
@@ -346,12 +414,33 @@ export async function registerFinanceRoute(
     // collected figure too. We count "what they put in" - a payout
     // that's since been spent still counts.
     const payoutAddr = config?.btc_payout_address || null;
+    const bip110 = config?.ocean_chain === 'bip110';
     let collected_sat: number | null = null;
     let collected_onchain_sat: number | null = null;
     let collected_lightning_sat: number | null = null;
     let collected_status: 'computing' | 'ready' | 'idle';
     if (!payoutAddr) {
       collected_status = 'idle';
+    } else if (bip110) {
+      // #366: earnpay can never sync on the BIP110 chain (Ocean
+      // provides no API for it), so collected is derived purely from
+      // on-chain payouts at the payout address, as observed by the
+      // operator's own node (reward_events - the ledger the chart's
+      // lifetime-earnings line already reads). Lightning payouts are
+      // untrackable there: no ledger to read them from and no
+      // unpaid-earnings feed to deduce them from, hence null (not 0 -
+      // "unknown", not "none").
+      if (!deps.payoutObserver) {
+        // No scanner backend wired (payout_source = none): earnings are
+        // structurally unobservable on this chain. Report idle so the
+        // panel says "not configured" instead of a misleading 0.
+        collected_status = 'idle';
+      } else {
+        collected_sat = await deps.rewardEventsRepo.sumPaidUpTo(Date.now());
+        collected_onchain_sat = collected_sat;
+        collected_status =
+          collected_sat > 0 ? 'ready' : deps.payoutObserver.getCollectedStatus();
+      }
     } else {
       const nowMs = Date.now();
       collected_sat = await deps.oceanPayoutsRepo.sumNetUpTo(payoutAddr, nowMs);
@@ -395,14 +484,21 @@ export async function registerFinanceRoute(
     // that piece is missing. Only surface net=null when the *income*
     // side is unavailable (Ocean unreachable): without unpaid earnings
     // we genuinely can't reason about whether we're in the black.
-    const net_sat =
-      expected_sat !== null
+    //
+    // #366: on the BIP110 chain `expected` is STRUCTURALLY null (no
+    // API), so requiring it would pin net on "-" forever. There the
+    // net line is collected + offset − spent - honest but understated
+    // by whatever is still unpaid, which the panel banner says.
+    const net_sat = bip110
+      ? (collected_sat ?? 0) + historical_offset_sat - spent_sat
+      : expected_sat !== null
         ? (collected_sat ?? 0) + historical_offset_sat + expected_sat - spent_sat
         : null;
 
     return {
       spent_sat,
       spent_scope: scope,
+      ocean_chain: config?.ocean_chain ?? 'mainstream',
       spent_closed_sat,
       spent_active_sat,
       collected_sat,

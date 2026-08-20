@@ -6,7 +6,7 @@ export const servicePort = 3010;
  * parses this line, and the manifest passes it to the image build as
  * `APP_VERSION`, so keep the shape `appVersion = '<x.y.z>'`.
  */
-export const appVersion = '1.17.6';
+export const appVersion = '1.18.0';
 
 /** Where bitcoind's data directory is mounted, read-only, for its RPC cookie. */
 export const bitcoinMountpoint = '/mnt/bitcoin';
