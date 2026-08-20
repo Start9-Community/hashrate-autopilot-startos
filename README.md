@@ -101,6 +101,8 @@ Non-goals: SaaS / multi-user, cloud deployment, hands-free wallet funding, gaple
 - Each tick also polls the **Ocean pool API** (hashprice, pool stats, payout estimate, recent blocks) and - when
   a `datum_api_url` is configured - the **Datum Gateway's `/umbrel-api`** for a second hashrate reading measured
   at the gateway. Both integrations are informational; the control loop never depends on them being reachable.
+  Ocean's API covers only the mainstream chain - if you mine Ocean's BIP110 endpoint, see
+  [Mining on Ocean's BIP110 chain](#mining-on-oceans-bip110-chain).
 - Reads your collected income from **Ocean's own payout ledger** (the earnpay endpoint) - no Bitcoin node
   required. Ocean's API only reports on-chain payouts (confirmed by Ocean support), so **Lightning payouts are
   deduced**: a confirmed drop of your unpaid earnings to zero with no matching ledger entry is recorded as a
@@ -109,6 +111,8 @@ Non-goals: SaaS / multi-user, cloud deployment, hands-free wallet funding, gaple
   (electrs, Fulcrum, and ElectrumX all work) as a corroboration source that adds the on-chain confirmation gems to
   the chart, but the P&L numbers no longer depend on it. There's also a `Pre-installation earnings` field for
   income outside Ocean's ledger (e.g. pre-autopilot history at another pool) that gets folded into the net P&L.
+  (On the BIP110 chain the ledger doesn't exist and collected is derived from the blockchain instead - see the
+  BIP110 chapter.)
 
 Full design: [`docs/spec.md`](docs/spec.md) · [`docs/architecture.md`](docs/architecture.md) ·
 [`docs/research.md`](docs/research.md).
@@ -155,7 +159,8 @@ Full design: [`docs/spec.md`](docs/spec.md) · [`docs/architecture.md`](docs/arc
   engagement: cheap-mode only engages when every tick in the window had our bid below the threshold,
   so a single-tick price dip doesn't flap the target.
 - **Ocean pool integration** - reads hashprice, pool earnings, time-to-payout, Ocean-credited hashrate, and
-  recent pool blocks from the Ocean API. Hashprice is plotted historically on the price chart. Ocean-credited
+  recent pool blocks from the Ocean API (mainstream chain only - see
+  [Mining on Ocean's BIP110 chain](#mining-on-oceans-bip110-chain)). Hashprice is plotted historically on the price chart. Ocean-credited
   hashrate is a first-class line on the Hashrate chart alongside Braiins-delivered and Datum-received. An
   optional **`% of Ocean`** overlay (Config toggle, off by default) plots Ocean's `share_log` percentage as a
   violet line on a right-side Y-axis, so you can watch how your slice of the pool drifts over time as Ocean's
@@ -220,7 +225,9 @@ Full design: [`docs/spec.md`](docs/spec.md) · [`docs/architecture.md`](docs/arc
   "collected" permanently short. The lifetime P&L card carries **rebuild** (re-fetch + fill gaps) and
   **hard reset** (wipe the Ocean payout store + Braiins spend cache and rebuild both from scratch, fetch-before-delete
   so an Ocean outage can't lose data) controls, and both report their result inline - "N payouts, collected X"
-  - so a wrong figure is recoverable without a shell (#343). A live bid table with full IDs and a full config
+  - so a wrong figure is recoverable without a shell (#343). (On the BIP110 chain "collected" is derived from
+  on-chain payouts via your own node instead, and rebuild / hard reset re-scan the blockchain - see
+  [Mining on Ocean's BIP110 chain](#mining-on-oceans-bip110-chain).) A live bid table with full IDs and a full config
   editor with live reload round out the page.
 - **Timeline page** - dedicated `/history` route (#256 v2; titled "Timeline" in the nav) with a flat filterable
   table of every bid event (CREATE / EDIT_PRICE / EDIT_SPEED / CANCEL) the autopilot or operator emitted,
@@ -405,7 +412,9 @@ live).
 
 ![Config → Pool & Payout tab](docs/images/config-pool-and-payout.png)
 
-**Pool destination** (pool URL, BTC payout address, worker identity auto-derived from the address, Datum
+**Pool destination** (pool URL, BTC payout address, worker identity auto-derived from the address, the
+**Ocean chain** selector - mainstream by default, or BIP110 for miners on Ocean's BIP110 endpoint; see
+[Mining on Ocean's BIP110 chain](#mining-on-oceans-bip110-chain) - and the Datum
 stats API URL), **Dynamic DNS** (No-IP / DuckDNS / generic dyndns2 - daemon-managed alternative to your
 router's DDNS client; pushes the current public IP every 5 min and immediately on any config save; the
 card's test push sends the daemon's own detected public IP, not the IP the dashboard request came from - #339),
@@ -469,6 +478,67 @@ When the toggle is off (default), the endpoint returns 404 so there is no inform
 For appliance / Docker setups every configurable field is also overridable via `BHA_*` environment
 variables - priority is `env > db > defaults`, read once at boot and re-validated through the same
 schema. See [docs/configuration.md](docs/configuration.md) for the full list.
+
+## Mining on Ocean's BIP110 chain
+
+Since the chain split of August 8, 2026 (block 961,632), Ocean mines two chains with fully separate
+TIDES accounting: the mainstream chain on its default endpoints, and the BIP110 chain on
+`bip110.mine.ocean.xyz:3110` (or your own BIP110 node with DATUM). The autopilot supports mining
+either one - but the two modes are not equivalent, because **Ocean provides no API for the BIP110
+chain**. That is Ocean's official position (their support, August 2026): there is no API for the
+BIP110 chain, none is planned, and scraping their site is not supported. The autopilot respects that
+- it does not scrape - which means everything normally read from Ocean's API simply does not exist
+in BIP110 mode. This chapter summarizes how to set it up and exactly what changes.
+
+### Setup
+
+1. Point your **Pool URL** at Ocean's BIP110 endpoint (or at your own BIP110 node running DATUM).
+2. Set **Config → Pool & Payout → Ocean chain** to **BIP110 chain**. Takes effect within a minute -
+   no restart needed.
+3. Point the **balance-check backend** (Electrum server recommended) and the **Bitcoin Knots RPC
+   connection** at a node that follows the BIP110 chain. This matters: on BIP110 your node is the
+   *only* source of earnings data, so a mainstream-following node would show you the wrong chain's
+   picture. The Electrum backend is strongly recommended over the Knots-RPC-only scan - the RPC
+   scan only sees currently-unspent outputs, so payouts you've swept would drop out of your
+   collected total.
+
+### What changes
+
+- **Ocean panel** - no hashrate, share log, or earnings can be shown. The panel says why instead of
+  showing misleading zeros.
+- **Profit & Loss** - *collected* is derived purely from on-chain payouts received at your payout
+  address, as observed by your own Bitcoin node (labeled "collected (on-chain)"). *Unpaid earnings*
+  can't be read, so the net line is collected + manual offset − spent and understates income by
+  whatever Ocean still owes you. **Lightning payouts cannot be tracked** - there is no ledger to
+  read them from and no unpaid-earnings feed to deduce them from. The panel's *rebuild* and *hard
+  reset* buttons re-scan your address history from the blockchain instead of fetching Ocean's
+  ledger.
+- **No hashprice** - Ocean publishes no break-even reference for the BIP110 chain, and the autopilot
+  deliberately does not calculate one: your Braiins spend is mainstream sats while BIP110 earnings
+  are BIP110-chain sats, and pricing one against the other would be comparing different assets. As
+  a consequence the **dynamic price cap** (`Max premium over hashprice`) is bypassed - your fixed
+  **Maximum** bid is the only price ceiling - and **cheap mode** is unavailable. Both render
+  disabled in Config with the reason; saved values are kept and apply again when you switch back.
+- **Per-day income projections** - hidden (they multiply hashprice by delivered hashrate). Delivered
+  hashrate and measured spend/day keep working - they come from Braiins.
+- **Tiles and charts** - Ocean-API and hashprice-sourced tiles (avg ocean, hashprice now, avg cost
+  vs hashprice, bid vs hashprice, pool blocks, pool luck, share log) show an amber "n/a" with the
+  reason in the tooltip. Chart right-axis options that need Ocean data are marked "(n/a on BIP110)"
+  but stay selectable, and the affected chart series ("received (Ocean)", "hashprice", "effective
+  cap") render with dimmed legend chips - anything recorded before you switched chains still plots,
+  the lines simply end at the switch.
+
+### What keeps working
+
+Everything that doesn't come from Ocean's API: Braiins bidding, spend tracking, and the full
+control loop (with the fixed Maximum as the price ceiling); the Datum Gateway integration;
+on-chain payout detection, chart payout markers, and payout Telegram alerts via your own node;
+network difficulty and the block-height tile (also from your node); the BIP 110 signaling scan;
+Bitaxe miners; Dynamic DNS; and every alert that isn't Ocean-data-driven.
+
+Switching back to the mainstream chain restores everything within a minute. Each tick is stamped
+with the chain it was observed on, so flipping back and forth can't corrupt the P&L history or
+mint phantom payouts from cross-chain balance jumps.
 
 ## Tech stack
 

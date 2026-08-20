@@ -184,7 +184,7 @@ hashrate-autopilot/
 │   │   │   ├── ocean-payouts-service.ts (#323 - syncs Ocean earnpay payouts into ocean_payouts; source of truth for P&L collected)
 │   │   │   ├── deduced-payouts.ts  (#343 - deduces Lightning payouts, which earnpay omits, from confirmed unpaid-series drops; runs after each successful earnpay sync)
 │   │   │   ├── pool-health.ts      (TCP probe of Datum Gateway :23334)
-│   │   │   ├── ocean.ts            (Ocean pool REST client: stats, blocks, earnings)
+│   │   │   ├── ocean.ts            (Ocean pool REST client: stats, blocks, earnings; chain-gated on ocean_chain=bip110, #363)
 │   │   │   ├── datum.ts            (optional /umbrel-api poller - gateway-measured hashrate + workers)
 │   │   │   ├── hashprice-cache.ts  (in-memory hashprice cache, fed from Ocean)
 │   │   │   ├── hashprice-refresher.ts (#33 - in-daemon 10-min Ocean hashprice poll; the cache no longer depends on dashboard traffic)
@@ -1031,6 +1031,15 @@ Two modes, selected per-config:
   resort when the wallet is not configured to watch the payout address.
 
 Reconciliation pass: periodic full scan to catch anything real-time detection missed.
+
+### 6.3 Ocean client and the BIP110 chain (#363, #366, #367)
+
+Since the 8/8/2026 chain split Ocean runs two chains with fully separate TIDES accounting, and its JSON API covers only the mainstream one. Ocean has confirmed (support, 2026-08-18) that no API exists for the BIP110 chain, none is planned, and scraping is not supported. The architecture reflects that as a declarative switch, `config.ocean_chain` (`mainstream` default / `bip110`, migrations 0122/0123):
+
+- **Chain-gated client.** `createChainGatedOceanClient({getChain})` wraps the real Ocean client; on `bip110` every call short-circuits without HTTP (`fetchStats`/`fetchPayouts` → null, `fetchBlocksPage` → []). `OceanPayoutsService` therefore never syncs (null reads as "ledger unreadable", non-destructive) and the deduced-payouts scanner never runs. Each tick's Ocean reading is stamped with `tick_metrics.ocean_chain`, and the deduced-payout drop-candidate SQL partitions by chain, so chain flips can't read a cross-chain balance jump as a payout.
+- **P&L collected on bip110** comes from `reward_events` (sum of non-reorged rows - the same on-chain ledger the chart's lifetime-earnings line reads, populated by the payout observer via the operator's own node), not `ocean_payouts`. Lightning is reported as unknown (null), net drops the structurally-null unpaid term, and the P&L rebuild / hard-reset routes re-run the on-chain address-history backfill (probe-scan-before-wipe) instead of the earnpay fetch.
+- **No hashprice on bip110.** None is served or derived (Braiins spend is mainstream sats; BIP110 earnings are chain-local sats - not comparable). `getHashprice` and the status route return null on that chain (guarding against the stale pre-flip cache value), the #28 dynamic cap is bypassed in `decide()` (the fixed `max_bid` is the only ceiling), and cheap mode is inert. The Config UI renders both controls disabled with the reason.
+- **Dashboard surfaces** are marked rather than hidden: Ocean/hashprice tiles render an amber "n/a" chip, right-axis options carry "(n/a on BIP110)" but stay selectable, and the affected chart legends dim - pre-switch mainstream history keeps plotting, series end at the switch.
 
 ## 7. Secrets and config
 
