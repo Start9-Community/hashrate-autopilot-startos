@@ -125,10 +125,22 @@ interface TileCtx {
   readonly blockExplorerTemplate?: string;
   readonly intlLocale: string;
   readonly denomination: ReturnType<typeof useDenomination>;
+  /**
+   * #367 follow-up: true when the daemon follows Ocean's BIP110 chain.
+   * Ocean-API-sourced and hashprice-sourced tiles can never populate
+   * there, so they render a short "n/a" with an explanatory tooltip
+   * instead of a dash that reads as "still loading".
+   */
+  readonly bip110: boolean;
 }
 
 const EM_DASH = '—';
 const DASH: TileResult = { value: EM_DASH };
+
+/** #367 follow-up: structurally-unavailable tile on the BIP110 chain. */
+function bip110Na(tooltip: string): TileResult {
+  return { value: t`n/a`, tooltip, color: 'text-slate-500' };
+}
 
 /**
  * #335: block-height tile marker, mirroring the chart's pool-block icons
@@ -283,10 +295,13 @@ const TILE_RENDERERS: Record<DashboardTileId, (ctx: TileCtx) => TileResult> = {
     value: denomination.formatHashrate(stats?.avg_datum_hashrate_ph ?? null, intlLocale),
     tooltip: t`Duration-weighted average of the hashrate Datum measures at the gateway over the selected range. A sustained gap below Avg Braiins means Braiins is billing for hashrate Datum never saw arrive.`,
   }),
-  avg_ocean: ({ stats, intlLocale, denomination }) => ({
-    value: denomination.formatHashrate(stats?.avg_ocean_hashrate_ph ?? null, intlLocale),
-    tooltip: t`Duration-weighted average of the hashrate Ocean credits to our payout address over the selected range. A sustained gap below Avg Braiins / Avg Datum means the pool isn't crediting work we think we delivered.`,
-  }),
+  avg_ocean: ({ stats, intlLocale, denomination, bip110 }) =>
+    bip110
+      ? bip110Na(t`Not available on the BIP110 chain - Ocean provides no API for it.`)
+      : {
+          value: denomination.formatHashrate(stats?.avg_ocean_hashrate_ph ?? null, intlLocale),
+          tooltip: t`Duration-weighted average of the hashrate Ocean credits to our payout address over the selected range. A sustained gap below Avg Braiins / Avg Datum means the pool isn't crediting work we think we delivered.`,
+        },
   avg_cost_delivered: ({ stats, intlLocale, denomination }) => ({
     value:
       stats?.avg_cost_per_ph_sat_per_ph_day != null
@@ -294,21 +309,24 @@ const TILE_RENDERERS: Record<DashboardTileId, (ctx: TileCtx) => TileResult> = {
         : EM_DASH,
     tooltip: t`Average effective rate over the selected range - what Braiins actually charged per PH/day delivered. Spend-weighted; zero-delivery periods contribute zero to both sides.`,
   }),
-  avg_cost_vs_hashprice: ({ stats, intlLocale, denomination }) => ({
-    value:
-      stats?.avg_overpay_vs_hashprice_sat_per_ph_day != null
-        ? denomination.formatSatPerPhDay(Math.round(stats.avg_overpay_vs_hashprice_sat_per_ph_day), intlLocale)
-        : EM_DASH,
-    tooltip: t`(avg cost delivered) minus the spend-weighted average hashprice during periods we were actually billed, computed over the selected range. Negative = paid below break-even.`,
-    color:
-      stats?.avg_overpay_vs_hashprice_sat_per_ph_day == null
-        ? 'text-slate-100'
-        : stats.avg_overpay_vs_hashprice_sat_per_ph_day < 0
-          ? 'text-emerald-300'
-          : stats.avg_overpay_vs_hashprice_sat_per_ph_day > 0
-            ? 'text-red-300'
-            : 'text-slate-100',
-  }),
+  avg_cost_vs_hashprice: ({ stats, intlLocale, denomination, bip110 }) =>
+    bip110
+      ? bip110Na(t`Not available on the BIP110 chain - there is no hashprice reference for it.`)
+      : {
+          value:
+            stats?.avg_overpay_vs_hashprice_sat_per_ph_day != null
+              ? denomination.formatSatPerPhDay(Math.round(stats.avg_overpay_vs_hashprice_sat_per_ph_day), intlLocale)
+              : EM_DASH,
+          tooltip: t`(avg cost delivered) minus the spend-weighted average hashprice during periods we were actually billed, computed over the selected range. Negative = paid below break-even.`,
+          color:
+            stats?.avg_overpay_vs_hashprice_sat_per_ph_day == null
+              ? 'text-slate-100'
+              : stats.avg_overpay_vs_hashprice_sat_per_ph_day < 0
+                ? 'text-emerald-300'
+                : stats.avg_overpay_vs_hashprice_sat_per_ph_day > 0
+                  ? 'text-red-300'
+                  : 'text-slate-100',
+        },
   uptime_bid_coverage: ({ stats, intlLocale }) => ({
     value: fmtPct(stats?.uptime_bid_coverage_pct ?? null, 1, intlLocale),
     tooltip: t`% of the window with an active Braiins bid. Low = orderbook didn't cooperate ("expected" downtime - nothing matched your criteria), not a failure on your side.`,
@@ -338,7 +356,10 @@ const TILE_RENDERERS: Record<DashboardTileId, (ctx: TileCtx) => TileResult> = {
         : EM_DASH,
     tooltip: t`Average overpay above the fillable ask on the bid price the controller actually had live (post-edit-deadband). Measures what the operator paid for, separate from what the controller intended.`,
   }),
-  bid_vs_hashprice: ({ status, intlLocale }) => {
+  bid_vs_hashprice: ({ status, intlLocale, bip110 }) => {
+    if (bip110) {
+      return bip110Na(t`Not available on the BIP110 chain - there is no hashprice reference for it.`);
+    }
     const cs = status?.cheap_status;
     if (!cs || cs.bid_vs_hashprice_pct === null) return DASH;
     const pct = cs.bid_vs_hashprice_pct;
@@ -370,14 +391,20 @@ const TILE_RENDERERS: Record<DashboardTileId, (ctx: TileCtx) => TileResult> = {
       tooltip: t`The price the controller would post (fillable ask + overpay) as a percent of Ocean hashprice. Cheap mode steps the hashrate target up to ${cs.cheap_target_hashrate_ph} PH/s when this stays below the ${threshold}% threshold. Lower is cheaper.`,
     };
   },
-  hashprice_now: ({ ocean, intlLocale, denomination }) => ({
-    value:
-      ocean?.user?.hashprice_sat_per_ph_day != null
-        ? denomination.formatSatPerPhDay(Math.round(ocean.user.hashprice_sat_per_ph_day), intlLocale)
-        : EM_DASH,
-    tooltip: t`Current Ocean hashprice (sat per PH per day at the pool's most recent rolling window). The break-even reference the controller bids against.`,
-  }),
-  pool_blocks_30d: ({ ocean, intlLocale }) => {
+  hashprice_now: ({ ocean, intlLocale, denomination, bip110 }) =>
+    bip110
+      ? bip110Na(t`Not available on the BIP110 chain - there is no hashprice reference for it.`)
+      : {
+          value:
+            ocean?.user?.hashprice_sat_per_ph_day != null
+              ? denomination.formatSatPerPhDay(Math.round(ocean.user.hashprice_sat_per_ph_day), intlLocale)
+              : EM_DASH,
+          tooltip: t`Current Ocean hashprice (sat per PH per day at the pool's most recent rolling window). The break-even reference the controller bids against.`,
+        },
+  pool_blocks_30d: ({ ocean, intlLocale, bip110 }) => {
+    if (bip110) {
+      return bip110Na(t`Not available on the BIP110 chain - Ocean provides no API for it.`);
+    }
     // A raw block count is only meaningful relative to what's expected,
     // so the tile colours by the 30-day pool luck (actual ÷ expected):
     // green at or above par (>=1.0), amber in the 0.9-1.0 approach, red
@@ -453,7 +480,10 @@ const TILE_RENDERERS: Record<DashboardTileId, (ctx: TileCtx) => TileResult> = {
         : t`Current Bitcoin block height. The caption names the pool (or miner) that found it, and the icon marks Ocean / BIP-110 blocks. Click to open it in your block explorer.`,
     };
   },
-  pool_luck_24h: ({ ocean, intlLocale }) => {
+  pool_luck_24h: ({ ocean, intlLocale, bip110 }) => {
+    if (bip110) {
+      return bip110Na(t`Not available on the BIP110 chain - Ocean provides no API for it.`);
+    }
     const v = ocean?.pool_luck_24h ?? null;
     // #266 follow-up: window-aware colour bands. Short windows are
     // noisier (fewer expected blocks → wider Poisson variance) so the
@@ -471,7 +501,10 @@ const TILE_RENDERERS: Record<DashboardTileId, (ctx: TileCtx) => TileResult> = {
               : 'text-red-300',
     };
   },
-  pool_luck_7d: ({ ocean, intlLocale }) => {
+  pool_luck_7d: ({ ocean, intlLocale, bip110 }) => {
+    if (bip110) {
+      return bip110Na(t`Not available on the BIP110 chain - Ocean provides no API for it.`);
+    }
     const v = ocean?.pool_luck_7d ?? null;
     return {
       value: fmtX(v, intlLocale),
@@ -486,7 +519,10 @@ const TILE_RENDERERS: Record<DashboardTileId, (ctx: TileCtx) => TileResult> = {
               : 'text-red-300',
     };
   },
-  pool_luck_30d: ({ ocean, intlLocale }) => {
+  pool_luck_30d: ({ ocean, intlLocale, bip110 }) => {
+    if (bip110) {
+      return bip110Na(t`Not available on the BIP110 chain - Ocean provides no API for it.`);
+    }
     const v = ocean?.pool_luck_30d ?? null;
     return {
       value: fmtX(v, intlLocale),
@@ -501,10 +537,13 @@ const TILE_RENDERERS: Record<DashboardTileId, (ctx: TileCtx) => TileResult> = {
               : 'text-red-300',
     };
   },
-  share_log_pct: ({ ocean, intlLocale }) => ({
-    value: fmtPct(ocean?.user?.share_log_pct ?? null, 4, intlLocale),
-    tooltip: t`Your share of Ocean's reward window. Approximately your hashrate ÷ pool hashrate; drives the unpaid-earnings line on the price chart.`,
-  }),
+  share_log_pct: ({ ocean, intlLocale, bip110 }) =>
+    bip110
+      ? bip110Na(t`Not available on the BIP110 chain - Ocean provides no API for it.`)
+      : {
+          value: fmtPct(ocean?.user?.share_log_pct ?? null, 4, intlLocale),
+          tooltip: t`Your share of Ocean's reward window. Approximately your hashrate ÷ pool hashrate; drives the unpaid-earnings line on the price chart.`,
+        },
   share_rejection_pct: ({ finance, intlLocale }) => {
     // #266 follow-up: same source as the Braiins panel's "rejection
     // rate" row - first/last cumulative counter diff over the chart
@@ -790,6 +829,7 @@ function TilesBarImpl({
     blockExplorerTemplate,
     intlLocale: intlLocale ?? 'en-US',
     denomination,
+    bip110: oceanData?.chain === 'bip110',
   };
 
   const replaceAt = (idx: number, next: DashboardTileId) => {

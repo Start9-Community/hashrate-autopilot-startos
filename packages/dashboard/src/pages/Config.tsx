@@ -4646,7 +4646,7 @@ function Field({
   ) {
     return (
       <div>
-        <span className="block text-sm text-slate-500 mb-1">{spec.label}</span>
+        <span className="block text-sm text-slate-300 mb-1">{spec.label}</span>
         <div className="text-xs text-amber-300/90 border border-amber-800/60 bg-amber-950/20 rounded px-2 py-1.5">
           {t`Not available on the BIP110 chain. Ocean provides no hashprice for it, so this dynamic cap is bypassed - your fixed Maximum is the only price ceiling. Your saved value is kept and applies again when you switch back to the mainstream chain.`}
         </div>

@@ -2943,6 +2943,10 @@ msgstr "Debe ser accesible desde internet (Braiins se conecta a ella). Puedes ca
 msgid "must contain a period - without it shares are uncredited on Ocean"
 msgstr "debe contener un punto - sin él las shares no se acreditan en Ocean"
 
+#: src/components/TilesBar.tsx
+msgid "n/a"
+msgstr "n/d"
+
 #: src/pages/Status.tsx
 msgid "net"
 msgstr "neto"
@@ -3131,6 +3135,14 @@ msgstr "No es una dirección de Bitcoin válida. Usa una dirección mainnet bech
 #: src/pages/Status.tsx
 msgid "Not available on the BIP110 chain - Ocean provides no API for it, so unpaid earnings can't be read. Excluded from the net line."
 msgstr "No disponible en la cadena BIP110 - Ocean no ofrece API para ella, así que las ganancias no pagadas no se pueden leer. Excluido de la línea de neto."
+
+#: src/components/TilesBar.tsx
+msgid "Not available on the BIP110 chain - Ocean provides no API for it."
+msgstr "No disponible en la cadena BIP110 - Ocean no ofrece API para ella."
+
+#: src/components/TilesBar.tsx
+msgid "Not available on the BIP110 chain - there is no hashprice reference for it."
+msgstr "No disponible en la cadena BIP110 - no hay referencia de hashprice para ella."
 
 #: src/pages/Config.tsx
 msgid "Not available on the BIP110 chain. Cheap mode compares your bid against Ocean's hashprice, and there is no hashprice reference for that chain. Your saved settings are kept and apply again when you switch back to the mainstream chain."

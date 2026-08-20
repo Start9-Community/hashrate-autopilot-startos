@@ -3539,7 +3539,7 @@ function FinancePanel({
               />
             )}
             {bip110 && (
-              <div className="text-xs text-slate-500">
+              <div className="mt-2 px-2 py-1.5 rounded border border-amber-700 bg-amber-900/30 text-amber-300 text-xs">
                 {t`Income projections aren't available on the BIP110 chain - there is no hashprice reference. Spend is still measured from Braiins.`}
               </div>
             )}
