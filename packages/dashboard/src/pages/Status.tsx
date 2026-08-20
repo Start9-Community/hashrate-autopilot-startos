@@ -3223,14 +3223,21 @@ function FinancePanel({
   const [rebuilding, setRebuilding] = useState(false);
   const [resetting, setResetting] = useState(false);
   // #343: last rebuild/reset outcome, shown as a confirmation so the
-  // operator knows it finished and what it pulled. Auto-clears.
+  // operator knows it finished and what it pulled. Auto-clears. #366:
+  // may carry an error instead (e.g. the BIP110-chain on-chain rebuild
+  // couldn't reach the Electrum server) - previously a failed rebuild
+  // silently reported "0 payouts", indistinguishable from success.
   const [finResult, setFinResult] = useState<
-    { kind: 'rebuild' | 'reset'; payouts: number; collected_sat: number } | null
+    { kind: 'rebuild' | 'reset'; payouts: number; collected_sat: number; error?: string } | null
   >(null);
   const { i18n } = useLingui();
   void i18n;
+  // #366: on the BIP110 chain the rebuild/reset buttons act on the
+  // on-chain reward ledger (address-history walk via the operator's
+  // node), not Ocean's earnpay store - the confirm dialogs say so.
+  const bip110 = data?.ocean_chain === 'bip110';
 
-  const showFinResult = (r: { kind: 'rebuild' | 'reset'; payouts: number; collected_sat: number }) => {
+  const showFinResult = (r: { kind: 'rebuild' | 'reset'; payouts: number; collected_sat: number; error?: string }) => {
     setFinResult(r);
     window.setTimeout(() => setFinResult(null), 12_000);
   };
@@ -3238,16 +3245,24 @@ function FinancePanel({
   const handleRebuild = async () => {
     if (rebuilding) return;
     // #343: rebuild both sides of the ledger - the spend cache (re-paginate
-    // bids from Braiins) AND the Ocean payout store (re-fetch the full
-    // earnpay history, healing a "collected" that ended up short).
-    if (!window.confirm(t`Recompute the Profit & Loss panel from scratch? Re-paginates every bid from Braiins (spent) and re-fetches your full Ocean payout history (collected). Safe, just slower than a normal refresh.`)) {
+    // bids from Braiins) AND the payout ledger (earnpay re-fetch, or on
+    // the BIP110 chain an on-chain address-history re-scan, #366).
+    const msg = bip110
+      ? t`Recompute the Profit & Loss panel from scratch? Re-paginates every bid from Braiins (spent) and re-scans your payout address history via your Bitcoin node (collected). Safe, just slower than a normal refresh.`
+      : t`Recompute the Profit & Loss panel from scratch? Re-paginates every bid from Braiins (spent) and re-fetches your full Ocean payout history (collected). Safe, just slower than a normal refresh.`;
+    if (!window.confirm(msg)) {
       return;
     }
     setRebuilding(true);
     try {
       const [, payoutRes] = await Promise.all([api.rebuildSpendCache(), api.rebuildPayouts()]);
       qc.invalidateQueries({ queryKey: ['finance'] });
-      showFinResult({ kind: 'rebuild', payouts: payoutRes.payouts ?? 0, collected_sat: payoutRes.collected_sat ?? 0 });
+      showFinResult({
+        kind: 'rebuild',
+        payouts: payoutRes.payouts ?? 0,
+        collected_sat: payoutRes.collected_sat ?? 0,
+        error: payoutRes.ok ? undefined : payoutRes.error ?? t`rebuild failed`,
+      });
     } finally {
       setRebuilding(false);
     }
@@ -3257,16 +3272,24 @@ function FinancePanel({
     if (resetting) return;
     // #343: nuclear option - wipe both datasets and rebuild from scratch,
     // so nothing stale can survive. The payout wipe is fetch-before-delete
-    // (an Ocean outage leaves the store intact), and re-pulled payouts are
+    // (a source outage leaves the store intact), and re-pulled payouts are
     // marked already-notified, so it won't re-alert about old payouts.
-    if (!window.confirm(t`Hard reset the Profit & Loss data? This DELETES the stored Ocean payout history and Braiins spend cache, then rebuilds both from scratch. Safe (no other data touched, and it won't re-notify you), but the collected figure will briefly show 0 while it re-pulls.`)) {
+    const msg = bip110
+      ? t`Hard reset the Profit & Loss data? This DELETES the stored on-chain payout ledger and Braiins spend cache, then rebuilds both from scratch via your Bitcoin node. Safe (no other data touched), but the collected figure will briefly show 0 while it re-scans.`
+      : t`Hard reset the Profit & Loss data? This DELETES the stored Ocean payout history and Braiins spend cache, then rebuilds both from scratch. Safe (no other data touched, and it won't re-notify you), but the collected figure will briefly show 0 while it re-pulls.`;
+    if (!window.confirm(msg)) {
       return;
     }
     setResetting(true);
     try {
       const res = await api.hardResetFinance();
       qc.invalidateQueries({ queryKey: ['finance'] });
-      showFinResult({ kind: 'reset', payouts: res.payouts ?? 0, collected_sat: res.collected_sat ?? 0 });
+      showFinResult({
+        kind: 'reset',
+        payouts: res.payouts ?? 0,
+        collected_sat: res.collected_sat ?? 0,
+        error: res.ok ? undefined : res.error ?? t`hard reset failed`,
+      });
     } finally {
       setResetting(false);
     }
@@ -3547,7 +3570,15 @@ function FinancePanel({
               this is where they belong (they used to sit on per-day). */}
           {headerControls}
         </div>
-        {finResult && (
+        {finResult && (finResult.error ? (
+          // #366: a failed rebuild/reset used to render as a green
+          // "0 payouts" success line - surface the error instead.
+          <div className="mb-2 text-[11px] text-red-300/90 font-mono">
+            {finResult.kind === 'reset' ? <Trans>hard reset failed</Trans> : <Trans>rebuild failed</Trans>}
+            {' · '}
+            {finResult.error}
+          </div>
+        ) : (
           <div className="mb-2 text-[11px] text-emerald-300/90 font-mono">
             {finResult.kind === 'reset' ? <Trans>hard reset done</Trans> : <Trans>rebuild done</Trans>}
             {' · '}
@@ -3556,15 +3587,17 @@ function FinancePanel({
               {finResult.payouts} payouts · collected {denomination.formatSat(finResult.collected_sat, intlLocale)}
             </Trans>
           </div>
-        )}
-        {/* #363: on the BIP110 chain the Ocean-sourced income rows can
-            never populate (Ocean provides no API for that chain), so
-            the net line systematically understates income. Say so
-            up front rather than letting the dashes read as "zero". */}
+        ))}
+        {/* #363/#366: on the BIP110 chain the Ocean-sourced income rows
+            can never populate (Ocean provides no API for that chain).
+            Collected IS tracked - derived purely from on-chain payouts
+            seen by the operator's own node - but unpaid earnings and
+            Lightning payouts are unknowable, so the net line
+            understates income by whatever is still unpaid. */}
         {data.ocean_chain === 'bip110' && (
           <div className="mb-2 px-2 py-1.5 rounded border border-amber-700 bg-amber-900/30 text-amber-300 text-xs">
             <Trans>
-              Incomplete on the BIP110 chain: Ocean provides no API for it, so unpaid earnings can't be read and the net line understates income. On-chain payouts are still tracked via your Bitcoin node.
+              BIP110 chain: Ocean provides no API for it, so earnings here are derived purely from on-chain payouts seen by your Bitcoin node. Unpaid earnings and Lightning payouts can't be tracked, and the net line understates income by whatever is still unpaid.
             </Trans>
           </div>
         )}
@@ -3604,22 +3637,30 @@ function FinancePanel({
           label={t`unpaid earnings (Ocean)`}
           value={data.expected_sat}
           tooltip={
-            data.ocean
-              ? t`Ocean's Unpaid Earnings - what will land on-chain at the next payout. Threshold: ${formatSats(data.ocean.payout_threshold_sat)} sat (~0.01 BTC).`
-              : t`Ocean stats unavailable.`
+            data.ocean_chain === 'bip110'
+              ? t`Not available on the BIP110 chain - Ocean provides no API for it, so unpaid earnings can't be read. Excluded from the net line.`
+              : data.ocean
+                ? t`Ocean's Unpaid Earnings - what will land on-chain at the next payout. Threshold: ${formatSats(data.ocean.payout_threshold_sat)} sat (~0.01 BTC).`
+                : t`Ocean stats unavailable.`
           }
         />
         <FinanceRow
           sign="plus"
-          label={t`collected`}
+          label={data.ocean_chain === 'bip110' ? t`collected (on-chain)` : t`collected`}
           value={data.collected_sat}
           status={data.collected_status}
           tooltip={
-            data.collected_status === 'computing'
-              ? t`Loading your payout history from Ocean. Waiting for the first read of Ocean's payout ledger to complete - usually a few seconds.`
-              : data.collected_sat !== null
-                ? t`Everything Ocean has actually paid you: on-chain payouts from Ocean's own payout ledger, plus Lightning payouts deduced from your unpaid earnings dropping to zero (Ocean's ledger doesn't report those). Counts what you were paid, even if you've since spent it.`
-                : t`No payout address configured. Set your Ocean payout address under Config → Pool & Payout so the Profit & Loss panel can read your collected earnings. The net line treats missing collected as 0 so the arithmetic still reads.`
+            data.ocean_chain === 'bip110'
+              ? data.collected_status === 'computing'
+                ? t`Waiting for the first on-chain scan of your payout address to complete - usually under a minute after the daemon starts.`
+                : data.collected_sat !== null
+                  ? t`Sum of on-chain payouts received at your payout address, derived from the blockchain via your Bitcoin node. Ocean provides no API for the BIP110 chain, so this is the only observable income; Lightning payouts can't be tracked. Counts what you were paid, even if you've since spent it.`
+                  : t`On-chain scanning isn't configured. Pick a balance-check backend (Electrum recommended) under Config → Pool & Payout - on the BIP110 chain it is the only way to read your earnings.`
+              : data.collected_status === 'computing'
+                ? t`Loading your payout history from Ocean. Waiting for the first read of Ocean's payout ledger to complete - usually a few seconds.`
+                : data.collected_sat !== null
+                  ? t`Everything Ocean has actually paid you: on-chain payouts from Ocean's own payout ledger, plus Lightning payouts deduced from your unpaid earnings dropping to zero (Ocean's ledger doesn't report those). Counts what you were paid, even if you've since spent it.`
+                  : t`No payout address configured. Set your Ocean payout address under Config → Pool & Payout so the Profit & Loss panel can read your collected earnings. The net line treats missing collected as 0 so the arithmetic still reads.`
           }
         />
         {/* #323: on-chain vs Lightning split. Only shown when a
@@ -3673,7 +3714,11 @@ function FinancePanel({
             // digging out of the initial deposit. Keeps the rest of
             // the panel calm so the eye lands on the conclusion.
             valueClass={netColor}
-            tooltip={t`Collected (Ocean's full payout ledger, on-chain + Lightning) + pre-installation (manual) + Ocean's unpaid earnings − spent on bids. Missing collected is treated as 0. Negative = still recouping the initial deposit.`}
+            tooltip={
+              data.ocean_chain === 'bip110'
+                ? t`Collected (on-chain payouts seen by your Bitcoin node) + pre-installation (manual) − spent on bids. Unpaid earnings can't be read on the BIP110 chain, so this understates income by whatever is still unpaid. Negative = still recouping the initial deposit.`
+                : t`Collected (Ocean's full payout ledger, on-chain + Lightning) + pre-installation (manual) + Ocean's unpaid earnings − spent on bids. Missing collected is treated as 0. Negative = still recouping the initial deposit.`
+            }
           />
           {/* #249: rate of return on its own row so the sat column
               stays right-aligned across all four lines above. Same

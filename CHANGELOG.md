@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-08-20
+
+### `[Fix]` BIP110 chain: collected earnings now read from the blockchain (#366)
+
+On the BIP110 chain, Profit & Loss showed collected as 0 forever - even with substantial payouts at the payout address - because collected still came from Ocean's payout ledger, which the daemon can never fetch on that chain (Ocean provides no API for it), and the hard-reset button silently did nothing for the same reason. Collected is now derived purely from on-chain payouts observed via your own Bitcoin node, labeled "collected (on-chain)", and the net line is computed without the unavailable unpaid-earnings term instead of staying blank. Lightning payouts can't be tracked on the BIP110 chain, and the panel says so explicitly. The rebuild and hard-reset buttons now re-scan the payout address history from the blockchain (and report an error instead of a fake "0 payouts" success when the scan can't run). A balance-check backend under Config → Pool & Payout (Electrum recommended) pointed at a BIP110-following node is required.
+
 ## 2026-08-18
 
 ### `[Feature]` Choose which Ocean chain you mine on (#363)

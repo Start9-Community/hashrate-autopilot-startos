@@ -222,7 +222,7 @@ function useSections(): Section[] {
               {
                 value: 'bip110',
                 label: t`BIP110 chain`,
-                help: t`For miners pointed at Ocean's BIP110 endpoint (or a BIP110 node with DATUM). Ocean provides no API for this chain, so the dashboard cannot show Ocean hashrate, share log, or earnings, and Profit & Loss is incomplete. The hashprice-based dynamic price cap is bypassed (your fixed Maximum still applies). On-chain payouts are still tracked via your Bitcoin node.`,
+                help: t`For miners pointed at Ocean's BIP110 endpoint (or a BIP110 node with DATUM). Ocean provides no API for this chain, so the dashboard cannot show Ocean hashrate, share log, or unpaid earnings, and Lightning payouts can't be tracked. Collected earnings are derived purely from on-chain payouts seen by your Bitcoin node - a balance-check backend (Electrum recommended, set below) pointed at a BIP110-following node is required. The hashprice-based dynamic price cap is bypassed (your fixed Maximum still applies).`,
               },
             ],
           },

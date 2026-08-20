@@ -857,6 +857,10 @@ msgstr "Escaneo BIP-110"
 msgid "BIP110 chain"
 msgstr "Cadena BIP110"
 
+#: src/pages/Status.tsx
+msgid "BIP110 chain: Ocean provides no API for it, so earnings here are derived purely from on-chain payouts seen by your Bitcoin node. Unpaid earnings and Lightning payouts can't be tracked, and the net line understates income by whatever is still unpaid."
+msgstr "Cadena BIP110: Ocean no ofrece API para ella, así que las ganancias aquí se derivan puramente de los pagos on-chain que ve tu nodo Bitcoin. Las ganancias no pagadas y los pagos por Lightning no se pueden seguir, y la línea de neto subestima los ingresos en lo que aún queda sin pagar."
+
 #: src/components/TilesBar.tsx
 msgid "Bitaxe best diff"
 msgstr "Mejor diff Bitaxe"
@@ -1343,6 +1347,14 @@ msgstr "cobrado"
 #: src/pages/Status.tsx
 msgid "Collected (Ocean's full payout ledger, on-chain + Lightning) + pre-installation (manual) + Ocean's unpaid earnings − spent on bids. Missing collected is treated as 0. Negative = still recouping the initial deposit."
 msgstr "Cobrado (libro de pagos completo de Ocean, on-chain + Lightning) + preinstalación (manual) + ganancias pendientes de Ocean − gastado en pujas. El cobrado ausente se trata como 0. Negativo = aún recuperando el depósito inicial."
+
+#: src/pages/Status.tsx
+msgid "Collected (on-chain payouts seen by your Bitcoin node) + pre-installation (manual) − spent on bids. Unpaid earnings can't be read on the BIP110 chain, so this understates income by whatever is still unpaid. Negative = still recouping the initial deposit."
+msgstr "Cobrado (pagos on-chain que ve tu nodo Bitcoin) + previo a la instalación (manual) − gastado en pujas. Las ganancias no pagadas no se pueden leer en la cadena BIP110, así que esto subestima los ingresos en lo que aún queda sin pagar. Negativo = todavía recuperando el depósito inicial."
+
+#: src/pages/Status.tsx
+msgid "collected (on-chain)"
+msgstr "cobrado (on-chain)"
 
 #: src/pages/Config.tsx
 msgid "Compact numeric time series - one row per tick (~1,440/day) with hashrate, prices, share-log %, spend. This is what backs the Hashrate / Price / Overpay charts, so set it to the longest range you want to be able to chart. Cheap on disk: a year is ~525k small rows. Default 0 = keep forever."
@@ -2231,8 +2243,8 @@ msgid "Following new events live - click to stop"
 msgstr "Siguiendo nuevos eventos en vivo - haz clic para detener"
 
 #: src/pages/Config.tsx
-msgid "For miners pointed at Ocean's BIP110 endpoint (or a BIP110 node with DATUM). Ocean provides no API for this chain, so the dashboard cannot show Ocean hashrate, share log, or earnings, and Profit & Loss is incomplete. The hashprice-based dynamic price cap is bypassed (your fixed Maximum still applies). On-chain payouts are still tracked via your Bitcoin node."
-msgstr "Para mineros que apuntan al endpoint BIP110 de Ocean (o un nodo BIP110 con DATUM). Ocean no ofrece una API para esta cadena, así que el panel no puede mostrar hashrate, sharelog ni ganancias de Ocean, y Pérdidas y Ganancias queda incompleto. El tope de precio dinámico basado en hashprice se omite (tu Máximo fijo sigue aplicando). Los pagos on-chain se siguen rastreando a través de tu nodo de Bitcoin."
+msgid "For miners pointed at Ocean's BIP110 endpoint (or a BIP110 node with DATUM). Ocean provides no API for this chain, so the dashboard cannot show Ocean hashrate, share log, or unpaid earnings, and Lightning payouts can't be tracked. Collected earnings are derived purely from on-chain payouts seen by your Bitcoin node - a balance-check backend (Electrum recommended, set below) pointed at a BIP110-following node is required. The hashprice-based dynamic price cap is bypassed (your fixed Maximum still applies)."
+msgstr "Para mineros apuntados al endpoint BIP110 de Ocean (o a un nodo BIP110 con DATUM). Ocean no ofrece API para esta cadena, así que el panel no puede mostrar el hashrate de Ocean, el registro de shares ni las ganancias no pagadas, y los pagos por Lightning no se pueden seguir. Las ganancias cobradas se derivan puramente de los pagos on-chain que ve tu nodo Bitcoin - se requiere un backend de comprobación de saldo (Electrum recomendado, se configura abajo) apuntado a un nodo que siga la cadena BIP110. El límite de precio dinámico basado en hashprice se omite (tu Máximo fijo sigue aplicando)."
 
 #: src/pages/Config.tsx
 #: src/pages/Setup.tsx
@@ -2310,8 +2322,16 @@ msgid "hard reset done"
 msgstr "reinicio total hecho"
 
 #: src/pages/Status.tsx
+msgid "hard reset failed"
+msgstr "restablecimiento completo fallido"
+
+#: src/pages/Status.tsx
 msgid "Hard reset the Profit & Loss data? This DELETES the stored Ocean payout history and Braiins spend cache, then rebuilds both from scratch. Safe (no other data touched, and it won't re-notify you), but the collected figure will briefly show 0 while it re-pulls."
 msgstr "¿Reiniciar por completo los datos de Profit & Loss? Esto BORRA el historial de pagos de Ocean almacenado y la caché de gasto de Braiins, y reconstruye ambos desde cero. Seguro (no toca ningún otro dato y no te volverá a notificar), pero la cifra de cobrado mostrará 0 brevemente mientras se recarga."
+
+#: src/pages/Status.tsx
+msgid "Hard reset the Profit & Loss data? This DELETES the stored on-chain payout ledger and Braiins spend cache, then rebuilds both from scratch via your Bitcoin node. Safe (no other data touched), but the collected figure will briefly show 0 while it re-scans."
+msgstr "¿Restablecer por completo los datos de Ganancias y Pérdidas? Esto ELIMINA el libro de pagos on-chain almacenado y la caché de gasto de Braiins, y luego reconstruye ambos desde cero a través de tu nodo Bitcoin. Seguro (no se toca ningún otro dato), pero la cifra de cobrado mostrará 0 brevemente mientras se vuelve a escanear."
 
 #: src/pages/Status.tsx
 msgid "Hard reset: delete the stored payout history + spend cache and rebuild both from scratch. Use only if 'rebuild' didn't fix it."
@@ -2481,10 +2501,6 @@ msgstr "Incluir pagos históricos de Ocean en las ganancias totales"
 #: src/pages/Status.tsx
 msgid "income/day est."
 msgstr "ingreso/día est."
-
-#: src/pages/Status.tsx
-msgid "Incomplete on the BIP110 chain: Ocean provides no API for it, so unpaid earnings can't be read and the net line understates income. On-chain payouts are still tracked via your Bitcoin node."
-msgstr "Incompleto en la cadena BIP110: Ocean no ofrece una API para ella, así que las ganancias no pagadas no se pueden leer y la línea neta subestima los ingresos. Los pagos on-chain se siguen rastreando a través de tu nodo de Bitcoin."
 
 #: src/pages/Login.tsx
 msgid "incorrect password"
@@ -3104,6 +3120,10 @@ msgstr "hostname no totalmente cualificado"
 msgid "Not a valid Bitcoin address. Use a mainnet bech32 address (starts with <0>bc1q</0>) or Taproot (<1>bc1p</1>)."
 msgstr "No es una dirección de Bitcoin válida. Usa una dirección mainnet bech32 (empieza por <0>bc1q</0>) o Taproot (<1>bc1p</1>)."
 
+#: src/pages/Status.tsx
+msgid "Not available on the BIP110 chain - Ocean provides no API for it, so unpaid earnings can't be read. Excluded from the net line."
+msgstr "No disponible en la cadena BIP110 - Ocean no ofrece API para ella, así que las ganancias no pagadas no se pueden leer. Excluido de la línea de neto."
+
 #: src/pages/Config.tsx
 msgid "not configured"
 msgstr "no configurado"
@@ -3308,6 +3328,10 @@ msgstr "Pagos on-chain"
 #: src/pages/Status.tsx
 msgid "On-chain payouts to your payout address are still tracked through your own Bitcoin node. Selected under Config → Pool destination."
 msgstr "Los pagos on-chain a tu dirección de pago se siguen rastreando a través de tu propio nodo de Bitcoin. Se selecciona en Config → Destino del pool."
+
+#: src/pages/Status.tsx
+msgid "On-chain scanning isn't configured. Pick a balance-check backend (Electrum recommended) under Config → Pool & Payout - on the BIP110 chain it is the only way to read your earnings."
+msgstr "El escaneo on-chain no está configurado. Elige un backend de comprobación de saldo (Electrum recomendado) en Config → Pool & Payout - en la cadena BIP110 es la única forma de leer tus ganancias."
 
 #: src/pages/Config.tsx
 msgid "One-click support bundle: probes every external service the daemon talks to (marketplace, pool, node, price providers) and snapshots the configuration with all secrets stripped. Use \"Copy as Markdown\" to paste the result into a bug report."
@@ -3931,6 +3955,10 @@ msgstr "reconstruir"
 msgid "rebuild done"
 msgstr "rebuild hecho"
 
+#: src/pages/Status.tsx
+msgid "rebuild failed"
+msgstr "reconstrucción fallida"
+
 #: src/components/HashrateChart.tsx
 #: src/pages/Config.tsx
 msgid "received (Datum)"
@@ -3944,6 +3972,10 @@ msgstr "recibido (Ocean)"
 #: src/pages/Status.tsx
 msgid "Recompute the Profit & Loss panel from scratch? Re-paginates every bid from Braiins (spent) and re-fetches your full Ocean payout history (collected). Safe, just slower than a normal refresh."
 msgstr "¿Recalcular el panel de Profit & Loss desde cero? Vuelve a paginar cada oferta de Braiins (gastado) y recarga tu historial completo de pagos de Ocean (cobrado). Seguro, solo más lento que un refresco normal."
+
+#: src/pages/Status.tsx
+msgid "Recompute the Profit & Loss panel from scratch? Re-paginates every bid from Braiins (spent) and re-scans your payout address history via your Bitcoin node (collected). Safe, just slower than a normal refresh."
+msgstr "¿Recalcular el panel de Ganancias y Pérdidas desde cero? Vuelve a paginar cada puja desde Braiins (gastado) y vuelve a escanear el historial de tu dirección de pago a través de tu nodo Bitcoin (cobrado). Seguro, solo más lento que un refresco normal."
 
 #: src/lib/alertConditions.ts
 msgid "recovered"
@@ -4478,6 +4510,10 @@ msgstr "Suma de counters_committed.amount_consumed_sat en cada oferta de /v1/spo
 msgid "Sum of live AxeOS-reported power draw across reachable Bitaxe miners."
 msgstr "Suma del consumo de potencia reportado por AxeOS en los Bitaxe alcanzables."
 
+#: src/pages/Status.tsx
+msgid "Sum of on-chain payouts received at your payout address, derived from the blockchain via your Bitcoin node. Ocean provides no API for the BIP110 chain, so this is the only observable income; Lightning payouts can't be tracked. Counts what you were paid, even if you've since spent it."
+msgstr "Suma de los pagos on-chain recibidos en tu dirección de pago, derivada de la blockchain a través de tu nodo Bitcoin. Ocean no ofrece API para la cadena BIP110, así que este es el único ingreso observable; los pagos por Lightning no se pueden seguir. Cuenta lo que te pagaron, aunque ya lo hayas gastado."
+
 #: src/components/TilesBar.tsx
 msgid "Sum of the 1-minute hashrate Bitaxe miners are reporting (reachable devices only). Always shown in TH/s - a typical Bitaxe is ~1 TH/s, so PH/EH would read as zero. Lines up with the Fleet total in the Bitaxe miners section."
 msgstr "Suma del hashrate a 1 minuto que reportan los Bitaxe (solo dispositivos alcanzables). Siempre en TH/s - un Bitaxe típico es ~1 TH/s, así que PH/EH sería cero. Coincide con el total de la flota en la sección Bitaxe miners."
@@ -4876,6 +4912,10 @@ msgstr "Temp VR"
 #: src/pages/Status.tsx
 msgid "Waiting for Ocean hashprice - trading is paused until the break-even reference is available."
 msgstr "Esperando el hashprice de Ocean - el trading está en pausa hasta que la referencia break-even esté disponible."
+
+#: src/pages/Status.tsx
+msgid "Waiting for the first on-chain scan of your payout address to complete - usually under a minute after the daemon starts."
+msgstr "Esperando a que termine el primer escaneo on-chain de tu dirección de pago - normalmente menos de un minuto tras arrancar el daemon."
 
 #: src/components/TilesBar.tsx
 msgid "wallet runway"

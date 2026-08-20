@@ -362,6 +362,7 @@ export async function createHttpServer(deps: HttpServerDeps): Promise<HttpServer
     tickMetricsRepo: deps.tickMetricsRepo,
     oceanPayoutsRepo: deps.oceanPayoutsRepo,
     oceanPayoutsService: deps.oceanPayoutsService,
+    rewardEventsRepo: deps.rewardEventsRepo,
   });
   await registerBtcPriceRoute(app, {
     btcPriceService: deps.btcPriceService,
