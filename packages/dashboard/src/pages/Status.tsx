@@ -536,6 +536,13 @@ export function Status() {
     queryFn: api.ocean,
     refetchInterval: 60_000,
   });
+  // #368: Ocean-API / hashprice chart surfaces can gain no
+  // new data on the BIP110 chain. Their dropdown options get a marker
+  // (kept selectable so pre-flip history still plots) and their legend
+  // chips render dimmed.
+  const bip110Chain = oceanQuery.data?.chain === 'bip110';
+  const naOnBip110 = (label: string) =>
+    bip110Chain ? `${label} (${t`n/a on BIP110`})` : label;
 
   // #266 follow-up: solo-miners snapshot powers the Bitaxe fleet
   // tiles (hashrate, power, J/TH) in TilesBar. Shared query key with
@@ -976,12 +983,16 @@ export function Status() {
             className="bg-slate-800 border border-slate-700 rounded px-2 py-0.5 text-[11px]"
           >
             <option value="none">{t`none`}</option>
-            <option value="share_log">{t`share_log %`}</option>
+            {/* #368: Ocean-API series get the n/a marker on
+                the BIP110 chain but stay selectable - pre-flip history
+                still plots. Network difficulty comes from the
+                operator's own node, so it keeps working. */}
+            <option value="share_log">{naOnBip110(t`share_log %`)}</option>
             <option value="network_difficulty">{t`network difficulty`}</option>
-            <option value="pool_hashrate">{t`pool hashrate`}</option>
-            <option value="pool_luck_24h">{t`pool luck (24h)`}</option>
-            <option value="pool_luck_7d">{t`pool luck (7d)`}</option>
-            <option value="pool_luck_30d">{t`pool luck (30d)`}</option>
+            <option value="pool_hashrate">{naOnBip110(t`pool hashrate`)}</option>
+            <option value="pool_luck_24h">{naOnBip110(t`pool luck (24h)`)}</option>
+            <option value="pool_luck_7d">{naOnBip110(t`pool luck (7d)`)}</option>
+            <option value="pool_luck_30d">{naOnBip110(t`pool luck (30d)`)}</option>
             <option value="braiins_rejection_pct">{t`rejection ratio (Braiins)`}</option>
             {/* #149: solo-mining series only listed when the master toggle is on. */}
             {soloMiningEnabled && (
@@ -1001,6 +1012,7 @@ export function Status() {
           ourBlocks={visibleOurBlocks}
           blockExplorerTemplate={configQuery.data?.config?.block_explorer_url_template}
           shareLogPct={oceanQuery.data?.user?.share_log_pct ?? null}
+          bip110={bip110Chain}
           braiinsSmoothingMinutes={configQuery.data?.config?.braiins_hashrate_smoothing_minutes ?? 1}
           datumSmoothingMinutes={configQuery.data?.config?.datum_hashrate_smoothing_minutes ?? 1}
           rightAxisSeries={hashrateRightAxis}
@@ -1041,11 +1053,15 @@ export function Status() {
           >
             <option value="none">{t`none`}</option>
             <option value="effective_rate">{t`effective rate`}</option>
-            <option value="estimated_block_reward">{t`block reward`}</option>
+            {/* #368: Ocean-sourced series get the n/a marker
+                on the BIP110 chain but stay selectable - pre-flip
+                history still plots. Paid earnings keeps working (it
+                reads the on-chain reward ledger). */}
+            <option value="estimated_block_reward">{naOnBip110(t`block reward`)}</option>
             <option value="btc_usd_price">{t`BTC/USD`}</option>
-            <option value="ocean_unpaid_sat">{t`unpaid earnings`}</option>
+            <option value="ocean_unpaid_sat">{naOnBip110(t`unpaid earnings`)}</option>
             <option value="paid_total_sat">{t`paid earnings (lifetime)`}</option>
-            <option value="lifetime_earnings_sat">{t`lifetime earnings (paid + unpaid)`}</option>
+            <option value="lifetime_earnings_sat">{naOnBip110(t`lifetime earnings (paid + unpaid)`)}</option>
             <option value="total_balance_sat">{t`Braiins balance`}</option>
             {/* #164: per-tick avg-overpay series, mirroring the two
                 stat cards at the bottom of the Braiins panel. */}
@@ -1064,6 +1080,7 @@ export function Status() {
           markersHiddenCount={markersHiddenCount}
           showEventKinds={showEventKinds}
           maxOverpayVsHashpriceSatPerPhDay={s.config_summary.max_overpay_vs_hashprice_sat_per_ph_day}
+          bip110={bip110Chain}
           overpaySatPerPhDay={
             configQuery.data?.config?.overpay_sat_per_eh_day != null
               ? configQuery.data.config.overpay_sat_per_eh_day / EH_PER_PH

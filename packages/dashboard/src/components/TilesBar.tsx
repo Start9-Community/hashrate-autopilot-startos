@@ -114,6 +114,11 @@ interface TileResult {
    *  a tile show a dynamic status line (e.g. cheap threshold) or, for the
    *  block-height tile, a two-line pool/worker block (#335). */
   readonly caption?: React.ReactNode;
+  /** #368: renders the value as a small amber warning chip
+   *  (the BIP110 "n/a" state) instead of the big mono number, so
+   *  structurally-dead tiles jump out the way the other BIP110
+   *  notices do. */
+  readonly na?: boolean;
 }
 
 interface TileCtx {
@@ -126,7 +131,7 @@ interface TileCtx {
   readonly intlLocale: string;
   readonly denomination: ReturnType<typeof useDenomination>;
   /**
-   * #367 follow-up: true when the daemon follows Ocean's BIP110 chain.
+   * #368: true when the daemon follows Ocean's BIP110 chain.
    * Ocean-API-sourced and hashprice-sourced tiles can never populate
    * there, so they render a short "n/a" with an explanatory tooltip
    * instead of a dash that reads as "still loading".
@@ -137,10 +142,25 @@ interface TileCtx {
 const EM_DASH = '—';
 const DASH: TileResult = { value: EM_DASH };
 
-/** #367 follow-up: structurally-unavailable tile on the BIP110 chain. */
+/** #368: structurally-unavailable tile on the BIP110 chain. */
 function bip110Na(tooltip: string): TileResult {
-  return { value: t`n/a`, tooltip, color: 'text-slate-500' };
+  return { value: t`n/a`, tooltip, na: true };
 }
+
+/** #368: tiles that can never populate on the BIP110 chain
+ *  (Ocean-API or hashprice sourced) - annotated in the picker and
+ *  rendered as the amber "n/a" chip. */
+const BIP110_NA_TILES: ReadonlySet<DashboardTileId> = new Set<DashboardTileId>([
+  'avg_ocean',
+  'avg_cost_vs_hashprice',
+  'bid_vs_hashprice',
+  'hashprice_now',
+  'pool_blocks_30d',
+  'pool_luck_24h',
+  'pool_luck_7d',
+  'pool_luck_30d',
+  'share_log_pct',
+]);
 
 /**
  * #335: block-height tile marker, mirroring the chart's pool-block icons
@@ -900,6 +920,7 @@ function TilesBarImpl({
                 id={id}
                 inUse={effective}
                 result={(TILE_RENDERERS[id] ?? (() => DASH))(ctx)}
+                bip110={ctx.bip110}
                 onReplace={(next) => replaceAt(idx, next)}
                 onRemove={effective.length > 1 ? () => removeAt(idx) : undefined}
               />
@@ -914,7 +935,7 @@ function TilesBarImpl({
         catalogue picker. No more dashed ghost-tile in the row.
       */}
       {effective.length < MAX_DASHBOARD_TILES && (
-        <FloatingAddButton excluded={effective} onAdd={addTile} />
+        <FloatingAddButton excluded={effective} onAdd={addTile} bip110={ctx.bip110} />
       )}
     </div>
   );
@@ -923,9 +944,11 @@ function TilesBarImpl({
 function FloatingAddButton({
   excluded,
   onAdd,
+  bip110,
 }: {
   excluded: ReadonlyArray<DashboardTileId>;
   onAdd: (id: DashboardTileId) => void;
+  bip110: boolean;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -967,6 +990,7 @@ function FloatingAddButton({
       {open && (
         <TilePickerDropdown
           inUse={excluded}
+          bip110={bip110}
           anchorRef={buttonRef}
           onClose={() => setOpen(false)}
           onPick={(id) => {
@@ -983,11 +1007,14 @@ interface TileSlotProps {
   readonly id: DashboardTileId;
   readonly inUse: ReadonlyArray<DashboardTileId>;
   readonly result: TileResult;
+  /** #368: threads the BIP110 flag into the picker so dead
+   *  tiles carry the "n/a on BIP110" annotation in the catalogue. */
+  readonly bip110: boolean;
   readonly onReplace: (id: DashboardTileId) => void;
   readonly onRemove: (() => void) | undefined;
 }
 
-function TileSlot({ id, inUse, result, onReplace, onRemove }: TileSlotProps) {
+function TileSlot({ id, inUse, result, bip110, onReplace, onRemove }: TileSlotProps) {
   const [open, setOpen] = useState(false);
   // #293: an explicit caption suppresses unit-splitting so the full
   // value (e.g. "96,2%") stays in the big number and the caption
@@ -1024,6 +1051,15 @@ function TileSlot({ id, inUse, result, onReplace, onRemove }: TileSlotProps) {
       <div className="mb-2 min-h-8 leading-4 text-center pr-5 text-xs uppercase tracking-wider text-slate-100 break-words">
         {labelFor(id)}
       </div>
+      {result.na ? (
+        // #368: BIP110 "n/a" state - amber warning chip in the
+        // value slot, matching the other BIP110 notices so it jumps out.
+        <div className="text-center py-1">
+          <span className="inline-block text-xs text-amber-300 border border-amber-700 bg-amber-900/30 rounded px-2 py-1">
+            {result.value}
+          </span>
+        </div>
+      ) : (
       <div className={`text-2xl font-mono tabular-nums text-center ${result.color ?? 'text-slate-100'}`}>
         {result.href ? (
           <a
@@ -1044,6 +1080,7 @@ function TileSlot({ id, inUse, result, onReplace, onRemove }: TileSlotProps) {
           </>
         )}
       </div>
+      )}
       <div className="text-xs text-slate-500 mt-0.5 text-center min-h-[1.25rem]">
         {result.caption !== undefined ? result.caption : split ? <UnitCaption unit={split.unit} /> : ' '}
       </div>
@@ -1111,6 +1148,7 @@ function TileSlot({ id, inUse, result, onReplace, onRemove }: TileSlotProps) {
         <TilePickerDropdown
           currentId={id}
           inUse={inUse}
+          bip110={bip110}
           anchorRef={chevronRef}
           onClose={() => setOpen(false)}
           onPick={(next) => {
@@ -1134,6 +1172,9 @@ function TileSlot({ id, inUse, result, onReplace, onRemove }: TileSlotProps) {
 interface PickerProps {
   readonly currentId?: DashboardTileId;
   readonly inUse: ReadonlyArray<DashboardTileId>;
+  /** #368: annotate Ocean-API / hashprice tiles as n/a on
+   *  the BIP110 chain (still pickable - the tile itself explains). */
+  readonly bip110: boolean;
   readonly onPick: (id: DashboardTileId) => void;
   readonly onRemove?: () => void;
   readonly onClose: () => void;
@@ -1147,7 +1188,7 @@ interface PickerProps {
   readonly anchorRef?: React.RefObject<HTMLElement | null>;
 }
 
-function TilePickerDropdown({ currentId, inUse, onPick, onRemove, onClose, anchorRef }: PickerProps) {
+function TilePickerDropdown({ currentId, inUse, bip110, onPick, onRemove, onClose, anchorRef }: PickerProps) {
   const inUseSet = useMemo(() => new Set(inUse), [inUse]);
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ left: number; top: number; ready: boolean }>({
@@ -1274,6 +1315,13 @@ function TilePickerDropdown({ currentId, inUse, onPick, onRemove, onClose, ancho
                     {isElsewhere && (
                       <span className="ml-1 text-[9px] text-slate-600">
                         <Trans>(already in use)</Trans>
+                      </span>
+                    )}
+                    {/* #368: still pickable - the tile itself
+                        renders the amber n/a chip with the reason. */}
+                    {bip110 && BIP110_NA_TILES.has(meta.id) && (
+                      <span className="ml-1 text-[9px] text-amber-400/80">
+                        ({t`n/a on BIP110`})
                       </span>
                     )}
                   </button>

@@ -2,6 +2,10 @@
 
 ## 2026-08-20
 
+### `[UI]` BIP110 chain: charts and tiles mark what can't update instead of showing dashes (#368)
+
+Everything Ocean-API or hashprice sourced now says so on the BIP110 chain, while staying visible and keeping pre-switch history: dead stat tiles show an amber "n/a" chip (with the reason in the tooltip) instead of quiet grey text, the tile picker annotates them with "(n/a on BIP110)" but keeps them pickable, the chart right-axis dropdowns mark Ocean-sourced options the same way while leaving them selectable so mainstream-era history still plots, and the chart legends dim the "received (Ocean)", "hashprice", and "effective cap" chips with a hover note that they show pre-switch history only. Network difficulty, paid earnings, and all Braiins/Datum/Bitaxe surfaces are unaffected.
+
 ### `[UI]` BIP110 chain: hashprice removed from the product surface (#367)
 
 There is no hashprice on the BIP110 chain - Ocean provides none, and deriving one would compare BIP110-chain sats against the mainstream sats you spend on Braiins, which are different assets. The dashboard now reflects that instead of dangling dead controls and eternal "calculating…" rows: the "Max premium over hashprice" setting and the cheap-mode section render disabled with an explanation (saved values are kept and apply again on the mainstream chain), the Profit & Loss per-day card hides all hashprice-derived projections and says why, and the Braiins card no longer shows the "max over hashprice" / "effective cap" rows. Dashboard tiles that can never populate on the BIP110 chain (avg ocean, hashprice now, avg cost vs hashprice, bid vs hashprice, pool blocks and pool luck, share log) show a short "n/a" with an explanatory tooltip instead of a dash that reads as "still loading". Also fixes a stale-data leak where the last mainstream hashprice seen before switching chains kept feeding the bid-vs-hashprice tile and tick metrics indefinitely.

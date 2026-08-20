@@ -2947,6 +2947,11 @@ msgstr "must contain a period - without it shares are uncredited on Ocean"
 msgid "n/a"
 msgstr "n/a"
 
+#: src/components/TilesBar.tsx
+#: src/pages/Status.tsx
+msgid "n/a on BIP110"
+msgstr "n/a on BIP110"
+
 #: src/pages/Status.tsx
 msgid "net"
 msgstr "net"
@@ -3094,6 +3099,11 @@ msgstr "No events match the current filters."
 #: src/pages/Status.tsx
 msgid "No hashrate available on the market right now."
 msgstr "No hashrate available on the market right now."
+
+#: src/components/HashrateChart.tsx
+#: src/components/PriceChart.tsx
+msgid "No new data on the BIP110 chain - shows pre-switch history only."
+msgstr "No new data on the BIP110 chain - shows pre-switch history only."
 
 #: src/pages/Config.tsx
 msgid "No on-chain balance scanning. The Profit & Loss panel still shows your collected BTC from Ocean's payout ledger (on-chain + Lightning); this scanner only adds the chart's on-chain confirmation markers."

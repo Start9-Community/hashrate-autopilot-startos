@@ -2947,6 +2947,11 @@ msgstr "moet een punt bevatten - zonder dat worden shares niet bijgeschreven op 
 msgid "n/a"
 msgstr "n.v.t."
 
+#: src/components/TilesBar.tsx
+#: src/pages/Status.tsx
+msgid "n/a on BIP110"
+msgstr "n.v.t. op BIP110"
+
 #: src/pages/Status.tsx
 msgid "net"
 msgstr "netto"
@@ -3094,6 +3099,11 @@ msgstr "Geen wijzigingen voldoen aan de huidige filters."
 #: src/pages/Status.tsx
 msgid "No hashrate available on the market right now."
 msgstr "Op dit moment geen hashrate beschikbaar op de markt."
+
+#: src/components/HashrateChart.tsx
+#: src/components/PriceChart.tsx
+msgid "No new data on the BIP110 chain - shows pre-switch history only."
+msgstr "Geen nieuwe data op de BIP110-keten - toont alleen geschiedenis van vóór de overstap."
 
 #: src/pages/Config.tsx
 msgid "No on-chain balance scanning. The Profit & Loss panel still shows your collected BTC from Ocean's payout ledger (on-chain + Lightning); this scanner only adds the chart's on-chain confirmation markers."

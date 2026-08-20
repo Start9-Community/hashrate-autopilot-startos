@@ -412,6 +412,7 @@ export const HashrateChart = memo(function HashrateChart({
   ourBlocks = [],
   blockExplorerTemplate = 'https://mempool.space/block/{hash}',
   shareLogPct = null,
+  bip110 = false,
   braiinsSmoothingMinutes = 1,
   datumSmoothingMinutes = 1,
   rightAxisSeries = 'none',
@@ -454,6 +455,10 @@ export const HashrateChart = memo(function HashrateChart({
    *  changes, so applying current share_log to older blocks is an
    *  estimate of what Ocean would have credited at the time. */
   shareLogPct?: number | null;
+  /** #368: daemon follows the BIP110 chain - the Ocean
+   *  hashrate series gains no new data, so its legend chip renders
+   *  dimmed (history still plots and stays toggleable). */
+  bip110?: boolean;
   /** Rolling-mean window (minutes) applied to the Braiins-delivered
    *  series; 1 = raw. Ocean is not smoothed here - /user_hashrate
    *  already returns a server-side 5-min average. */
@@ -1751,7 +1756,7 @@ export const HashrateChart = memo(function HashrateChart({
             <Legend color={COLOR_DATUM} label={t`received (Datum)`} hidden={isHidden('datum')} onToggle={() => toggle('datum')} />
           )}
           {hasOcean && (
-            <Legend color={COLOR_OCEAN} label={t`received (Ocean)`} hidden={isHidden('ocean')} onToggle={() => toggle('ocean')} />
+            <Legend color={COLOR_OCEAN} label={t`received (Ocean)`} hidden={isHidden('ocean')} onToggle={() => toggle('ocean')} unavailable={bip110} />
           )}
           {hasShareLog && rightAxis && (
             <Legend color={rightAxis.stroke} label={rightAxis.axisLabel} hidden={isHidden('rightAxis')} onToggle={() => toggle('rightAxis')} />
@@ -2988,6 +2993,7 @@ function Legend({
   dashed,
   onToggle,
   hidden,
+  unavailable,
 }: {
   color: string;
   label: string;
@@ -2998,6 +3004,11 @@ function Legend({
   /** #280: true when the series is currently hidden - dims the chip
    *  and greys the swatch. */
   hidden?: boolean;
+  /** #368: the series can gain no new data on the BIP110
+   *  chain (Ocean API / hashprice sourced). Dims the chip and swaps
+   *  the hover text; the toggle keeps working so pre-flip history
+   *  can still be shown/hidden. */
+  unavailable?: boolean;
 }) {
   const swatch = (
     <svg width="14" height="6">
@@ -3024,11 +3035,17 @@ function Legend({
     <button
       type="button"
       onClick={onToggle}
-      title={hidden ? t`Click to show` : t`Click to hide`}
+      title={
+        unavailable
+          ? t`No new data on the BIP110 chain - shows pre-switch history only.`
+          : hidden
+            ? t`Click to show`
+            : t`Click to hide`
+      }
       aria-pressed={!hidden}
       className={`flex items-center gap-1 whitespace-nowrap cursor-pointer hover:text-slate-200 transition-colors ${
         hidden ? 'text-slate-600 line-through' : 'text-slate-400'
-      }`}
+      } ${unavailable ? 'opacity-50' : ''}`}
     >
       {swatch}
       {label}

@@ -275,6 +275,7 @@ export const PriceChart = memo(function PriceChart({
   events = [],
   showEventKinds,
   maxOverpayVsHashpriceSatPerPhDay = null,
+  bip110 = false,
   overpaySatPerPhDay = null,
   priceSmoothingMinutes = 1,
   historicalPayoutsOffsetSat = 0,
@@ -327,6 +328,10 @@ export const PriceChart = memo(function PriceChart({
    * accurate now, except on those old rows.
    */
   maxOverpayVsHashpriceSatPerPhDay?: number | null;
+  /** #368: daemon follows the BIP110 chain - hashprice and
+   *  the effective cap gain no new data, so their legend chips render
+   *  dimmed (history still plots and stays toggleable). */
+  bip110?: boolean;
   /**
    * Current config's overpay above fillable (sat/PH/day). Used in the
    * pinned event tooltip so the operator can read `fillable` and
@@ -2273,8 +2278,8 @@ export const PriceChart = memo(function PriceChart({
           {rightAxisSeries === 'effective_rate' && effectiveHasData && (
             <Legend color={COLOR_EFFECTIVE} label={t`effective`} hidden={isHidden('rightAxis')} onToggle={() => toggle('rightAxis')} />
           )}
-          <Legend color={COLOR_HASHPRICE} label={t`hashprice`} dashed hidden={isHidden('hashprice')} onToggle={() => toggle('hashprice')} />
-          <Legend color={COLOR_MAXBID} label={t`effective cap`} hidden={isHidden('maxBid')} onToggle={() => toggle('maxBid')} />
+          <Legend color={COLOR_HASHPRICE} label={t`hashprice`} dashed hidden={isHidden('hashprice')} onToggle={() => toggle('hashprice')} unavailable={bip110} />
+          <Legend color={COLOR_MAXBID} label={t`effective cap`} hidden={isHidden('maxBid')} onToggle={() => toggle('maxBid')} unavailable={bip110} />
           {hasRightAxis && rightAxis && (
             <Legend color={rightAxis.stroke} label={rightAxis.axisLabel} hidden={isHidden('rightAxis')} onToggle={() => toggle('rightAxis')} />
           )}
@@ -4319,6 +4324,7 @@ function Legend({
   dashed,
   onToggle,
   hidden,
+  unavailable,
 }: {
   color: string;
   label: string;
@@ -4326,6 +4332,11 @@ function Legend({
   /** #280: when provided, the chip toggles the series' visibility. */
   onToggle?: () => void;
   hidden?: boolean;
+  /** #368: the series can gain no new data on the BIP110
+   *  chain (hashprice sourced). Dims the chip and swaps the hover
+   *  text; the toggle keeps working so pre-flip history can still be
+   *  shown/hidden. */
+  unavailable?: boolean;
 }) {
   // `dashed` is a misnomer kept for stable callsites; it now renders
   // tightly-spaced round dots to match the hashprice line style on
@@ -4356,11 +4367,17 @@ function Legend({
     <button
       type="button"
       onClick={onToggle}
-      title={hidden ? t`Click to show` : t`Click to hide`}
+      title={
+        unavailable
+          ? t`No new data on the BIP110 chain - shows pre-switch history only.`
+          : hidden
+            ? t`Click to show`
+            : t`Click to hide`
+      }
       aria-pressed={!hidden}
       className={`flex items-center gap-1 whitespace-nowrap cursor-pointer hover:text-slate-200 transition-colors ${
         hidden ? 'text-slate-600 line-through' : 'text-slate-400'
-      }`}
+      } ${unavailable ? 'opacity-50' : ''}`}
     >
       {swatch}
       {label}
