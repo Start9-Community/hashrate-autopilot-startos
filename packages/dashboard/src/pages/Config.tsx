@@ -208,6 +208,30 @@ function useSections(): Section[] {
             fullWidth: true,
           },
           {
+            // #363: since the 8/8 chain split Ocean keeps separate
+            // stats per chain; a BIP110 miner reads as "no such user"
+            // on the mainstream API, so their received hashrate showed
+            // a misleading 0. Ocean has confirmed there is NO API for
+            // the BIP110 chain (and no plan for one), so selecting it
+            // is a declarative "stop asking, and say why" switch.
+            key: 'ocean_chain',
+            label: t`Ocean chain`,
+            kind: 'radio',
+            fullWidth: true,
+            options: [
+              {
+                value: 'mainstream',
+                label: t`Mainstream chain (default)`,
+                help: t`The chain Ocean's default endpoint mines. Stats come from Ocean's JSON API.`,
+              },
+              {
+                value: 'bip110',
+                label: t`BIP110 chain`,
+                help: t`For miners pointed at Ocean's BIP110 endpoint (or a BIP110 node with DATUM). Ocean provides no API for this chain, so the dashboard cannot show Ocean hashrate, share log, or unpaid earnings, and Lightning payouts can't be tracked. Collected earnings are derived purely from on-chain payouts seen by your Bitcoin node - a balance-check backend (Electrum recommended, set below) pointed at a BIP110-following node is required. There is no hashprice reference on this chain, so the dynamic price cap and cheap mode are unavailable - your fixed Maximum is the only price ceiling.`,
+              },
+            ],
+          },
+          {
             key: 'datum_api_url',
             label: t`Datum stats API (optional)`,
             kind: 'text',
@@ -1629,6 +1653,17 @@ function CheapModeBody({
   onChange: <K extends keyof AppConfig>(k: K, v: AppConfig[K]) => void;
   gridCls: string;
 }) {
+  // #367: cheap mode compares the bid against Ocean's hashprice, which
+  // doesn't exist on the BIP110 chain - the whole section is inert
+  // there. Say so instead of rendering tunable-but-dead knobs.
+  if (draft.ocean_chain === 'bip110') {
+    return (
+      <div className="text-xs text-amber-300/90 border border-amber-800/60 bg-amber-950/20 rounded px-2 py-1.5">
+        {t`Not available on the BIP110 chain. Cheap mode compares your bid against Ocean's hashprice, and there is no hashprice reference for that chain. Your saved settings are kept and apply again when you switch back to the mainstream chain.`}
+      </div>
+    );
+  }
+
   const enabled = draft.cheap_threshold_pct > 0;
   const toggle = (next: boolean) => {
     // On: write a sensible default. The operator's prior config
@@ -4728,6 +4763,25 @@ function Field({
   if (spec.key === 'bid_budget_sat' && spec.kind === 'integer') {
     return (
       <BidBudgetField spec={spec} value={value as number} locale={locale} onChange={onChange} />
+    );
+  }
+
+  // #367: the dynamic hashprice cap has no reference on the BIP110
+  // chain - Ocean provides no hashprice for it and none can be soundly
+  // derived (the chains' sats aren't comparable) - so decide() bypasses
+  // it. Render the field disabled with the reason instead of letting
+  // the operator tune a knob that does nothing.
+  if (
+    spec.key === 'max_overpay_vs_hashprice_sat_per_eh_day' &&
+    draft.ocean_chain === 'bip110'
+  ) {
+    return (
+      <div>
+        <span className="block text-sm text-slate-300 mb-1">{spec.label}</span>
+        <div className="text-xs text-amber-300/90 border border-amber-800/60 bg-amber-950/20 rounded px-2 py-1.5">
+          {t`Not available on the BIP110 chain. Ocean provides no hashprice for it, so this dynamic cap is bypassed - your fixed Maximum is the only price ceiling. Your saved value is kept and applies again when you switch back to the mainstream chain.`}
+        </div>
+      </div>
     );
   }
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { createOceanClient, parseOceanTs } from './ocean.js';
+import { createChainGatedOceanClient, createOceanClient, parseOceanTs } from './ocean.js';
 
 // Fixtures matching the real api.ocean.xyz/v1/ JSON responses
 // captured 2026-04-16.
@@ -248,5 +248,39 @@ describe('OceanClient.fetchPayouts (#323)', () => {
       ({ ok: false, status: 500, json: async () => ({}) }) as Response) as unknown as typeof fetch;
     const failClient = createOceanClient({ fetch: failFetch });
     expect(await failClient.fetchPayouts('bc1qaddr', '2020-01-01', '2026-07-06')).toBeNull();
+  });
+});
+
+describe('createChainGatedOceanClient (#363)', () => {
+  it('short-circuits every call on the BIP110 chain without HTTP', async () => {
+    // Ocean has no API for the BIP110 chain (confirmed by Ocean
+    // support 2026-08-18) and scraping is unsupported - the daemon
+    // must not ask at all.
+    let calls = 0;
+    const countingFetch = (async () => {
+      calls += 1;
+      return { ok: true, status: 200, json: async () => ({}) } as Response;
+    }) as unknown as typeof fetch;
+    const client = createChainGatedOceanClient({
+      getChain: () => 'bip110',
+      fetch: countingFetch,
+    });
+    expect(await client.fetchStats('bc1qaddress')).toBeNull();
+    expect(await client.fetchBlocksPage(0, 50)).toEqual([]);
+    expect(await client.fetchPayouts('bc1qaddress', '2020-01-01', '2026-08-18')).toBeNull();
+    expect(calls).toBe(0);
+  });
+
+  it('delegates to the JSON API client on mainstream, reading the chain live per call', async () => {
+    let chain: 'mainstream' | 'bip110' = 'bip110';
+    const client = createChainGatedOceanClient({
+      getChain: () => chain,
+      fetch: fakeApiFetch(),
+    });
+    expect(await client.fetchStats('bc1qaddress')).toBeNull();
+    chain = 'mainstream';
+    const stats = await client.fetchStats('bc1qaddress');
+    expect(stats).not.toBeNull();
+    expect(stats!.unpaid_sat).toBe(385_090);
   });
 });

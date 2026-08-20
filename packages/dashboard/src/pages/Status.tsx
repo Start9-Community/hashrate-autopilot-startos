@@ -530,6 +530,13 @@ export function Status() {
     queryFn: api.ocean,
     refetchInterval: 60_000,
   });
+  // #368: Ocean-API / hashprice chart surfaces can gain no
+  // new data on the BIP110 chain. Their dropdown options get a marker
+  // (kept selectable so pre-flip history still plots) and their legend
+  // chips render dimmed.
+  const bip110Chain = oceanQuery.data?.chain === 'bip110';
+  const naOnBip110 = (label: string) =>
+    bip110Chain ? `${label} (${t`n/a on BIP110`})` : label;
 
   // #266 follow-up: solo-miners snapshot powers the Bitaxe fleet
   // tiles (hashrate, power, J/TH) in TilesBar. Shared query key with
@@ -969,12 +976,16 @@ export function Status() {
             className="bg-slate-800 border border-slate-700 rounded px-2 py-0.5 text-[11px]"
           >
             <option value="none">{t`none`}</option>
-            <option value="share_log">{t`share_log %`}</option>
+            {/* #368: Ocean-API series get the n/a marker on
+                the BIP110 chain but stay selectable - pre-flip history
+                still plots. Network difficulty comes from the
+                operator's own node, so it keeps working. */}
+            <option value="share_log">{naOnBip110(t`share_log %`)}</option>
             <option value="network_difficulty">{t`network difficulty`}</option>
-            <option value="pool_hashrate">{t`pool hashrate`}</option>
-            <option value="pool_luck_24h">{t`pool luck (24h)`}</option>
-            <option value="pool_luck_7d">{t`pool luck (7d)`}</option>
-            <option value="pool_luck_30d">{t`pool luck (30d)`}</option>
+            <option value="pool_hashrate">{naOnBip110(t`pool hashrate`)}</option>
+            <option value="pool_luck_24h">{naOnBip110(t`pool luck (24h)`)}</option>
+            <option value="pool_luck_7d">{naOnBip110(t`pool luck (7d)`)}</option>
+            <option value="pool_luck_30d">{naOnBip110(t`pool luck (30d)`)}</option>
             <option value="braiins_rejection_pct">{t`rejection ratio (Braiins)`}</option>
             {/* #149: solo-mining series only listed when the master toggle is on. */}
             {soloMiningEnabled && (
@@ -992,6 +1003,7 @@ export function Status() {
           ourBlocks={visibleOurBlocks}
           blockExplorerTemplate={configQuery.data?.config?.block_explorer_url_template}
           shareLogPct={oceanQuery.data?.user?.share_log_pct ?? null}
+          bip110={bip110Chain}
           braiinsSmoothingMinutes={configQuery.data?.config?.braiins_hashrate_smoothing_minutes ?? 1}
           datumSmoothingMinutes={configQuery.data?.config?.datum_hashrate_smoothing_minutes ?? 1}
           rightAxisSeries={hashrateRightAxis}
@@ -1032,11 +1044,15 @@ export function Status() {
           >
             <option value="none">{t`none`}</option>
             <option value="effective_rate">{t`effective rate`}</option>
-            <option value="estimated_block_reward">{t`block reward`}</option>
+            {/* #368: Ocean-sourced series get the n/a marker
+                on the BIP110 chain but stay selectable - pre-flip
+                history still plots. Paid earnings keeps working (it
+                reads the on-chain reward ledger). */}
+            <option value="estimated_block_reward">{naOnBip110(t`block reward`)}</option>
             <option value="btc_usd_price">{t`BTC/USD`}</option>
-            <option value="ocean_unpaid_sat">{t`unpaid earnings`}</option>
+            <option value="ocean_unpaid_sat">{naOnBip110(t`unpaid earnings`)}</option>
             <option value="paid_total_sat">{t`paid earnings (lifetime)`}</option>
-            <option value="lifetime_earnings_sat">{t`lifetime earnings (paid + unpaid)`}</option>
+            <option value="lifetime_earnings_sat">{naOnBip110(t`lifetime earnings (paid + unpaid)`)}</option>
             <option value="total_balance_sat">{t`Braiins balance`}</option>
             {/* #164: per-tick avg-overpay series, mirroring the two
                 stat cards at the bottom of the Braiins panel. */}
@@ -1055,6 +1071,7 @@ export function Status() {
           markersHiddenCount={markersHiddenCount}
           showEventKinds={showEventKinds}
           maxOverpayVsHashpriceSatPerPhDay={s.config_summary.max_overpay_vs_hashprice_sat_per_ph_day}
+          bip110={bip110Chain}
           overpaySatPerPhDay={
             configQuery.data?.config?.overpay_sat_per_eh_day != null
               ? configQuery.data.config.overpay_sat_per_eh_day / EH_PER_PH
@@ -2746,6 +2763,36 @@ function OceanPanel() {
     );
   }
 
+  // #363: on the BIP110 chain there is nothing to show - Ocean
+  // provides no API for that chain (confirmed by Ocean support) and
+  // the daemon deliberately does not poll. Explain that instead of
+  // rendering zeros or an API-DOWN badge.
+  if (o.chain === 'bip110') {
+    return (
+      <Card
+        title="Ocean"
+        badges={
+          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs border border-amber-700 bg-amber-900/30 text-amber-300">
+            <Trans>BIP110 chain</Trans>
+          </span>
+        }
+      >
+        <div className="text-slate-400 text-sm space-y-2">
+          <p>
+            <Trans>
+              Ocean provides no API for the BIP110 chain, so hashrate, share log, and earnings can't be shown here. Your workers' stats are on the BIP110 Ocean website.
+            </Trans>
+          </p>
+          <p className="text-slate-500">
+            <Trans>
+              On-chain payouts to your payout address are still tracked through your own Bitcoin node. Selected under Config → Pool destination.
+            </Trans>
+          </p>
+        </div>
+      </Card>
+    );
+  }
+
   // Ocean refreshes every minute client-side (and server caches for
   // the same). Countdown = last fetch + 1 min; reachable whenever
   // the last response carried data.
@@ -3003,14 +3050,21 @@ function FinancePanel({
   const [rebuilding, setRebuilding] = useState(false);
   const [resetting, setResetting] = useState(false);
   // #343: last rebuild/reset outcome, shown as a confirmation so the
-  // operator knows it finished and what it pulled. Auto-clears.
+  // operator knows it finished and what it pulled. Auto-clears. #366:
+  // may carry an error instead (e.g. the BIP110-chain on-chain rebuild
+  // couldn't reach the Electrum server) - previously a failed rebuild
+  // silently reported "0 payouts", indistinguishable from success.
   const [finResult, setFinResult] = useState<
-    { kind: 'rebuild' | 'reset'; payouts: number; collected_sat: number } | null
+    { kind: 'rebuild' | 'reset'; payouts: number; collected_sat: number; error?: string } | null
   >(null);
   const { i18n } = useLingui();
   void i18n;
+  // #366: on the BIP110 chain the rebuild/reset buttons act on the
+  // on-chain reward ledger (address-history walk via the operator's
+  // node), not Ocean's earnpay store - the confirm dialogs say so.
+  const bip110 = data?.ocean_chain === 'bip110';
 
-  const showFinResult = (r: { kind: 'rebuild' | 'reset'; payouts: number; collected_sat: number }) => {
+  const showFinResult = (r: { kind: 'rebuild' | 'reset'; payouts: number; collected_sat: number; error?: string }) => {
     setFinResult(r);
     window.setTimeout(() => setFinResult(null), 12_000);
   };
@@ -3018,16 +3072,24 @@ function FinancePanel({
   const handleRebuild = async () => {
     if (rebuilding) return;
     // #343: rebuild both sides of the ledger - the spend cache (re-paginate
-    // bids from Braiins) AND the Ocean payout store (re-fetch the full
-    // earnpay history, healing a "collected" that ended up short).
-    if (!window.confirm(t`Recompute the Profit & Loss panel from scratch? Re-paginates every bid from Braiins (spent) and re-fetches your full Ocean payout history (collected). Safe, just slower than a normal refresh.`)) {
+    // bids from Braiins) AND the payout ledger (earnpay re-fetch, or on
+    // the BIP110 chain an on-chain address-history re-scan, #366).
+    const msg = bip110
+      ? t`Recompute the Profit & Loss panel from scratch? Re-paginates every bid from Braiins (spent) and re-scans your payout address history via your Bitcoin node (collected). Safe, just slower than a normal refresh.`
+      : t`Recompute the Profit & Loss panel from scratch? Re-paginates every bid from Braiins (spent) and re-fetches your full Ocean payout history (collected). Safe, just slower than a normal refresh.`;
+    if (!window.confirm(msg)) {
       return;
     }
     setRebuilding(true);
     try {
       const [, payoutRes] = await Promise.all([api.rebuildSpendCache(), api.rebuildPayouts()]);
       qc.invalidateQueries({ queryKey: ['finance'] });
-      showFinResult({ kind: 'rebuild', payouts: payoutRes.payouts ?? 0, collected_sat: payoutRes.collected_sat ?? 0 });
+      showFinResult({
+        kind: 'rebuild',
+        payouts: payoutRes.payouts ?? 0,
+        collected_sat: payoutRes.collected_sat ?? 0,
+        error: payoutRes.ok ? undefined : payoutRes.error ?? t`rebuild failed`,
+      });
     } finally {
       setRebuilding(false);
     }
@@ -3037,16 +3099,24 @@ function FinancePanel({
     if (resetting) return;
     // #343: nuclear option - wipe both datasets and rebuild from scratch,
     // so nothing stale can survive. The payout wipe is fetch-before-delete
-    // (an Ocean outage leaves the store intact), and re-pulled payouts are
+    // (a source outage leaves the store intact), and re-pulled payouts are
     // marked already-notified, so it won't re-alert about old payouts.
-    if (!window.confirm(t`Hard reset the Profit & Loss data? This DELETES the stored Ocean payout history and Braiins spend cache, then rebuilds both from scratch. Safe (no other data touched, and it won't re-notify you), but the collected figure will briefly show 0 while it re-pulls.`)) {
+    const msg = bip110
+      ? t`Hard reset the Profit & Loss data? This DELETES the stored on-chain payout ledger and Braiins spend cache, then rebuilds both from scratch via your Bitcoin node. Safe (no other data touched), but the collected figure will briefly show 0 while it re-scans.`
+      : t`Hard reset the Profit & Loss data? This DELETES the stored Ocean payout history and Braiins spend cache, then rebuilds both from scratch. Safe (no other data touched, and it won't re-notify you), but the collected figure will briefly show 0 while it re-pulls.`;
+    if (!window.confirm(msg)) {
       return;
     }
     setResetting(true);
     try {
       const res = await api.hardResetFinance();
       qc.invalidateQueries({ queryKey: ['finance'] });
-      showFinResult({ kind: 'reset', payouts: res.payouts ?? 0, collected_sat: res.collected_sat ?? 0 });
+      showFinResult({
+        kind: 'reset',
+        payouts: res.payouts ?? 0,
+        collected_sat: res.collected_sat ?? 0,
+        error: res.ok ? undefined : res.error ?? t`hard reset failed`,
+      });
     } finally {
       setResetting(false);
     }
@@ -3225,20 +3295,30 @@ function FinancePanel({
                       ? denomination.formatHashrate(rangeData.avg_delivered_ph, intlLocale)
                       : t`calculating…`
                   }
-                  tooltip={t`Average delivered hashrate over the selected chart range. Multiplied by avg hashprice to get projected income. Spend is measured directly (primary_bid_consumed_sat deltas), so this is not a factor on the spend side.`}
-                />
-                <FinanceFootnote
-                  label={t`avg hashprice (${rangeLabel})`}
-                  value={
-                    rangeData.avg_hashprice_sat_per_ph_day !== null
-                      ? denomination.formatSatPerPhDay(
-                          rangeData.avg_hashprice_sat_per_ph_day,
-                          intlLocale,
-                        )
-                      : t`calculating…`
+                  tooltip={
+                    bip110
+                      ? t`Average delivered hashrate over the selected chart range, as reported by Braiins.`
+                      : t`Average delivered hashrate over the selected chart range. Multiplied by avg hashprice to get projected income. Spend is measured directly (primary_bid_consumed_sat deltas), so this is not a factor on the spend side.`
                   }
-                  tooltip={t`Average break-even unit price over the selected range. Multiplied by avg delivered to get projected income. Different from the spot hashprice row below - this is what the projection actually uses.`}
                 />
+                {/* #367: no hashprice exists on the BIP110 chain - hide
+                    every hashprice-derived row (avg hashprice, projected
+                    income, net/day, Ocean's estimate) instead of pinning
+                    them on a "calculating…" that never finishes. */}
+                {!bip110 && (
+                  <FinanceFootnote
+                    label={t`avg hashprice (${rangeLabel})`}
+                    value={
+                      rangeData.avg_hashprice_sat_per_ph_day !== null
+                        ? denomination.formatSatPerPhDay(
+                            rangeData.avg_hashprice_sat_per_ph_day,
+                            intlLocale,
+                          )
+                        : t`calculating…`
+                    }
+                    tooltip={t`Average break-even unit price over the selected range. Multiplied by avg delivered to get projected income. Different from the spot hashprice row below - this is what the projection actually uses.`}
+                  />
+                )}
               </>
             )}
             {/* Derivations - built from the three averages above. */}
@@ -3249,17 +3329,19 @@ function FinancePanel({
                   : 'space-y-1.5'
               }
             >
-            <FinanceFootnote
-              label={t`projected income/day (${rangeLabel})`}
-              value={
-                projectedDailyIncomeSat !== null
-                  ? denomination.formatSat(Math.round(projectedDailyIncomeSat), intlLocale)
-                  : rangeFallback
-                    ? t`insufficient history`
-                    : t`calculating…`
-              }
-              tooltip={t`Projection: avg hashprice × avg delivered (rows above), both averaged over the selected chart range. Range-aware counterpart to Ocean's own 3h estimate.`}
-            />
+            {!bip110 && (
+              <FinanceFootnote
+                label={t`projected income/day (${rangeLabel})`}
+                value={
+                  projectedDailyIncomeSat !== null
+                    ? denomination.formatSat(Math.round(projectedDailyIncomeSat), intlLocale)
+                    : rangeFallback
+                      ? t`insufficient history`
+                      : t`calculating…`
+                }
+                tooltip={t`Projection: avg hashprice × avg delivered (rows above), both averaged over the selected chart range. Range-aware counterpart to Ocean's own 3h estimate.`}
+              />
+            )}
             <FinanceFootnote
               label={rangeFallback ? t`spend/day (${localizedRangeLabel('3h', i18n.locale)})` : t`spend/day (${rangeLabel})`}
               value={denomination.formatSat(Math.round(dailySpendSat), intlLocale)}
@@ -3269,22 +3351,34 @@ function FinancePanel({
                   : t`Actual sat consumed across the selected range, scaled to a 24h rate. Derived from primary_bid_consumed_sat deltas (what Braiins charged us), not a modelled bid \u00d7 delivered.`
               }
             />
-            <FinanceFootnote
-              label={rangeFallback ? t`net/day (${localizedRangeLabel('3h', i18n.locale)})` : t`net/day (${rangeLabel})`}
-              value={
-                dailyNetSat !== null
-                  ? denomination.mode === 'usd' && denomination.btcPrice !== null
-                    ? `${dailyNetSat >= 0 ? '+' : ''}${denomination.formatSat(dailyNetSat, intlLocale)}`
-                    : `${dailyNetSat >= 0 ? '+' : ''}${formatNumber(dailyNetSat, {}, intlLocale)} sat`
-                  : t`calculating\u2026`
-              }
-              tooltip={t`Projected income \u2212 actual spend (rows above). Positive = the autopilot is profitable at current rates; negative = burning money per day. Income is a projection (avg hashprice \u00d7 avg delivered); spend is measured. Don\u2019t confuse with the lifetime net on the other panel.`}
-              valueClass={dailyNetColor}
-            />
+            {!bip110 && (
+              <FinanceFootnote
+                label={rangeFallback ? t`net/day (${localizedRangeLabel('3h', i18n.locale)})` : t`net/day (${rangeLabel})`}
+                value={
+                  dailyNetSat !== null
+                    ? denomination.mode === 'usd' && denomination.btcPrice !== null
+                      ? `${dailyNetSat >= 0 ? '+' : ''}${denomination.formatSat(dailyNetSat, intlLocale)}`
+                      : `${dailyNetSat >= 0 ? '+' : ''}${formatNumber(dailyNetSat, {}, intlLocale)} sat`
+                    : t`calculating\u2026`
+                }
+                tooltip={t`Projected income \u2212 actual spend (rows above). Positive = the autopilot is profitable at current rates; negative = burning money per day. Income is a projection (avg hashprice \u00d7 avg delivered); spend is measured. Don\u2019t confuse with the lifetime net on the other panel.`}
+                valueClass={dailyNetColor}
+              />
+            )}
+            {bip110 && (
+              <div className="mt-2 px-2 py-1.5 rounded border border-amber-700 bg-amber-900/30 text-amber-300 text-xs">
+                {t`Income projections aren't available on the BIP110 chain - there is no hashprice reference. Spend is still measured from Braiins.`}
+              </div>
+            )}
             </div>
             {/* Reference rows - alternate views (pool-side estimate,
                 spot hashprice, lifetime) that the projection doesn't
                 derive from. */}
+            {/* #367: the whole reference block (Ocean's estimate, spot
+                hashprice, Ocean lifetime) is Ocean-sourced and can never
+                arrive on bip110 - hiding it beats an eternal
+                "calculating…" and a stray divider. */}
+            {!bip110 && (
             <div className="pt-2 mt-2 border-t border-slate-800 space-y-1.5">
               <FinanceFootnote
                 label={t`ocean est. income/day (${localizedRangeLabel('3h', i18n.locale)})`}
@@ -3310,6 +3404,7 @@ function FinancePanel({
                 />
               )}
             </div>
+            )}
           </div>
         ) : (
           <div className="text-sm text-slate-600"><Trans>no active bids</Trans></div>
@@ -3327,13 +3422,34 @@ function FinancePanel({
               this is where they belong (they used to sit on per-day). */}
           {headerControls}
         </div>
-        {finResult && (
+        {finResult && (finResult.error ? (
+          // #366: a failed rebuild/reset used to render as a green
+          // "0 payouts" success line - surface the error instead.
+          <div className="mb-2 text-[11px] text-red-300/90 font-mono">
+            {finResult.kind === 'reset' ? <Trans>hard reset failed</Trans> : <Trans>rebuild failed</Trans>}
+            {' · '}
+            {finResult.error}
+          </div>
+        ) : (
           <div className="mb-2 text-[11px] text-emerald-300/90 font-mono">
             {finResult.kind === 'reset' ? <Trans>hard reset done</Trans> : <Trans>rebuild done</Trans>}
             {' · '}
             {/* #343: concrete confirmation - how many payouts + the collected total now. */}
             <Trans>
               {finResult.payouts} payouts · collected {denomination.formatSat(finResult.collected_sat, intlLocale)}
+            </Trans>
+          </div>
+        ))}
+        {/* #363/#366: on the BIP110 chain the Ocean-sourced income rows
+            can never populate (Ocean provides no API for that chain).
+            Collected IS tracked - derived purely from on-chain payouts
+            seen by the operator's own node - but unpaid earnings and
+            Lightning payouts are unknowable, so the net line
+            understates income by whatever is still unpaid. */}
+        {data.ocean_chain === 'bip110' && (
+          <div className="mb-2 px-2 py-1.5 rounded border border-amber-700 bg-amber-900/30 text-amber-300 text-xs">
+            <Trans>
+              BIP110 chain: Ocean provides no API for it, so earnings here are derived purely from on-chain payouts seen by your Bitcoin node. Unpaid earnings and Lightning payouts can't be tracked, and the net line understates income by whatever is still unpaid.
             </Trans>
           </div>
         )}
@@ -3373,22 +3489,30 @@ function FinancePanel({
           label={t`unpaid earnings (Ocean)`}
           value={data.expected_sat}
           tooltip={
-            data.ocean
-              ? t`Ocean's Unpaid Earnings - what will land on-chain at the next payout. Threshold: ${formatSats(data.ocean.payout_threshold_sat)} sat (~0.01 BTC).`
-              : t`Ocean stats unavailable.`
+            data.ocean_chain === 'bip110'
+              ? t`Not available on the BIP110 chain - Ocean provides no API for it, so unpaid earnings can't be read. Excluded from the net line.`
+              : data.ocean
+                ? t`Ocean's Unpaid Earnings - what will land on-chain at the next payout. Threshold: ${formatSats(data.ocean.payout_threshold_sat)} sat (~0.01 BTC).`
+                : t`Ocean stats unavailable.`
           }
         />
         <FinanceRow
           sign="plus"
-          label={t`collected`}
+          label={data.ocean_chain === 'bip110' ? t`collected (on-chain)` : t`collected`}
           value={data.collected_sat}
           status={data.collected_status}
           tooltip={
-            data.collected_status === 'computing'
-              ? t`Loading your payout history from Ocean. Waiting for the first read of Ocean's payout ledger to complete - usually a few seconds.`
-              : data.collected_sat !== null
-                ? t`Everything Ocean has actually paid you: on-chain payouts from Ocean's own payout ledger, plus Lightning payouts deduced from your unpaid earnings dropping to zero (Ocean's ledger doesn't report those). Counts what you were paid, even if you've since spent it.`
-                : t`No payout address configured. Set your Ocean payout address under Config → Pool & Payout so the Profit & Loss panel can read your collected earnings. The net line treats missing collected as 0 so the arithmetic still reads.`
+            data.ocean_chain === 'bip110'
+              ? data.collected_status === 'computing'
+                ? t`Waiting for the first on-chain scan of your payout address to complete - usually under a minute after the daemon starts.`
+                : data.collected_sat !== null
+                  ? t`Sum of on-chain payouts received at your payout address, derived from the blockchain via your Bitcoin node. Ocean provides no API for the BIP110 chain, so this is the only observable income; Lightning payouts can't be tracked. Counts what you were paid, even if you've since spent it.`
+                  : t`On-chain scanning isn't configured. Pick a balance-check backend (Electrum recommended) under Config → Pool & Payout - on the BIP110 chain it is the only way to read your earnings.`
+              : data.collected_status === 'computing'
+                ? t`Loading your payout history from Ocean. Waiting for the first read of Ocean's payout ledger to complete - usually a few seconds.`
+                : data.collected_sat !== null
+                  ? t`Everything Ocean has actually paid you: on-chain payouts from Ocean's own payout ledger, plus Lightning payouts deduced from your unpaid earnings dropping to zero (Ocean's ledger doesn't report those). Counts what you were paid, even if you've since spent it.`
+                  : t`No payout address configured. Set your Ocean payout address under Config → Pool & Payout so the Profit & Loss panel can read your collected earnings. The net line treats missing collected as 0 so the arithmetic still reads.`
           }
         />
         {/* #323: on-chain vs Lightning split. Only shown when a
@@ -3442,7 +3566,11 @@ function FinancePanel({
             // digging out of the initial deposit. Keeps the rest of
             // the panel calm so the eye lands on the conclusion.
             valueClass={netColor}
-            tooltip={t`Collected (Ocean's full payout ledger, on-chain + Lightning) + pre-installation (manual) + Ocean's unpaid earnings − spent on bids. Missing collected is treated as 0. Negative = still recouping the initial deposit.`}
+            tooltip={
+              data.ocean_chain === 'bip110'
+                ? t`Collected (on-chain payouts seen by your Bitcoin node) + pre-installation (manual) − spent on bids. Unpaid earnings can't be read on the BIP110 chain, so this understates income by whatever is still unpaid. Negative = still recouping the initial deposit.`
+                : t`Collected (Ocean's full payout ledger, on-chain + Lightning) + pre-installation (manual) + Ocean's unpaid earnings − spent on bids. Missing collected is treated as 0. Negative = still recouping the initial deposit.`
+            }
           />
           {/* #249: rate of return on its own row so the sat column
               stays right-aligned across all four lines above. Same

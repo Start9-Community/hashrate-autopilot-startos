@@ -1,11 +1,14 @@
 /**
- * Tiny read-only repo for `reward_events` aggregations consumed by
- * the per-tick observer (#102).
+ * Tiny repo for `reward_events` aggregations consumed by the per-tick
+ * observer (#102) and, on the BIP110 chain, the P&L panel (#366).
  *
- * Writes happen in payout-observer.ts (it owns the polling +
- * insertion path); this repo only exposes read methods needed by
- * tick_metrics or the dashboard. Keeping the read side here avoids
- * a circular import between observe and payout-observer.
+ * Row inserts happen in payout-observer.ts (it owns the polling +
+ * insertion path); this repo exposes the read methods needed by
+ * tick_metrics or the dashboard, plus the wipe used by the P&L hard
+ * reset on the BIP110 chain (where the ledger is rebuilt from an
+ * address-history walk, mirroring the boot-time address-mismatch
+ * path in main.ts). Keeping these here avoids a circular import
+ * between observe and payout-observer.
  */
 
 import type { Kysely } from 'kysely';
@@ -97,5 +100,29 @@ export class RewardEventsRepo {
       .where('detected_at', '<=', throughMs)
       .executeTakeFirst();
     return Number(row?.s ?? 0);
+  }
+
+  /**
+   * #366: non-reorged row count, reported by the P&L rebuild / hard
+   * reset confirmation on the BIP110 chain ("N payouts · collected X"),
+   * where each reward event IS one on-chain payout output.
+   */
+  async countNonReorged(): Promise<number> {
+    const row = await this.db
+      .selectFrom('reward_events')
+      .select((eb) => eb.fn.countAll<number>().as('c'))
+      .where('reorged', '=', 0)
+      .executeTakeFirst();
+    return Number(row?.c ?? 0);
+  }
+
+  /**
+   * #366: wipe the ledger. Only used by the BIP110-chain P&L hard
+   * reset, which re-derives every row from a fresh address-history
+   * walk immediately afterwards - same shape as the boot-time
+   * address-mismatch recovery in main.ts.
+   */
+  async deleteAll(): Promise<void> {
+    await this.db.deleteFrom('reward_events').execute();
   }
 }

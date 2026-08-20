@@ -135,6 +135,23 @@ describe('decide - case selection', () => {
     });
     expect(decide(s)).toEqual([]);
   });
+
+  it('#363: bypasses the dynamic cap on the BIP110 chain instead of refusing forever', () => {
+    // Ocean has no API for the BIP110 chain, so hashprice can never
+    // arrive there - the #28 refusal would permanently halt bidding.
+    const s = state({
+      config: {
+        ...BASE_CONFIG,
+        max_overpay_vs_hashprice_sat_per_eh_day: 2_000_000,
+        ocean_chain: 'bip110' as const,
+      },
+      hashprice_sat_per_ph_day: null,
+    });
+    const proposals = decide(s);
+    expect(proposals.length).toBeGreaterThan(0);
+    // The fixed max_bid still applies as the only ceiling.
+    expect(proposals[0]!.kind).toBe('CREATE_BID');
+  });
 });
 
 describe('decide - Datum stratum down auto-cancel (#199)', () => {

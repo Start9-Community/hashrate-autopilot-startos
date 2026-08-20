@@ -1,6 +1,34 @@
 # Changelog
 
+## 2026-08-20
+
+### `[Release]` v1.18.0
+
+The BIP110 release. A new "Ocean chain" setting (Config → Pool & Payout) lets miners on Ocean's BIP110 endpoint declare their chain: the daemon stops asking Ocean's API (which covers only the mainstream chain - Ocean has confirmed no BIP110 API exists and scraping is unsupported), collected earnings derive from on-chain payouts seen by your own Bitcoin node, the hashprice-dependent dynamic cap and cheap mode are disabled with clear explanations (your fixed Maximum stays the ceiling and bidding continues), and every Ocean/hashprice dashboard surface is marked "n/a on BIP110" rather than showing dashes - with pre-switch history still plotting. Mainstream-chain operators see no behavior change. Also includes routine dependency maintenance and a js-yaml security pin. See the new README chapter "Mining on Ocean's BIP110 chain".
+
+### `[UI]` BIP110 chain: charts and tiles mark what can't update instead of showing dashes (#368)
+
+Everything Ocean-API or hashprice sourced now says so on the BIP110 chain, while staying visible and keeping pre-switch history: dead stat tiles show an amber "n/a" chip (with the reason in the tooltip) instead of quiet grey text, the tile picker annotates them with "(n/a on BIP110)" but keeps them pickable, the chart right-axis dropdowns mark Ocean-sourced options the same way while leaving them selectable so mainstream-era history still plots, and the chart legends dim the "received (Ocean)", "hashprice", and "effective cap" chips with a hover note that they show pre-switch history only. Network difficulty, paid earnings, and all Braiins/Datum/Bitaxe surfaces are unaffected.
+
+### `[UI]` BIP110 chain: hashprice removed from the product surface (#367)
+
+There is no hashprice on the BIP110 chain - Ocean provides none, and deriving one would compare BIP110-chain sats against the mainstream sats you spend on Braiins, which are different assets. The dashboard now reflects that instead of dangling dead controls and eternal "calculating…" rows: the "Max premium over hashprice" setting and the cheap-mode section render disabled with an explanation (saved values are kept and apply again on the mainstream chain), the Profit & Loss per-day card hides all hashprice-derived projections and says why, and the Braiins card no longer shows the "max over hashprice" / "effective cap" rows. Dashboard tiles that can never populate on the BIP110 chain (avg ocean, hashprice now, avg cost vs hashprice, bid vs hashprice, pool blocks and pool luck, share log) show a short "n/a" with an explanatory tooltip instead of a dash that reads as "still loading". Also fixes a stale-data leak where the last mainstream hashprice seen before switching chains kept feeding the bid-vs-hashprice tile and tick metrics indefinitely.
+
+### `[Fix]` BIP110 chain: collected earnings now read from the blockchain (#366)
+
+On the BIP110 chain, Profit & Loss showed collected as 0 forever - even with substantial payouts at the payout address - because collected still came from Ocean's payout ledger, which the daemon can never fetch on that chain (Ocean provides no API for it), and the hard-reset button silently did nothing for the same reason. Collected is now derived purely from on-chain payouts observed via your own Bitcoin node, labeled "collected (on-chain)", and the net line is computed without the unavailable unpaid-earnings term instead of staying blank. Lightning payouts can't be tracked on the BIP110 chain, and the panel says so explicitly. The rebuild and hard-reset buttons now re-scan the payout address history from the blockchain (and report an error instead of a fake "0 payouts" success when the scan can't run). A balance-check backend under Config → Pool & Payout (Electrum recommended) pointed at a BIP110-following node is required.
+
+## 2026-08-18
+
+### `[Feature]` Choose which Ocean chain you mine on (#363)
+
+Since the August 8 chain split, Ocean keeps separate stats per chain - and miners on Ocean's BIP110 endpoint saw their received hashrate stuck at zero because the daemon read the mainstream chain's API, which has no record of them. A new "Ocean chain" setting under Config → Pool destination lets you declare which chain you mine on: mainstream (default, unchanged) or BIP110. Ocean has confirmed there is no API for the BIP110 chain, no plan to build one, and no supported alternative - so on BIP110 the daemon stops asking Ocean entirely, and the dashboard is honest about the gap instead of showing misleading zeros: the Ocean panel explains why hashrate and earnings can't be shown, and Profit & Loss is marked incomplete (unpaid earnings can't be read; on-chain payouts are still tracked through your own Bitcoin node). The hashprice-based dynamic price cap is bypassed on BIP110 since its reference can never arrive - your fixed Maximum remains the ceiling, so the autopilot keeps bidding. Takes effect within a minute of saving - no restart needed. (An earlier development build briefly read the BIP110 website directly; that approach was withdrawn after Ocean stated scraping is not supported, and it never shipped in a release.)
+
 ## 2026-08-11
+
+### `[Infra]` js-yaml pinned to 4.3.1 for a newly published advisory
+
+A new advisory (quadratic CPU consumption resolving `!!omap`) covers every js-yaml below 4.3.1, including the 4.3.0 the workspace override was holding since the previous advisory. The pin moves to `>=4.3.1 <5`. Reachable only through the OpenAPI type-generation tooling, which is a development dependency, so nothing in the running daemon or dashboard is affected.
 
 ### `[Release]` v1.17.6
 

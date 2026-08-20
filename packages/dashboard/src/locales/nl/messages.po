@@ -596,6 +596,10 @@ msgid "Average break-even unit price over the selected range. Multiplied by avg 
 msgstr "Gemiddelde break-even eenheidsprijs over het geselecteerde bereik. Vermenigvuldigd met de gemiddelde levering om geprojecteerde inkomsten te krijgen. Verschillend van de spot-hashprice rij hieronder - dit is wat de projectie daadwerkelijk gebruikt."
 
 #: src/pages/Status.tsx
+msgid "Average delivered hashrate over the selected chart range, as reported by Braiins."
+msgstr "Gemiddeld geleverde hashrate over het geselecteerde grafiekbereik, zoals gerapporteerd door Braiins."
+
+#: src/pages/Status.tsx
 msgid "Average delivered hashrate over the selected chart range. Multiplied by avg hashprice to get projected income. Spend is measured directly (primary_bid_consumed_sat deltas), so this is not a factor on the spend side."
 msgstr "Gemiddeld geleverde hashrate over het geselecteerde grafiekbereik. Vermenigvuldigd met de gemiddelde hashprice om geprojecteerde inkomsten te krijgen. Uitgaven worden direct gemeten (primary_bid_consumed_sat-deltas), dus dit speelt geen rol aan de uitgavenkant."
 
@@ -834,6 +838,15 @@ msgstr "BIP 110-signalerend blok"
 #: src/pages/Status.tsx
 msgid "BIP-110 scan"
 msgstr "BIP-110-scan"
+
+#: src/pages/Config.tsx
+#: src/pages/Status.tsx
+msgid "BIP110 chain"
+msgstr "BIP110-keten"
+
+#: src/pages/Status.tsx
+msgid "BIP110 chain: Ocean provides no API for it, so earnings here are derived purely from on-chain payouts seen by your Bitcoin node. Unpaid earnings and Lightning payouts can't be tracked, and the net line understates income by whatever is still unpaid."
+msgstr "BIP110-keten: Ocean biedt er geen API voor, dus verdiensten worden hier puur afgeleid uit on-chain uitbetalingen die je Bitcoin-node ziet. Openstaande verdiensten en Lightning-uitbetalingen kunnen niet worden gevolgd, en de nettoregel onderschat het inkomen met wat er nog openstaat."
 
 #: src/components/TilesBar.tsx
 msgid "Bitaxe best diff"
@@ -1321,6 +1334,14 @@ msgstr "geïnd"
 #: src/pages/Status.tsx
 msgid "Collected (Ocean's full payout ledger, on-chain + Lightning) + pre-installation (manual) + Ocean's unpaid earnings − spent on bids. Missing collected is treated as 0. Negative = still recouping the initial deposit."
 msgstr "Geïnd (Ocean's volledige uitbetalingsgrootboek, on-chain + Lightning) + vooraf-installatie (handmatig) + Ocean's onbetaalde verdiensten − besteed aan biedingen. Ontbrekend geïnd telt als 0. Negatief = je verdient nog de eerste storting terug."
+
+#: src/pages/Status.tsx
+msgid "Collected (on-chain payouts seen by your Bitcoin node) + pre-installation (manual) − spent on bids. Unpaid earnings can't be read on the BIP110 chain, so this understates income by whatever is still unpaid. Negative = still recouping the initial deposit."
+msgstr "Geïnd (on-chain uitbetalingen die je Bitcoin-node ziet) + van vóór installatie (handmatig) − uitgegeven aan biedingen. Openstaande verdiensten zijn op de BIP110-keten niet uit te lezen, dus dit onderschat het inkomen met wat er nog openstaat. Negatief = de initiële storting is nog niet terugverdiend."
+
+#: src/pages/Status.tsx
+msgid "collected (on-chain)"
+msgstr "geïnd (on-chain)"
 
 #: src/pages/Config.tsx
 msgid "Compact numeric time series - one row per tick (~1,440/day) with hashrate, prices, share-log %, spend. This is what backs the Hashrate / Price / Overpay charts, so set it to the longest range you want to be able to chart. Cheap on disk: a year is ~525k small rows. Default 0 = keep forever."
@@ -2179,6 +2200,10 @@ msgid "Following new events live - click to stop"
 msgstr "Volgt nieuwe gebeurtenissen live - klik om te stoppen"
 
 #: src/pages/Config.tsx
+msgid "For miners pointed at Ocean's BIP110 endpoint (or a BIP110 node with DATUM). Ocean provides no API for this chain, so the dashboard cannot show Ocean hashrate, share log, or unpaid earnings, and Lightning payouts can't be tracked. Collected earnings are derived purely from on-chain payouts seen by your Bitcoin node - a balance-check backend (Electrum recommended, set below) pointed at a BIP110-following node is required. There is no hashprice reference on this chain, so the dynamic price cap and cheap mode are unavailable - your fixed Maximum is the only price ceiling."
+msgstr "Voor miners die op Oceans BIP110-endpoint zijn gericht (of een BIP110-node met DATUM). Ocean biedt geen API voor deze keten, dus het dashboard kan geen Ocean-hashrate, sharelog of openstaande verdiensten tonen, en Lightning-uitbetalingen kunnen niet worden gevolgd. Geïnde verdiensten worden puur afgeleid uit on-chain uitbetalingen die je Bitcoin-node ziet - een saldocontrole-backend (Electrum aanbevolen, hieronder in te stellen) gericht op een node die de BIP110-keten volgt is vereist. Er is geen hashprice-referentie op deze keten, dus het dynamische prijsplafond en cheap mode zijn niet beschikbaar - je vaste Maximum is het enige prijsplafond."
+
+#: src/pages/Config.tsx
 #: src/pages/Setup.tsx
 msgid "Format: <btc-address>.<label>. Ocean TIDES credits shares by the address prefix - anything else routes shares to nobody."
 msgstr "Formaat: <btc-adres>.<label>. Ocean TIDES schrijft shares toe op basis van het adres-voorvoegsel - alles anders stuurt shares naar niemand."
@@ -2254,8 +2279,16 @@ msgid "hard reset done"
 msgstr "harde reset klaar"
 
 #: src/pages/Status.tsx
+msgid "hard reset failed"
+msgstr "harde reset mislukt"
+
+#: src/pages/Status.tsx
 msgid "Hard reset the Profit & Loss data? This DELETES the stored Ocean payout history and Braiins spend cache, then rebuilds both from scratch. Safe (no other data touched, and it won't re-notify you), but the collected figure will briefly show 0 while it re-pulls."
 msgstr "Profit & Loss-data hard resetten? Dit VERWIJDERT de opgeslagen Ocean-uitbetalingsgeschiedenis en de Braiins-spendcache en bouwt beide opnieuw op vanaf nul. Veilig (geen andere data wordt geraakt en je krijgt geen nieuwe meldingen), maar het geïnd-bedrag toont even 0 terwijl het opnieuw ophaalt."
+
+#: src/pages/Status.tsx
+msgid "Hard reset the Profit & Loss data? This DELETES the stored on-chain payout ledger and Braiins spend cache, then rebuilds both from scratch via your Bitcoin node. Safe (no other data touched), but the collected figure will briefly show 0 while it re-scans."
+msgstr "Winst-en-verliesdata hard resetten? Dit VERWIJDERT het opgeslagen on-chain uitbetalingsgrootboek en de Braiins-uitgavencache, en bouwt beide daarna vanaf nul opnieuw op via je Bitcoin-node. Veilig (er wordt geen andere data aangeraakt), maar het geïnde bedrag toont kort 0 tijdens het opnieuw scannen."
 
 #: src/pages/Status.tsx
 msgid "Hard reset: delete the stored payout history + spend cache and rebuild both from scratch. Use only if 'rebuild' didn't fix it."
@@ -2425,6 +2458,10 @@ msgstr "Bezig"
 #: src/pages/Config.tsx
 msgid "Include historical Ocean payouts in lifetime earnings"
 msgstr "Tel historische Ocean-uitbetalingen mee in totale inkomsten"
+
+#: src/pages/Status.tsx
+msgid "Income projections aren't available on the BIP110 chain - there is no hashprice reference. Spend is still measured from Braiins."
+msgstr "Inkomensprognoses zijn niet beschikbaar op de BIP110-keten - er is geen hashprice-referentie. Uitgaven worden nog steeds gemeten via Braiins."
 
 #: src/pages/Status.tsx
 msgid "income/day est."
@@ -2662,6 +2699,10 @@ msgstr "luck na"
 msgid "luck before"
 msgstr "luck voor"
 
+#: src/pages/Config.tsx
+msgid "Mainstream chain (default)"
+msgstr "Hoofdketen (standaard)"
+
 #: src/components/BidEventDrawer.tsx
 #: src/components/PriceChart.tsx
 msgid "manual"
@@ -2855,6 +2896,15 @@ msgstr "Moet bereikbaar zijn vanaf het publieke internet (Braiins maakt er verbi
 msgid "must contain a period - without it shares are uncredited on Ocean"
 msgstr "moet een punt bevatten - zonder dat worden shares niet bijgeschreven op Ocean"
 
+#: src/components/TilesBar.tsx
+msgid "n/a"
+msgstr "n.v.t."
+
+#: src/components/TilesBar.tsx
+#: src/pages/Status.tsx
+msgid "n/a on BIP110"
+msgstr "n.v.t. op BIP110"
+
 #: src/pages/Status.tsx
 msgid "net"
 msgstr "netto"
@@ -3003,6 +3053,11 @@ msgstr "Geen wijzigingen voldoen aan de huidige filters."
 msgid "No hashrate available on the market right now."
 msgstr "Op dit moment geen hashrate beschikbaar op de markt."
 
+#: src/components/HashrateChart.tsx
+#: src/components/PriceChart.tsx
+msgid "No new data on the BIP110 chain - shows pre-switch history only."
+msgstr "Geen nieuwe data op de BIP110-keten - toont alleen geschiedenis van vóór de overstap."
+
 #: src/pages/Config.tsx
 msgid "No on-chain balance scanning. The Profit & Loss panel still shows your collected BTC from Ocean's payout ledger (on-chain + Lightning); this scanner only adds the chart's on-chain confirmation markers."
 msgstr "Geen on-chain saldoscan. Het Winst & Verlies-paneel toont je geïnde BTC nog steeds uit Ocean's uitbetalingsgrootboek (on-chain + Lightning); deze scanner voegt alleen de on-chain-bevestigingsmarkeringen op de grafiek toe."
@@ -3039,6 +3094,26 @@ msgstr "geen volledig-gekwalificeerde hostnaam"
 #: src/pages/Setup.tsx
 msgid "Not a valid Bitcoin address. Use a mainnet bech32 address (starts with <0>bc1q</0>) or Taproot (<1>bc1p</1>)."
 msgstr "Geen geldig Bitcoin-adres. Gebruik een mainnet bech32-adres (begint met <0>bc1q</0>) of Taproot (<1>bc1p</1>)."
+
+#: src/pages/Status.tsx
+msgid "Not available on the BIP110 chain - Ocean provides no API for it, so unpaid earnings can't be read. Excluded from the net line."
+msgstr "Niet beschikbaar op de BIP110-keten - Ocean biedt er geen API voor, dus openstaande verdiensten zijn niet uit te lezen. Niet meegenomen in de nettoregel."
+
+#: src/components/TilesBar.tsx
+msgid "Not available on the BIP110 chain - Ocean provides no API for it."
+msgstr "Niet beschikbaar op de BIP110-keten - Ocean biedt er geen API voor."
+
+#: src/components/TilesBar.tsx
+msgid "Not available on the BIP110 chain - there is no hashprice reference for it."
+msgstr "Niet beschikbaar op de BIP110-keten - er is geen hashprice-referentie voor."
+
+#: src/pages/Config.tsx
+msgid "Not available on the BIP110 chain. Cheap mode compares your bid against Ocean's hashprice, and there is no hashprice reference for that chain. Your saved settings are kept and apply again when you switch back to the mainstream chain."
+msgstr "Niet beschikbaar op de BIP110-keten. Cheap mode vergelijkt je bieding met Oceans hashprice, en er is geen hashprice-referentie voor die keten. Je opgeslagen instellingen blijven bewaard en gelden weer zodra je terugschakelt naar de mainstream-keten."
+
+#: src/pages/Config.tsx
+msgid "Not available on the BIP110 chain. Ocean provides no hashprice for it, so this dynamic cap is bypassed - your fixed Maximum is the only price ceiling. Your saved value is kept and applies again when you switch back to the mainstream chain."
+msgstr "Niet beschikbaar op de BIP110-keten. Ocean biedt er geen hashprice voor, dus dit dynamische plafond wordt omzeild - je vaste Maximum is het enige prijsplafond. Je opgeslagen waarde blijft bewaard en geldt weer zodra je terugschakelt naar de mainstream-keten."
 
 #: src/pages/Config.tsx
 msgid "not configured"
@@ -3089,6 +3164,10 @@ msgstr "Ocean"
 msgid "Ocean blocks found in the past 30 days. Used by the pool-luck calculation as the numerator. Colour reflects the 30-day pool luck (actual ÷ expected): green >=1.0, amber 0.9-1.0, red below 0.9."
 msgstr "Ocean-blokken gevonden in de afgelopen 30 dagen. Gebruikt als teller in de pool-luck-berekening. De kleur weerspiegelt de 30-daagse pool luck (werkelijk ÷ verwacht): groen >=1,0, amber 0,9-1,0, rood onder 0,9."
 
+#: src/pages/Config.tsx
+msgid "Ocean chain"
+msgstr "Ocean-keten"
+
 #: src/components/PriceChart.tsx
 msgid "Ocean debited the unpaid balance. On-chain transaction follows shortly."
 msgstr "Ocean heeft het onbetaalde saldo afgeschreven. On-chain transactie volgt spoedig."
@@ -3137,6 +3216,10 @@ msgstr "Ocean pool-luck over de afgelopen 7 dagen: gevonden blokken gedeeld door
 #: src/pages/Config.tsx
 msgid "Ocean pool-block credited"
 msgstr "Ocean pool-blok bijgeschreven"
+
+#: src/pages/Status.tsx
+msgid "Ocean provides no API for the BIP110 chain, so hashrate, share log, and earnings can't be shown here. Your workers' stats are on the BIP110 Ocean website."
+msgstr "Ocean biedt geen API voor de BIP110-keten, dus hashrate, sharelog en opbrengsten kunnen hier niet worden getoond. De statistieken van je workers staan op de BIP110-website van Ocean."
 
 #: src/pages/Status.tsx
 msgid "Ocean stats API - reachable when the last /api/ocean fetch returned a pool snapshot."
@@ -3244,6 +3327,14 @@ msgstr "On-chain uitbetaalmonitoring (optioneel)"
 #: src/pages/Config.tsx
 msgid "On-chain payouts"
 msgstr "On-chain uitbetalingen"
+
+#: src/pages/Status.tsx
+msgid "On-chain payouts to your payout address are still tracked through your own Bitcoin node. Selected under Config → Pool destination."
+msgstr "On-chain uitbetalingen naar je uitbetaaladres worden nog steeds gevolgd via je eigen Bitcoin-node. In te stellen onder Config → Poolbestemming."
+
+#: src/pages/Status.tsx
+msgid "On-chain scanning isn't configured. Pick a balance-check backend (Electrum recommended) under Config → Pool & Payout - on the BIP110 chain it is the only way to read your earnings."
+msgstr "On-chain scannen is niet geconfigureerd. Kies een saldocontrole-backend (Electrum aanbevolen) onder Config → Pool & Payout - op de BIP110-keten is dat de enige manier om je verdiensten uit te lezen."
 
 #: src/pages/Config.tsx
 msgid "One-click support bundle: probes every external service the daemon talks to (marketplace, pool, node, price providers) and snapshots the configuration with all secrets stripped. Use \"Copy as Markdown\" to paste the result into a bug report."
@@ -3859,6 +3950,10 @@ msgstr "opnieuw opbouwen"
 msgid "rebuild done"
 msgstr "rebuild klaar"
 
+#: src/pages/Status.tsx
+msgid "rebuild failed"
+msgstr "opnieuw opbouwen mislukt"
+
 #: src/components/HashrateChart.tsx
 #: src/pages/Config.tsx
 msgid "received (Datum)"
@@ -3872,6 +3967,10 @@ msgstr "ontvangen (Ocean)"
 #: src/pages/Status.tsx
 msgid "Recompute the Profit & Loss panel from scratch? Re-paginates every bid from Braiins (spent) and re-fetches your full Ocean payout history (collected). Safe, just slower than a normal refresh."
 msgstr "Profit & Loss-paneel opnieuw berekenen? Herlaadt elk bod van Braiins (uitgegeven) en haalt je volledige Ocean-uitbetalingsgeschiedenis opnieuw op (geïnd). Veilig, alleen trager dan een normale verversing."
+
+#: src/pages/Status.tsx
+msgid "Recompute the Profit & Loss panel from scratch? Re-paginates every bid from Braiins (spent) and re-scans your payout address history via your Bitcoin node (collected). Safe, just slower than a normal refresh."
+msgstr "Het winst-en-verliespaneel vanaf nul herberekenen? Haalt elke bieding opnieuw op bij Braiins (uitgegeven) en scant de geschiedenis van je uitbetalingsadres opnieuw via je Bitcoin-node (geïnd). Veilig, alleen trager dan een normale verversing."
 
 #: src/lib/alertConditions.ts
 msgid "recovered"
@@ -4406,6 +4505,10 @@ msgstr "Som van counters_committed.amount_consumed_sat over elk bod op /v1/spot/
 msgid "Sum of live AxeOS-reported power draw across reachable Bitaxe miners."
 msgstr "Som van het door AxeOS gerapporteerde vermogensverbruik over bereikbare Bitaxe-miners."
 
+#: src/pages/Status.tsx
+msgid "Sum of on-chain payouts received at your payout address, derived from the blockchain via your Bitcoin node. Ocean provides no API for the BIP110 chain, so this is the only observable income; Lightning payouts can't be tracked. Counts what you were paid, even if you've since spent it."
+msgstr "Som van on-chain uitbetalingen ontvangen op je uitbetalingsadres, afgeleid uit de blockchain via je Bitcoin-node. Ocean biedt geen API voor de BIP110-keten, dus dit is het enige waarneembare inkomen; Lightning-uitbetalingen kunnen niet worden gevolgd. Telt wat je uitbetaald kreeg, ook als je het inmiddels hebt uitgegeven."
+
 #: src/components/TilesBar.tsx
 msgid "Sum of the 1-minute hashrate Bitaxe miners are reporting (reachable devices only). Always shown in TH/s - a typical Bitaxe is ~1 TH/s, so PH/EH would read as zero. Lines up with the Fleet total in the Bitaxe miners section."
 msgstr "Som van de 1-minuut hashrate die Bitaxe-miners rapporteren (alleen bereikbare apparaten). Altijd in TH/s - een typische Bitaxe is ~1 TH/s, dus PH/EH zou nul zijn. Komt overeen met het Fleet-totaal in de Bitaxe-miners sectie."
@@ -4504,6 +4607,10 @@ msgstr "Het bod volgt de goedkoopste vraagprijs met genoeg diepte voor je doel, 
 #: src/pages/Config.tsx
 msgid "The BTC address Ocean TIDES credits payouts to. Editing this auto-updates the worker identity below."
 msgstr "Het BTC-adres waaraan Ocean TIDES uitbetalingen toeschrijft. Wijzigen hiervan werkt de worker-identiteit hieronder automatisch bij."
+
+#: src/pages/Config.tsx
+msgid "The chain Ocean's default endpoint mines. Stats come from Ocean's JSON API."
+msgstr "De keten die Oceans standaard-endpoint mijnt. Statistieken komen van Oceans JSON-API."
 
 #: src/pages/Setup.tsx
 msgid "The daemon may not be in setup mode. Reload the page or check the daemon logs."
@@ -4794,6 +4901,10 @@ msgstr "VR-temp"
 #: src/pages/Status.tsx
 msgid "Waiting for Ocean hashprice - trading is paused until the break-even reference is available."
 msgstr "Wacht op Ocean hashprice - trading is gepauzeerd tot de break-even-referentie beschikbaar is."
+
+#: src/pages/Status.tsx
+msgid "Waiting for the first on-chain scan of your payout address to complete - usually under a minute after the daemon starts."
+msgstr "Wachten tot de eerste on-chain scan van je uitbetalingsadres klaar is - meestal binnen een minuut na het starten van de daemon."
 
 #: src/components/TilesBar.tsx
 msgid "wallet runway"
