@@ -1,0 +1,48 @@
+import { LangDict } from './default';
+
+export default {
+  es_ES: {
+    0: 'Iniciando Hashrate Autopilot',
+    1: 'Panel',
+    2: 'El panel está listo',
+    3: 'El panel no responde',
+    4: 'No se puede acceder a Bitcoin en la red interna. Asegúrate de que Bitcoin esté instalado y en ejecución.',
+    5: 'No se puede acceder a Electrs en la red interna. Asegúrate de que Electrs esté instalado y en ejecución.',
+    6: 'No se puede acceder a Datum Gateway en la red interna. Asegúrate de que Datum Gateway esté instalado y en ejecución.',
+    7: 'No se pudo leer la cookie RPC de Bitcoin. Inicia Bitcoin, espera a que arranque y vuelve a iniciar Hashrate Autopilot.',
+    8: 'El panel, el asistente de configuración y la API de Hashrate Autopilot',
+  },
+  de_DE: {
+    0: 'Hashrate Autopilot wird gestartet',
+    1: 'Dashboard',
+    2: 'Das Dashboard ist bereit',
+    3: 'Das Dashboard antwortet nicht',
+    4: 'Bitcoin ist im internen Netzwerk nicht erreichbar. Stelle sicher, dass Bitcoin installiert ist und läuft.',
+    5: 'Electrs ist im internen Netzwerk nicht erreichbar. Stelle sicher, dass Electrs installiert ist und läuft.',
+    6: 'Datum Gateway ist im internen Netzwerk nicht erreichbar. Stelle sicher, dass Datum Gateway installiert ist und läuft.',
+    7: 'Das RPC-Cookie von Bitcoin konnte nicht gelesen werden. Starte Bitcoin, warte bis es hochgefahren ist, und starte Hashrate Autopilot erneut.',
+    8: 'Das Dashboard, der Einrichtungsassistent und die API von Hashrate Autopilot',
+  },
+  pl_PL: {
+    0: 'Uruchamianie Hashrate Autopilot',
+    1: 'Panel',
+    2: 'Panel jest gotowy',
+    3: 'Panel nie odpowiada',
+    4: 'Bitcoin jest nieosiągalny w sieci wewnętrznej. Upewnij się, że Bitcoin jest zainstalowany i uruchomiony.',
+    5: 'Electrs jest nieosiągalny w sieci wewnętrznej. Upewnij się, że Electrs jest zainstalowany i uruchomiony.',
+    6: 'Datum Gateway jest nieosiągalny w sieci wewnętrznej. Upewnij się, że Datum Gateway jest zainstalowany i uruchomiony.',
+    7: 'Nie udało się odczytać ciasteczka RPC Bitcoina. Uruchom Bitcoina, poczekaj aż wystartuje, i ponownie uruchom Hashrate Autopilot.',
+    8: 'Panel, kreator konfiguracji i API Hashrate Autopilot',
+  },
+  fr_FR: {
+    0: 'Démarrage de Hashrate Autopilot',
+    1: 'Tableau de bord',
+    2: 'Le tableau de bord est prêt',
+    3: 'Le tableau de bord ne répond pas',
+    4: 'Bitcoin est injoignable sur le réseau interne. Vérifiez que Bitcoin est installé et en cours d’exécution.',
+    5: 'Electrs est injoignable sur le réseau interne. Vérifiez qu’Electrs est installé et en cours d’exécution.',
+    6: 'Datum Gateway est injoignable sur le réseau interne. Vérifiez que Datum Gateway est installé et en cours d’exécution.',
+    7: 'Le cookie RPC de Bitcoin n’a pas pu être lu. Démarrez Bitcoin, attendez qu’il soit prêt, puis relancez Hashrate Autopilot.',
+    8: 'Le tableau de bord, l’assistant de configuration et l’API de Hashrate Autopilot',
+  },
+} satisfies Record<string, LangDict>;
