@@ -30,7 +30,6 @@ verified, tried, and decided belongs in the commit message and the PR body.
 - **bitcoind's RPC credentials come from its cookie, not from the operator.** `main.ts` mounts bitcoind's volume read-only, reads `.cookie`, and splits it into `BHA_BITCOIND_RPC_USER` / `BHA_BITCOIND_RPC_PASSWORD`. The read is reactive, so a cookie rotated on bitcoind's restart restarts the daemon with the new one. Don't ask the operator to paste RPC credentials into the dashboard.
 - **All three dependencies are required, so an unresolved address throws.** Omitting the environment variable instead would start a daemon that reports no chain tip, no payouts and no pool statistics — a silent failure that looks like an application bug.
 - **Import each dependency's host id and port from its own package** (`bitcoin-core-startos`, `electrs-startos`, `datum-gateway-startos`), so a change on their side is a build failure here rather than a silent misconnection.
-- **Default branch is `main`, not `master`.** Its CI workflows reference `main`; leave them.
 
 ## Inspecting a running install
 

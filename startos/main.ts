@@ -104,6 +104,9 @@ export const main = sdk.setupMain(async ({ effects }) => {
     );
   }
 
+  // Setup is one-way, so stop polling the container once it is done.
+  let setupDone = false
+
   return sdk.Daemons.of(effects).addDaemon('primary', {
     subcontainer: sub,
     exec: {
@@ -123,5 +126,41 @@ export const main = sdk.setupMain(async ({ effects }) => {
         }),
     },
     requires: [],
+  }).addHealthCheck('setup', {
+    ready: {
+      display: i18n('Setup'),
+      fn: async () => {
+        if (setupDone) {
+          return { message: i18n('Setup is complete'), result: 'success' }
+        }
+        // The wizard is unauthenticated by design, and POST /api/setup chooses
+        // the dashboard password — so NEEDS_SETUP is a window in which anyone
+        // who can reach this address can claim the instance.
+        const res = await sub.exec(
+          [
+            'node',
+            '-e',
+            `fetch('http://127.0.0.1:${servicePort}/api/health').then(r=>r.json()).then(j=>console.log(j.mode))`,
+          ],
+          {},
+          15_000,
+        )
+        const mode = String(res.stdout ?? '').trim()
+        if (mode === '') {
+          return { message: i18n('Checking setup state…'), result: 'starting' }
+        }
+        if (mode === 'NEEDS_SETUP') {
+          return {
+            message: i18n(
+              'Setup is not finished. Until you complete the wizard, anyone who can reach this address can claim this instance and set its password. Open the dashboard and finish setup now.',
+            ),
+            result: 'failure',
+          }
+        }
+        setupDone = true
+        return { message: i18n('Setup is complete'), result: 'success' }
+      },
+    },
+    requires: ['primary'],
   });
 });

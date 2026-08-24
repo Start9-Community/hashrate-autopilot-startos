@@ -2,6 +2,10 @@ import { LangDict } from './default';
 
 export default {
   es_ES: {
+    9: 'Configuración',
+    10: 'Comprobando el estado de la configuración…',
+    11: 'La configuración no ha terminado. Hasta que completes el asistente, cualquiera que pueda alcanzar esta dirección puede reclamar esta instancia y fijar su contraseña. Abre el panel y termina la configuración ahora.',
+    12: 'La configuración está completa',
     0: 'Iniciando Hashrate Autopilot',
     1: 'Panel',
     2: 'El panel está listo',
@@ -13,6 +17,10 @@ export default {
     8: 'El panel, el asistente de configuración y la API de Hashrate Autopilot',
   },
   de_DE: {
+    9: 'Einrichtung',
+    10: 'Einrichtungsstatus wird geprüft…',
+    11: 'Die Einrichtung ist nicht abgeschlossen. Solange der Assistent nicht abgeschlossen ist, kann jede Person, die diese Adresse erreicht, diese Instanz übernehmen und ihr Passwort festlegen. Öffnen Sie das Dashboard und schließen Sie die Einrichtung jetzt ab.',
+    12: 'Die Einrichtung ist abgeschlossen',
     0: 'Hashrate Autopilot wird gestartet',
     1: 'Dashboard',
     2: 'Das Dashboard ist bereit',
@@ -24,6 +32,10 @@ export default {
     8: 'Das Dashboard, der Einrichtungsassistent und die API von Hashrate Autopilot',
   },
   pl_PL: {
+    9: 'Konfiguracja',
+    10: 'Sprawdzanie stanu konfiguracji…',
+    11: 'Konfiguracja nie została ukończona. Dopóki nie ukończysz kreatora, każdy, kto może połączyć się z tym adresem, może przejąć tę instancję i ustawić jej hasło. Otwórz panel i dokończ konfigurację teraz.',
+    12: 'Konfiguracja jest ukończona',
     0: 'Uruchamianie Hashrate Autopilot',
     1: 'Panel',
     2: 'Panel jest gotowy',
@@ -35,6 +47,10 @@ export default {
     8: 'Panel, kreator konfiguracji i API Hashrate Autopilot',
   },
   fr_FR: {
+    9: 'Configuration',
+    10: "Vérification de l'état de la configuration…",
+    11: "La configuration n'est pas terminée. Tant que vous n'avez pas terminé l'assistant, quiconque peut atteindre cette adresse peut revendiquer cette instance et définir son mot de passe. Ouvrez le tableau de bord et terminez la configuration maintenant.",
+    12: 'La configuration est terminée',
     0: 'Démarrage de Hashrate Autopilot',
     1: 'Tableau de bord',
     2: 'Le tableau de bord est prêt',

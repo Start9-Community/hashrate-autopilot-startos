@@ -13,6 +13,12 @@ const dict = {
 
   // interfaces.ts
   'The Hashrate Autopilot dashboard, setup wizard and API': 8,
+
+  // main.ts — setup state
+  'Setup': 9,
+  'Checking setup state…': 10,
+  'Setup is not finished. Until you complete the wizard, anyone who can reach this address can claim this instance and set its password. Open the dashboard and finish setup now.': 11,
+  'Setup is complete': 12,
 } as const;
 
 /**
