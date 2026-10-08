@@ -44,17 +44,16 @@ For a packaging-only release, leave the upstream version alone and increment the
 
 ```sh
 npm ci
-npx tsc --noEmit
-npm test
+make javascript/index.js   # type-check, tests, lint, format check, bundle
 make x86
 make arm
 ```
 
 Then install on a StartOS server with Bitcoin, Electrs and Datum Gateway present and synced, and
-confirm the daemon starts, the health check goes green, and the dashboard serves its setup wizard.
+confirm the daemon starts, the Dashboard health check goes green, and the dashboard serves its setup wizard (the Setup check stays failing until the wizard is completed).
 
 Before tagging a release an operator will run LIVE, drive a real bid end to end against a funded
 Braiins account — the health check only proves the dashboard is answering.
 
-Tags are `v<upstream>_<downstream>`. Don't create or push one by hand: a merge to `main` drives the
+Tags are `v<upstream>_<downstream>`. Don't create or push one by hand: a merge to `master` drives the
 tag, the build, and the `community-beta` deploy.
