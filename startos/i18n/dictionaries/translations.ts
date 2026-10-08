@@ -1,4 +1,4 @@
-import { LangDict } from './default';
+import { LangDict } from './default'
 
 export default {
   es_ES: {
@@ -61,4 +61,4 @@ export default {
     7: 'Le cookie RPC de Bitcoin n’a pas pu être lu. Démarrez Bitcoin, attendez qu’il soit prêt, puis relancez Hashrate Autopilot.',
     8: 'Le tableau de bord, l’assistant de configuration et l’API de Hashrate Autopilot',
   },
-} satisfies Record<string, LangDict>;
+} satisfies Record<string, LangDict>

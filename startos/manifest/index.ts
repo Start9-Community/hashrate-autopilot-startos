@@ -1,12 +1,6 @@
-import { setupManifest } from '@start9labs/start-sdk';
+import { setupManifest } from '@start9labs/start-sdk'
 
-import {
-  depBitcoindDescription,
-  depDatumDescription,
-  depElectrsDescription,
-  long,
-  short,
-} from './i18n';
+import { long, short } from './i18n'
 
 export const manifest = setupManifest({
   id: 'hashrate-autopilot',
@@ -22,32 +16,7 @@ export const manifest = setupManifest({
     main: {
       source: { dockerTag: 'ghcr.io/rdouma/hashrate-autopilot:1.18.2' },
       arch: ['x86_64', 'aarch64'],
+      emulateMissing: false,
     },
   },
-  dependencies: {
-    bitcoind: {
-      description: depBitcoindDescription,
-      optional: false,
-      metadata: {
-        title: 'Bitcoin',
-        icon: 'https://raw.githubusercontent.com/Start9Labs/bitcoin-core-startos/refs/heads/31.x/icon.svg',
-      },
-    },
-    electrs: {
-      description: depElectrsDescription,
-      optional: false,
-      metadata: {
-        title: 'Electrs',
-        icon: 'https://raw.githubusercontent.com/Start9-Community/electrs-startos/refs/heads/master/icon.svg',
-      },
-    },
-    datum: {
-      description: depDatumDescription,
-      optional: false,
-      metadata: {
-        title: 'Datum Gateway',
-        icon: 'https://raw.githubusercontent.com/Start9Labs/datum-gateway-startos/refs/heads/master/icon.svg',
-      },
-    },
-  },
-});
+})

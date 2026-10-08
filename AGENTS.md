@@ -18,19 +18,23 @@ Freshly scaffolded? Work the
 guide page, not a file in this repo — read it, don't copy it in.
 
 Keep `README.md` (technical reference for an AI support or administering agent) and
-`instructions.md` (end-user docs) in sync with your changes.
+`instructions.md` (end-user docs) in sync with your changes. This file restates neither:
+whoever changes the package has both, so it carries only what they don't — repo mechanics,
+a change that looks right and is not, where the next thing gets added, a naming trap, a
+build or test invocation particular to this repo.
 
-**Bugs and feature requests are GitHub issues on this repo** — file them as you find them.
+**Fix a defect you spot rather than reporting it** — you have the package open and the
+context to be sure. File **a GitHub issue on this repo** only when the call isn't yours to
+make: you can't pin the cause down, two defensible fixes exist, or it's too large to ride on
+the work in hand. An open issue is a report, not a queue — implement one when you're asked
+to or when it's labelled `Approved`, then close it with `Closes #<n>`.
+
 Don't record work in the repo instead: no `TODO.md`, no `NOTES.md`, no `PLAN.md`. What you
 verified, tried, and decided belongs in the commit message and the PR body.
 
 ## This repo
 
-- **The image is upstream's published build, pinned in the manifest.** `images.main.source.dockerTag` points at `ghcr.io/rdouma/hashrate-autopilot`; nothing is compiled here. An upstream bump is a tag change — `UPDATING.md` has the procedure. Don't add a `Dockerfile` or vendor the application's source: the packaging guide's Project Structure page states why.
-- **bitcoind's RPC credentials come from its cookie, not from the operator.** `main.ts` mounts bitcoind's volume read-only, reads `.cookie`, and splits it into `BHA_BITCOIND_RPC_USER` / `BHA_BITCOIND_RPC_PASSWORD`. The read is reactive, so a cookie rotated on bitcoind's restart restarts the daemon with the new one. Don't ask the operator to paste RPC credentials into the dashboard.
-- **All three dependencies are required, so an unresolved address throws.** Omitting the environment variable instead would start a daemon that reports no chain tip, no payouts and no pool statistics — a silent failure that looks like an application bug.
-- **Import each dependency's host id and port from its own package** (`bitcoin-core-startos`, `electrs-startos`, `datum-gateway-startos`), so a change on their side is a build failure here rather than a silent misconnection.
-
-## Inspecting a running install
-
-`start-cli package attach hashrate-autopilot -n hashrate-autopilot-sub -- <cmd>` — the package runs one subcontainer, named `hashrate-autopilot-sub`.
+- **Don't add a `Dockerfile` or vendor the application's source.** The image is upstream's published build, pinned in `images.main.source.dockerTag`; an upstream bump is a tag change (`UPDATING.md`).
+- **Don't ask the operator for bitcoind's RPC credentials.** `main.ts` reads them reactively from bitcoind's `.cookie`, so a rotated cookie restarts the daemon with the new one.
+- **Throw when a dependency's bridge address doesn't resolve; don't omit its variable.** Every dependency is required, and a daemon started without one reports no chain tip, payouts or pool statistics as if it were an application bug.
+- **Import each dependency's host id and port from its own package** (`bitcoin-core-startos`, `electrs-startos`, `datum-gateway-startos`), so a change on their side fails the build here instead of misconnecting.

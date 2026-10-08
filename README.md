@@ -144,13 +144,16 @@ Dependency requirements are enforced by StartOS's own dependency handling instea
 
 ## Health Checks
 
-One check, on the only daemon.
+Two checks, on the only daemon.
 
-| Check     | Displayed   | Method                  |
-| --------- | ----------- | ----------------------- |
-| `primary` | "Dashboard" | Port 3010 is listening  |
+| Check     | Displayed   | Method                                                                 |
+| --------- | ----------- | ---------------------------------------------------------------------- |
+| `primary` | "Dashboard" | Port 3010 is listening                                                 |
+| `setup`   | "Setup"     | `GET /api/health` inside the container; fails while `mode` is `NEEDS_SETUP` |
 
-A failure means the daemon exited — most often because a dependency could not be resolved at start, which the service log states directly, naming which one.
+`setup` fails until the wizard is completed, because until then anyone who can reach the address can claim the instance. Once it has passed it stops polling for the life of that run.
+
+A `primary` failure means the daemon exited — most often because a dependency could not be resolved at start, which the service log states directly, naming which one.
 
 Understand what it does **not** cover: a listening dashboard says nothing about whether the Braiins API is reachable, whether a bid is live, whether the pool is receiving hashrate, or whether payouts are arriving. Those are the application's own concern and it raises its own alerts for them, visible on the dashboard and on the Alerts page. A green health check on a service that has silently stopped bidding is expected behavior, not a broken check.
 
@@ -211,4 +214,5 @@ actions: []
 tasks: []
 health_checks:
   - primary # displayed "Dashboard"
+  - setup # displayed "Setup"; fails until the setup wizard is completed
 ```
