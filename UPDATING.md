@@ -1,9 +1,9 @@
 # Updating Hashrate Autopilot
 
-This package wraps upstream's own published image, so an upstream bump is a tag change — there is
-nothing to compile here. The packaged application version is the tag in
-`images.main.source.dockerTag` (`startos/manifest/index.ts`); the StartOS package version is
-`version` in `startos/versions/current.ts`, in ExVer `<upstream>:<downstream>`.
+This package wraps upstream's own published image with a temporary CA-store layer in the root
+`Dockerfile`. The packaged application version is the tag in
+`images.main.source.dockerBuild.buildArgs.IMAGE` (`startos/manifest/index.ts`); the StartOS
+package version is `version` in `startos/versions/current.ts`, in ExVer `<upstream>:<downstream>`.
 
 ## Determining the upstream version
 
@@ -21,8 +21,8 @@ gh release view --repo rdouma/hashrate-autopilot --json tagName,publishedAt,url
      | jq -r '.manifests[].platform.architecture'
    ```
 
-2. Set the tag in `images.main.source.dockerTag`, and the upstream portion of `version` in
-   `startos/versions/current.ts` with the downstream revision reset to `0`.
+2. Set the tag in `images.main.source.dockerBuild.buildArgs.IMAGE`, and the upstream portion of
+   `version` in `startos/versions/current.ts` with the downstream revision reset to `0`.
 3. Rewrite `releaseNotes` in all five locales, summarizing what changes for the operator.
 4. Review what the release changed in the application's own configuration surface, because the
    package asserts part of it on every start. In particular: the `BHA_*` names in
@@ -39,6 +39,13 @@ gh release view --repo rdouma/hashrate-autopilot --json tagName,publishedAt,url
 5. Only spin off a historical version file when a migration must run in sequence.
 
 For a packaging-only release, leave the upstream version alone and increment the downstream revision.
+
+## Removing the temporary CA-store layer
+
+Once an upstream image ships a Node version that no longer trusts emSign ECC Root CA - G3,
+verify that its default TLS trust excludes that root. Then remove the root `Dockerfile`, switch
+`images.main.source` back to `{ dockerTag: '<verified upstream image:tag>' }`, and update
+`README.md`, `AGENTS.md`, and this procedure to match.
 
 ## Verification
 
