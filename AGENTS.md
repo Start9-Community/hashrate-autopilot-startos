@@ -34,7 +34,7 @@ verified, tried, and decided belongs in the commit message and the PR body.
 
 ## This repo
 
-- **Don't vendor the application's source.** The root `Dockerfile` layers the CA-store fix onto upstream's published image, pinned in `images.main.source.dockerBuild.buildArgs.IMAGE`; `UPDATING.md` covers bumps and removing the temporary layer.
+- **Don't vendor the application's source.** The root `Dockerfile` layers the CA-store fix and a fixed Node binary onto upstream's published image, pinned in `images.main.source.dockerBuild.buildArgs.IMAGE`; `UPDATING.md` covers bumps and removing the temporary layers.
 - **Don't ask the operator for bitcoind's RPC credentials.** `main.ts` reads them reactively from bitcoind's `.cookie`, so a rotated cookie restarts the daemon with the new one.
 - **Throw when a dependency's bridge address doesn't resolve; don't omit its variable.** Every dependency is required, and a daemon started without one reports no chain tip, payouts or pool statistics as if it were an application bug.
 - **Import each dependency's host id and port from its own package** (`bitcoin-core-startos`, `electrs-startos`, `datum-gateway-startos`), so a change on their side fails the build here instead of misconnecting.

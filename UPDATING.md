@@ -1,6 +1,6 @@
 # Updating Hashrate Autopilot
 
-This package wraps upstream's own published image with a temporary CA-store layer in the root
+This package wraps upstream's own published image with temporary CA-store and Node layers in the root
 `Dockerfile`. The packaged application version is the tag in
 `images.main.source.dockerBuild.buildArgs.IMAGE` (`startos/manifest/index.ts`); the StartOS
 package version is `version` in `startos/versions/current.ts`, in ExVer `<upstream>:<downstream>`.
@@ -40,10 +40,11 @@ gh release view --repo rdouma/hashrate-autopilot --json tagName,publishedAt,url
 
 For a packaging-only release, leave the upstream version alone and increment the downstream revision.
 
-## Removing the temporary CA-store layer
+## Removing the temporary layers
 
-Once an upstream image ships a Node version that no longer trusts emSign ECC Root CA - G3,
-verify that its default TLS trust excludes that root. Then remove the root `Dockerfile`, switch
+Both layers come out together, once an upstream image ships Node 22.23.4 or later (its
+`NODE_VERSION`). Verify that its default TLS trust also excludes emSign ECC Root CA - G3. Then
+remove the root `Dockerfile`, switch
 `images.main.source` back to `{ dockerTag: '<verified upstream image:tag>' }`, and update
 `README.md`, `AGENTS.md`, and this procedure to match.
 

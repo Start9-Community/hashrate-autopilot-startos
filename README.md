@@ -48,7 +48,7 @@ One image, pulled from upstream's registry, in one subcontainer.
 | ------------------------ | --------------------------------------------- |
 | `hashrate-autopilot-sub` | The `primary` daemon — the one to `attach` to |
 
-The image is upstream's own published build, with one temporary layer: the root `Dockerfile` installs `ca-certificates` and sets `NODE_OPTIONS=--use-openssl-ca`, so Node verifies against a current store. It comes out once upstream ships an image built on a fixed Node. An upstream version bump is a tag change in the manifest; `UPDATING.md` has the procedure.
+The image is upstream's own published build, with two temporary layers in the root `Dockerfile`: it installs `ca-certificates` and sets `NODE_OPTIONS=--use-openssl-ca`, so Node verifies against a current store, and it replaces `/usr/local/bin/node` with Node 22.23.4 from the official image. Both come out once upstream ships an image built on Node 22.23.4 or later. An upstream version bump is a tag change in the manifest; `UPDATING.md` has the procedure.
 
 ## Volume and Data Layout
 
