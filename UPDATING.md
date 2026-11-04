@@ -2,8 +2,7 @@
 
 This package wraps upstream's own published image with temporary CA-store and Node layers in the root
 `Dockerfile`. The packaged application version is the tag in
-`images.main.source.dockerBuild.buildArgs.IMAGE` (`startos/manifest/index.ts`); the StartOS
-package version is `version` in `startos/versions/current.ts`, in ExVer `<upstream>:<downstream>`.
+`images.main.source.dockerBuild.buildArgs.IMAGE` (`startos/manifest/index.ts`).
 
 ## Determining the upstream version
 
@@ -21,10 +20,8 @@ gh release view --repo rdouma/hashrate-autopilot --json tagName,publishedAt,url
      | jq -r '.manifests[].platform.architecture'
    ```
 
-2. Set the tag in `images.main.source.dockerBuild.buildArgs.IMAGE`, and the upstream portion of
-   `version` in `startos/versions/current.ts` with the downstream revision reset to `0`.
-3. Rewrite `releaseNotes` in all five locales, summarizing what changes for the operator.
-4. Review what the release changed in the application's own configuration surface, because the
+2. Set the tag in `images.main.source.dockerBuild.buildArgs.IMAGE`.
+3. Review what the release changed in the application's own configuration surface, because the
    package asserts part of it on every start. In particular: the `BHA_*` names in
    `packages/daemon/src/config/env-overrides.ts` in the upstream repo (a rename there is not a
    type error — the daemon starts anyway, on defaults), the resolution order `env > db > defaults`,
@@ -36,10 +33,6 @@ gh release view --repo rdouma/hashrate-autopilot --json tagName,publishedAt,url
      --format '{{json .Config}}' | jq '{Cmd, WorkingDir, ExposedPorts, Volumes, Env}'
    ```
 
-5. Only spin off a historical version file when a migration must run in sequence.
-
-For a packaging-only release, leave the upstream version alone and increment the downstream revision.
-
 ## Removing the temporary layers
 
 Both layers come out together, once an upstream image ships Node 22.23.4 or later (its
@@ -47,21 +40,3 @@ Both layers come out together, once an upstream image ships Node 22.23.4 or late
 remove the root `Dockerfile`, switch
 `images.main.source` back to `{ dockerTag: '<verified upstream image:tag>' }`, and update
 `README.md`, `AGENTS.md`, and this procedure to match.
-
-## Verification
-
-```sh
-npm ci
-make javascript/index.js   # type-check, tests, lint, format check, bundle
-make x86
-make arm
-```
-
-Then install on a StartOS server with Bitcoin, Electrs and Datum Gateway present and synced, and
-confirm the daemon starts, the Dashboard health check goes green, and the dashboard serves its setup wizard (the Setup check stays failing until the wizard is completed).
-
-Before tagging a release an operator will run LIVE, drive a real bid end to end against a funded
-Braiins account — the health check only proves the dashboard is answering.
-
-Tags are `v<upstream>_<downstream>`. Don't create or push one by hand: a merge to `master` drives the
-tag, the build, and the `community-beta` deploy.
