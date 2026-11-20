@@ -3,6 +3,8 @@ import { manifest as bitcoinManifest } from 'bitcoin-core-startos/startos/manife
 import {
   rpcHostId as bitcoindRpcHostId,
   rpcPort as bitcoindRpcPort,
+  rpcCookieName,
+  rpcVolumeId,
 } from 'bitcoin-core-startos/startos/utils'
 import {
   uiHostId as datumHostId,
@@ -83,7 +85,7 @@ export const main = sdk.setupMain(async ({ effects }) => {
       })
       .mountDependency<typeof bitcoinManifest>({
         dependencyId: 'bitcoind',
-        volumeId: 'main',
+        volumeId: rpcVolumeId,
         subpath: null,
         mountpoint: bitcoinMountpoint,
         readonly: true,
@@ -91,12 +93,12 @@ export const main = sdk.setupMain(async ({ effects }) => {
     'hashrate-autopilot-sub',
   )
 
-  // bitcoind's RPC auth, read off its own volume rather than asked of the
-  // operator. The cookie is `__cookie__:<secret>` and is rewritten on every
+  // bitcoind's RPC auth, read off the volume it publishes for dependents
+  // rather than asked of the operator. The cookie is `__cookie__:<secret>` and is rewritten on every
   // bitcoind start, so the read is reactive — a rotated cookie restarts the
   // daemon with the new one, and an absent cookie means bitcoind is down.
   const cookie = await FileHelper.string(
-    `${sub.rootfs}${bitcoinMountpoint}/.cookie`,
+    `${sub.rootfs}${bitcoinMountpoint}/${rpcCookieName}`,
   )
     .read(
       (c) => c,

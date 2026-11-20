@@ -62,7 +62,7 @@ One volume, holding a single SQLite database that is the entire state of the ser
 | ------------------- | ---------- | ----------------------------------------------------------------------- |
 | `/app/data/state.db` | The daemon | Operator configuration, encrypted application secrets, runtime state, decision and payout history |
 
-Everything else in the container belongs to the image and is replaced on update. Bitcoin's data directory is also mounted, read-only, at `/mnt/bitcoin` — see [Dependencies](#dependencies).
+Everything else in the container belongs to the image and is replaced on update. Bitcoin's `public` volume is also mounted, read-only, at `/mnt/bitcoin` — see [Dependencies](#dependencies).
 
 The secrets in that database — the Braiins access token, the dashboard password, Telegram credentials — are encrypted at rest by the application, not by this package. Uninstalling deletes the volume and everything above with it.
 
@@ -90,7 +90,7 @@ The second is resolved from the dependencies on every start, through `sdk.host.g
 | `BHA_ELECTRS_HOST` / `_PORT` | Electrs's Electrum binding, split into host and port  |
 | `BHA_PAYOUT_SOURCE`       | Fixed to `electrs`, since Electrs is a required dependency |
 
-The third is Bitcoin's RPC authentication, read off Bitcoin's own volume rather than asked of the operator: `.cookie` is `__cookie__:<secret>`, and the two halves become `BHA_BITCOIND_RPC_USER` and `BHA_BITCOIND_RPC_PASSWORD`.
+The third is Bitcoin's RPC authentication, read off the volume Bitcoin publishes for dependents rather than asked of the operator: `.cookie` is `__cookie__:<secret>`, and the two halves become `BHA_BITCOIND_RPC_USER` and `BHA_BITCOIND_RPC_PASSWORD`.
 
 **Ownership is the part that surprises people.** The application resolves configuration as *environment beats database beats defaults*, so every variable above is re-asserted on each start and a value edited in the dashboard for one of those fields is overwritten on the next restart. That is deliberate — a saved bridge address goes stale the moment a dependency is reinstalled on a different port. Every other setting in the dashboard belongs to the operator and this package never touches it.
 
@@ -104,7 +104,7 @@ Three, all required, and all of them must be **synced**, not merely running — 
 | Electrs (`electrs`)           | `electrs`, `sync`        | Address history, for tracking and backfilling payouts                  |
 | Datum Gateway (`datum`)       | `datum`                  | Receives the rented hashrate and reports what the pool is producing    |
 
-Bitcoin's `main` volume is mounted read-only at `/mnt/bitcoin`, solely to read its RPC cookie. Nothing is mounted from Electrs or Datum.
+Bitcoin's `public` volume, which holds the RPC cookie Bitcoin publishes for dependents and none of its chain or wallet data, is mounted read-only at `/mnt/bitcoin`; only `.cookie` is read from it. Nothing is mounted from Electrs or Datum.
 
 Only Datum's daemon check is required, deliberately: its stratum checks describe whether miners are connected, which is exactly the state a new operator has not reached yet, and requiring them would block startup during setup.
 
@@ -205,7 +205,7 @@ startos_managed_env_vars:
   - BHA_ELECTRS_PORT
   - BHA_PAYOUT_SOURCE
 dependencies:
-  - bitcoind # required; health checks bitcoind, sync-progress; volume mounted read-only at /mnt/bitcoin
+  - bitcoind # required; health checks bitcoind, sync-progress; public volume mounted read-only at /mnt/bitcoin
   - electrs # required; health checks electrs, sync
   - datum # required; health check datum
 interfaces:
