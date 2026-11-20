@@ -22,6 +22,29 @@ import { bitcoinMountpoint, servicePort } from './utils'
 export const main = sdk.setupMain(async ({ effects }) => {
   console.info(i18n('Starting Hashrate Autopilot'))
 
+  // An older Bitcoin lacks the public volume, and mounting a missing volume fails the start.
+  const hasRpcVolume = await sdk
+    .getServiceManifest(effects, 'bitcoind', (m) =>
+      m?.volumes.includes(rpcVolumeId),
+    )
+    .const()
+  if (hasRpcVolume === false) {
+    return sdk.Daemons.of(effects).addHealthCheck('bitcoin', {
+      ready: {
+        display: i18n('Bitcoin Connection'),
+        gracePeriod: 0,
+        trigger: sdk.trigger.onceTrigger,
+        fn: () => ({
+          result: 'failure',
+          message: i18n(
+            'Update Bitcoin so Hashrate Autopilot can connect to it',
+          ),
+        }),
+      },
+      requires: [],
+    })
+  }
+
   // Every dependency is required, so an unresolved address is a hard failure
   // rather than an omitted variable: the daemon would otherwise start and
   // silently report no chain tip, no payouts and no pool statistics.
