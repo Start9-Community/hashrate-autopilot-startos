@@ -29,6 +29,8 @@
 5. **Confirm your public pool destination actually accepts traffic** for the worker name you entered, from outside your network.
 6. **Switch to LIVE** on the Status page, once and only once steps 4 and 5 both look right. From that moment it bids with real funds.
 
+If the service's **Bitcoin Connection** check asks you to update Bitcoin, install Bitcoin's update; Hashrate Autopilot starts on its own once it is done.
+
 ## Using Hashrate Autopilot
 
 Everything happens on the Dashboard: monitoring the marketplace, your pool and your payouts; changing settings; reviewing decisions; and switching between DRY-RUN, LIVE and PAUSED. This package adds no separate controls of its own.

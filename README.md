@@ -151,6 +151,8 @@ Two checks, on the only daemon.
 | `primary` | "Dashboard" | Port 3010 is listening                                                 |
 | `setup`   | "Setup"     | `GET /api/health` inside the container; fails while `mode` is `NEEDS_SETUP` |
 
+While the installed Bitcoin is too old to publish its `public` volume, the package mounts nothing from it and runs no daemon: a lone `bitcoin` check, "Bitcoin Connection", fails and asks for Bitcoin to be updated. The installed manifest is watched, so updating Bitcoin starts the service normally.
+
 `setup` fails until the wizard is completed, because until then anyone who can reach the address can claim the instance. Once it has passed it stops polling for the life of that run.
 
 A `primary` failure means the daemon exited — most often because a dependency could not be resolved at start, which the service log states directly, naming which one.
@@ -215,4 +217,5 @@ tasks: []
 health_checks:
   - primary # displayed "Dashboard"
   - setup # displayed "Setup"; fails until the setup wizard is completed
+  - bitcoin # displayed "Bitcoin Connection"; only while the installed Bitcoin predates its public volume
 ```

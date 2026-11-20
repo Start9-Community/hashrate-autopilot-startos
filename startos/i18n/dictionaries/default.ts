@@ -10,6 +10,8 @@ const dict = {
   'Electrs is not reachable on the internal network. Make sure Electrs is installed and running.': 5,
   'Datum Gateway is not reachable on the internal network. Make sure Datum Gateway is installed and running.': 6,
   "Bitcoin's RPC cookie could not be read. Start Bitcoin and wait for it to come up, then start Hashrate Autopilot again.": 7,
+  'Bitcoin Connection': 13,
+  'Update Bitcoin so Hashrate Autopilot can connect to it': 14,
 
   // interfaces.ts
   'The Hashrate Autopilot dashboard, setup wizard and API': 8,
