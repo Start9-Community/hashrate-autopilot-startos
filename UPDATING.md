@@ -1,8 +1,7 @@
 # Updating Hashrate Autopilot
 
-This package wraps upstream's own published image with temporary CA-store and Node layers in the root
-`Dockerfile`. The packaged application version is the tag in
-`images.main.source.dockerBuild.buildArgs.IMAGE` (`startos/manifest/index.ts`).
+The manifest pins upstream's published image in `images.main.source.dockerTag` in
+`startos/manifest/index.ts`.
 
 ## Determining the upstream version
 
@@ -20,7 +19,8 @@ gh release view --repo rdouma/hashrate-autopilot --json tagName,publishedAt,url
      | jq -r '.manifests[].platform.architecture'
    ```
 
-2. Set the tag in `images.main.source.dockerBuild.buildArgs.IMAGE`.
+2. Set the tag in `images.main.source.dockerTag`. Update the version and release notes in
+   `startos/versions/current.ts` and the image reference in `README.md`.
 3. Review what the release changed in the application's own configuration surface, because the
    package asserts part of it on every start. In particular: the `BHA_*` names in
    `packages/daemon/src/config/env-overrides.ts` in the upstream repo (a rename there is not a
@@ -33,10 +33,19 @@ gh release view --repo rdouma/hashrate-autopilot --json tagName,publishedAt,url
      --format '{{json .Config}}' | jq '{Cmd, WorkingDir, ExposedPorts, Volumes, Env}'
    ```
 
-## Removing the temporary layers
+4. Check the runtime and default TLS trust in the candidate image on each architecture. The
+   package previously supplied fixes for Node and the distrusted emSign ECC Root CA - G3.
+   This command exits unsuccessfully if the root is present or the trust store is empty.
 
-Both layers come out together, once an upstream image ships Node 22.23.4 or later (its
-`NODE_VERSION`). Verify that its default TLS trust also excludes emSign ECC Root CA - G3. Then
-remove the root `Dockerfile`, switch
-`images.main.source` back to `{ dockerTag: '<verified upstream image:tag>' }`, and update
-`README.md`, `AGENTS.md`, and this procedure to match.
+   ```sh
+   version=1.18.4
+   arch=amd64  # Repeat with arm64.
+   docker run --rm --network none --platform "linux/$arch" --entrypoint node \
+     "ghcr.io/rdouma/hashrate-autopilot:$version" -e '
+       const { X509Certificate } = require("node:crypto")
+       const roots = require("node:tls").getCACertificates("default")
+       console.log(process.version, roots.length)
+       process.exitCode = Number(!roots.length || roots.some(pem =>
+         new X509Certificate(pem).subject.includes("emSign ECC Root CA - G3")))
+     '
+   ```

@@ -48,7 +48,7 @@ One image, pulled from upstream's registry, in one subcontainer.
 | ------------------------ | --------------------------------------------- |
 | `hashrate-autopilot-sub` | The `primary` daemon — the one to `attach` to |
 
-The image is upstream's own published build, with two temporary layers in the root `Dockerfile`: it installs `ca-certificates` and sets `NODE_OPTIONS=--use-openssl-ca`, so Node verifies against a current store, and it replaces `/usr/local/bin/node` with Node 22.23.4 from the official image. Both come out once upstream ships an image built on Node 22.23.4 or later. An upstream version bump is a tag change in the manifest; `UPDATING.md` has the procedure.
+StartOS uses upstream's published image directly. Version 1.18.4 includes Node 22.23.5, whose default TLS trust store excludes emSign ECC Root CA - G3. The manifest pins the image tag; `UPDATING.md` describes how to verify a new release.
 
 ## Volume and Data Layout
 
@@ -183,7 +183,7 @@ The one thing to decide before restoring is the run mode you want. A backup take
 
 ```yaml
 package_id: hashrate-autopilot
-image: ghcr.io/rdouma/hashrate-autopilot:1.18.2
+image: ghcr.io/rdouma/hashrate-autopilot:1.18.4
 architectures:
   - x86_64
   - aarch64

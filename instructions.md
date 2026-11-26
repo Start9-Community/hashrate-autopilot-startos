@@ -43,7 +43,7 @@ To actually stop spending, go to the Braiins marketplace, cancel the bid there, 
 
 ### A few settings are managed for you
 
-The Bitcoin, Electrs and Datum addresses — and Bitcoin's login — are filled in from your installed services every time Hashrate Autopilot starts, so they keep working when those services move or are reinstalled. If you edit one of them in the dashboard it will look like it saved, and then go back on the next restart. That is deliberate. Everything else in the dashboard is yours.
+The Bitcoin, Electrs and Datum addresses — and Bitcoin's login — are filled in from your installed services every time Hashrate Autopilot starts, so they keep working when those services move or are reinstalled. If you edit one of them in the dashboard it will look like it saved, and then go back on the next restart. That is deliberate. Everything else in the dashboard is yours. When changing your DDNS provider or update URL, re-enter the matching credential so the new destination receives only the credential you provide for it.
 
 ### Alerts are the application's, not your server's
 
