@@ -35,6 +35,8 @@ If the service's **Bitcoin Connection** check asks you to update Bitcoin, instal
 
 Everything happens on the Dashboard: monitoring the marketplace, your pool and your payouts; changing settings; reviewing decisions; and switching between DRY-RUN, LIVE and PAUSED. This package adds no separate controls of its own.
 
+To check DATUM statistics, leave the base URL supplied by StartOS in the **DATUM API** field and select **Test connection**. The package can read worker count and estimated hashrate from the gateway’s status page when its JSON endpoint is unavailable.
+
 ### Switching to DRY-RUN or PAUSED does not cancel a bid you already have
 
 This is the most important thing to know about the run modes. DRY-RUN and PAUSED stop it from making **new** changes — creating, editing or cancelling bids. Neither one retracts a bid that is already live, and that bid keeps delivering hashrate and keeps costing you money.

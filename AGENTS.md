@@ -34,7 +34,7 @@ verified, tried, and decided belongs in the commit message and the PR body.
 
 ## This repo
 
-- **Don't vendor the application's source.** Pin upstream's published multi-architecture image in `images.main.source.dockerTag`. Follow `UPDATING.md` when changing the tag.
+- **Don't vendor the application's source.** Pin upstream's multi-architecture index digest in `images.main.source.dockerBuild.buildArgs.IMAGE`. Keep the DATUM compatibility patch in `patches/`; follow `UPDATING.md` when updating or retiring it.
 - **Don't ask the operator for bitcoind's RPC credentials.** `main.ts` reads them reactively from bitcoind's `.cookie`, so a rotated cookie restarts the daemon with the new one.
 - **Throw when a dependency's bridge address doesn't resolve; don't omit its variable.** Every dependency is required, and a daemon started without one reports no chain tip, payouts or pool statistics as if it were an application bug.
 - **Import each dependency's host id and port from its own package** (`bitcoin-core-startos`, `electrs-startos`, `datum-gateway-startos`), so a change on their side fails the build here instead of misconnecting.

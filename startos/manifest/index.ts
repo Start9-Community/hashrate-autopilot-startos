@@ -15,7 +15,12 @@ export const manifest = setupManifest({
   images: {
     main: {
       source: {
-        dockerTag: 'ghcr.io/rdouma/hashrate-autopilot:1.18.4',
+        dockerBuild: {
+          buildArgs: {
+            IMAGE:
+              'ghcr.io/rdouma/hashrate-autopilot:1.18.4@sha256:93d44bc53a0797684e739ec58f150ffa5554e18f1494a531090eb369db4e2d80',
+          },
+        },
       },
       arch: ['x86_64', 'aarch64'],
       emulateMissing: false,

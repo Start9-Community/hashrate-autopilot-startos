@@ -1,6 +1,6 @@
 # Updating Hashrate Autopilot
 
-The manifest pins upstream's published image in `images.main.source.dockerTag` in
+The manifest pins upstream's published image in `images.main.source.dockerBuild.buildArgs.IMAGE` in
 `startos/manifest/index.ts`.
 
 ## Determining the upstream version
@@ -19,7 +19,7 @@ gh release view --repo rdouma/hashrate-autopilot --json tagName,publishedAt,url
      | jq -r '.manifests[].platform.architecture'
    ```
 
-2. Set the tag in `images.main.source.dockerTag`. Update the version and release notes in
+2. Set the verified tag and multi-architecture index digest (`image:tag@sha256:…`) in `images.main.source.dockerBuild.buildArgs.IMAGE`. Update the version and release notes in
    `startos/versions/current.ts` and the image reference in `README.md`.
 3. Review what the release changed in the application's own configuration surface, because the
    package asserts part of it on every start. In particular: the `BHA_*` names in
@@ -49,3 +49,16 @@ gh release view --repo rdouma/hashrate-autopilot --json tagName,publishedAt,url
          new X509Certificate(pem).subject.includes("emSign ECC Root CA - G3")))
      '
    ```
+
+## Retiring the DATUM patch
+
+Compare the new release's `DatumService.poll()` with `patches/datum.patch`. The
+Dockerfile applies the patch to the poller from the pinned image and runs
+`patches/datum.test.mjs` before copying the two runtime modules into the final image.
+Run `make x86 arm` to check and package both architectures. If the patch stops
+applying, review the upstream change before adapting it.
+
+Once upstream can read the StartOS status page after a JSON 404, run the same fixture
+tests against its unpatched image and verify **Test connection** on a StartOS gateway
+that lacks `/umbrel-api`. Then restore `images.main.source.dockerTag`, remove the
+patch layer and its build prerequisites, and update the README and agent instructions.

@@ -14,6 +14,24 @@
 - **Upstream repo:** <https://github.com/rdouma/hashrate-autopilot>
 - **Wrapper repo:** <https://github.com/Start9-Community/hashrate-autopilot-startos>
 
+## StartOS difference: DATUM Gateway statistics
+
+Upstream Hashrate Autopilot 1.18.4 reads worker count and hashrate from the optional
+`/umbrel-api` JSON endpoint. StartOS DATUM Gateway `0.5.1-beta:3` serves those figures
+on its regular status page at `/` and returns HTTP 404 for the JSON endpoint. This made
+**Test connection** report a failure on a reachable gateway and left the DATUM panel
+without readings. [Upstream poller at v1.18.4](https://github.com/rdouma/hashrate-autopilot/blob/v1.18.4/packages/daemon/src/services/datum.ts)
+
+Starting with package **1.18.4:1**, Autopilot tries JSON first. Only a 404 triggers a
+read of the status page at the same base URL. It reads **Total Work Subscriptions**
+(or **Total Connections** when subscriptions are unavailable) and **Estimated Hashrate**,
+converting the rate to PH/s. Missing readings stay unknown; a page with neither reading
+fails the check. The connection test and background poller share this behavior.
+Keep the StartOS-provided DATUM base URL in the dashboard. This change affects monitoring only.
+
+The [package patch](patches/datum.patch) adapts the historical StartOS fallback.
+See the [update procedure](UPDATING.md#retiring-the-datum-patch) for when to remove it.
+
 ---
 
 ## Table of Contents
@@ -35,7 +53,7 @@
 
 ## Image and Container Runtime
 
-One image, pulled from upstream's registry, in one subcontainer.
+One image built from upstream's published release runs in one subcontainer.
 
 | Property     | Value                                    |
 | ------------ | ---------------------------------------- |
@@ -48,7 +66,7 @@ One image, pulled from upstream's registry, in one subcontainer.
 | ------------------------ | --------------------------------------------- |
 | `hashrate-autopilot-sub` | The `primary` daemon — the one to `attach` to |
 
-StartOS uses upstream's published image directly. Version 1.18.4 includes Node 22.23.5, whose default TLS trust store excludes emSign ECC Root CA - G3. The manifest pins the image tag; `UPDATING.md` describes how to verify a new release.
+The Dockerfile starts from upstream's published multi-architecture image, pinned by digest. It adds the DATUM statistics fallback described above. The upstream image supplies Node 22.23.5 and its default TLS trust store.
 
 ## Volume and Data Layout
 
@@ -175,7 +193,7 @@ The one thing to decide before restoring is the run mode you want. A backup take
 4. **The dependency-derived settings are re-asserted on every start** and cannot be changed from the dashboard — the Bitcoin RPC URL and credentials, the Datum statistics URL, the Electrs endpoint, and the payout source. Editing them in the UI appears to work and reverts on the next restart.
 5. **Uninstalling deletes everything**, including the encrypted secrets and the full history. Back up first.
 6. **x86_64 and aarch64 only.**
-7. **The packaged version can lag upstream.** The manifest pins one published upstream image tag; a newer upstream release ships here only once that pin is bumped.
+7. **The packaged version can lag upstream.** The manifest pins the published upstream image by digest; a newer upstream release ships here only once that pin is bumped.
 
 ---
 
