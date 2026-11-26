@@ -1,0 +1,72 @@
+--- a/datum.js
++++ b/datum.js
+@@ -29,6 +29,8 @@
+     'ph/s': 1,
+     'eh/s': 1_000,
+ };
++import { dashboardStats } from './datum-dashboard.mjs';
++
+ export class DatumService {
+     apiUrl;
+     timeoutMs;
+@@ -64,6 +66,19 @@
+                 // hand back an actionable hint instead.
+                 redirect: 'manual',
+             });
++            if (response.status === 404) {
++                await response.body?.cancel();
++                const page = await fetch(`${this.apiUrl}/`, {
++                    signal: controller.signal,
++                    redirect: 'manual',
++                });
++                if (!page.ok) {
++                    await page.body?.cancel();
++                    return this.fail(checkedAt, `DATUM dashboard HTTP ${page.status}`);
++                }
++                const stats = dashboardStats(await page.text(), HASHRATE_UNIT_TO_PH);
++                return this.success(checkedAt, stats.connections, stats.hashrate_ph);
++            }
+             if (response.type === 'opaqueredirect' ||
+                 (response.status >= 300 && response.status < 400)) {
+                 return this.fail(checkedAt, 'redirected to a login page - the Datum API is behind an auth proxy (e.g. Umbrel app-proxy). Expose it directly or disable the proxy auth; see docs/setup-datum-api.md');
+@@ -87,15 +102,7 @@
+             }
+             const connections = extractNumber(payload, 'Connections');
+             const hashrate_ph = extractHashratePh(payload);
+-            this.lastOkAt = checkedAt;
+-            this.consecutiveFailures = 0;
+-            return {
+-                reachable: true,
+-                connections,
+-                hashrate_ph,
+-                checked_at: checkedAt,
+-                error: null,
+-            };
++            return this.success(checkedAt, connections, hashrate_ph);
+         }
+         catch (err) {
+             // #310: a bare "fetch failed" is usually connection refused /
+@@ -110,6 +117,17 @@
+         finally {
+             clearTimeout(timeout);
+         }
++    }
++    success(checkedAt, connections, hashrate_ph) {
++        this.lastOkAt = checkedAt;
++        this.consecutiveFailures = 0;
++        return {
++            reachable: true,
++            connections,
++            hashrate_ph,
++            checked_at: checkedAt,
++            error: null,
++        };
+     }
+     snapshot() {
+         return {
+@@ -197,4 +215,3 @@
+         };
+     }
+ }
+-//# sourceMappingURL=datum.js.map
+\ No newline at end of file

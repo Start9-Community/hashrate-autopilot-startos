@@ -14,6 +14,38 @@
 - **Upstream repo:** <https://github.com/rdouma/hashrate-autopilot>
 - **Wrapper repo:** <https://github.com/Start9-Community/hashrate-autopilot-startos>
 
+## StartOS package updates
+
+### 1.18.4:2 — Bitcoin Roots and Bitcoin Knots compatibility
+
+This revision adds **Bitcoin Roots** to the existing **Bitcoin Core** and **Bitcoin Knots (pre-RDTS)** choices. Install one compatible node. All three provide the StartOS `bitcoind` service, and Autopilot uses its RPC connection for block headers and payout lookups.
+
+| Bitcoin implementation | Supported StartOS package versions |
+| --- | --- |
+| Core | 28.x from `28.4:42`, 29.x from `29.5:4`, 30.x from `30.4:4`, or `31.2:4` and later |
+| Roots | `#roots:29.4:1` and later |
+| Knots (pre-RDTS) | `#knotsprerdts:29.3:33` and later |
+
+The minimum revisions above expose the RPC cookie on the shared `public` volume. Electrs and DATUM Gateway also check their own Bitcoin requirements. [Bitcoin Roots package](https://github.com/Start9-Community/bitcoin-roots-startos) · [Bitcoin Knots package](https://github.com/Start9-Community/bitcoin-knots-prerdts-startos)
+
+### 1.18.4:1 — DATUM Gateway stats API fallback
+
+Upstream Hashrate Autopilot 1.18.4 reads worker count and hashrate from the optional
+`/umbrel-api` JSON endpoint. StartOS DATUM Gateway `0.5.1-beta:3` serves those figures
+on its regular status page at `/` and returns HTTP 404 for the JSON endpoint. This made
+**Test connection** report a failure on a reachable gateway and left the DATUM panel
+without readings. [Upstream poller at v1.18.4](https://github.com/rdouma/hashrate-autopilot/blob/v1.18.4/packages/daemon/src/services/datum.ts)
+
+Starting with package **1.18.4:1**, Autopilot tries JSON first. Only a 404 triggers a
+read of the status page at the same base URL. It reads **Total Work Subscriptions**
+(or **Total Connections** when subscriptions are unavailable) and **Estimated Hashrate**,
+converting the rate to PH/s. Missing readings stay unknown; a page with neither reading
+fails the check. The connection test and background poller share this behavior.
+Keep the StartOS-provided DATUM base URL in the dashboard. This change affects monitoring only.
+
+The [package patch](patches/datum.patch) adapts the historical StartOS fallback and is included in `1.18.4:2`. For the dashboard field syntax, see [DATUM and Electrs monitoring settings](#datum-and-electrs-monitoring-settings).
+See the [update procedure](UPDATING.md#retiring-the-datum-patch) for when to remove it.
+
 ---
 
 ## Table of Contents
@@ -24,6 +56,7 @@
 - [Dependencies](#dependencies)
 - [Network Access and Interfaces](#network-access-and-interfaces)
 - [Installation and First-Run Flow](#installation-and-first-run-flow)
+  - [DATUM and Electrs monitoring settings](#datum-and-electrs-monitoring-settings)
 - [Actions](#actions)
 - [Tasks](#tasks)
 - [Health Checks](#health-checks)
@@ -35,7 +68,7 @@
 
 ## Image and Container Runtime
 
-One image, pulled from upstream's registry, in one subcontainer.
+One image built from upstream's published release runs in one subcontainer.
 
 | Property     | Value                                    |
 | ------------ | ---------------------------------------- |
@@ -48,7 +81,7 @@ One image, pulled from upstream's registry, in one subcontainer.
 | ------------------------ | --------------------------------------------- |
 | `hashrate-autopilot-sub` | The `primary` daemon — the one to `attach` to |
 
-The image is upstream's own published build, with two temporary layers in the root `Dockerfile`: it installs `ca-certificates` and sets `NODE_OPTIONS=--use-openssl-ca`, so Node verifies against a current store, and it replaces `/usr/local/bin/node` with Node 22.23.4 from the official image. Both come out once upstream ships an image built on Node 22.23.4 or later. An upstream version bump is a tag change in the manifest; `UPDATING.md` has the procedure.
+The Dockerfile starts from upstream's published multi-architecture image, pinned by digest. It adds the DATUM statistics fallback described above. The upstream image supplies Node 22.23.5 and its default TLS trust store.
 
 ## Volume and Data Layout
 
@@ -132,6 +165,19 @@ On a fresh volume the daemon serves a setup wizard rather than the dashboard. It
 
 The controller starts in **DRY-RUN**: it evaluates and records what it would do without placing or changing anything. Promoting it to LIVE is a decision the operator makes on the Status page after reading the decisions it has been proposing.
 
+### DATUM and Electrs monitoring settings
+
+StartOS fills in the internal addresses when Autopilot starts. To check them, open **Config** in the Autopilot dashboard. The examples below show the field format; use the bridge address and port assigned to each service on your server.
+
+| Dashboard field | Example | What to enter |
+| --- | --- | --- |
+| **Datum stats API (optional)** | `http://10.0.3.1:64058` | HTTP base URL for the DATUM **web** interface, in the form `http://HOST:PORT`. Leave off `/umbrel-api`; Autopilot adds the path. |
+| **Payout source** | **Electrum server (recommended)** | Select this option to track payouts through Electrs. The configuration value is `electrs`. |
+| **Electrum server host** | `10.0.3.1` | Enter only the hostname or IP address. Leave the scheme and port out of this field. |
+| **Port** | `50001` | Enter the numeric port assigned to Electrs’s plaintext Electrum TCP interface. |
+
+Use **Test connection** beside each endpoint. DATUM reports gateway workers and estimated hashrate. Electrs checks the Bitcoin chain for payouts; let it finish syncing before relying on its history. The **Pool URL** is a separate setting for the public Stratum address where Braiins delivers hashrate.
+
 ## Actions
 
 None. Setup, configuration, run-mode selection and diagnostics all live in the application's own dashboard, so there is nothing StartOS can offer that the dashboard does not do better.
@@ -175,7 +221,7 @@ The one thing to decide before restoring is the run mode you want. A backup take
 4. **The dependency-derived settings are re-asserted on every start** and cannot be changed from the dashboard — the Bitcoin RPC URL and credentials, the Datum statistics URL, the Electrs endpoint, and the payout source. Editing them in the UI appears to work and reverts on the next restart.
 5. **Uninstalling deletes everything**, including the encrypted secrets and the full history. Back up first.
 6. **x86_64 and aarch64 only.**
-7. **The packaged version can lag upstream.** The manifest pins one published upstream image tag; a newer upstream release ships here only once that pin is bumped.
+7. **The packaged version can lag upstream.** The manifest pins the published upstream image by digest; a newer upstream release ships here only once that pin is bumped.
 
 ---
 
@@ -183,7 +229,7 @@ The one thing to decide before restoring is the run mode you want. A backup take
 
 ```yaml
 package_id: hashrate-autopilot
-image: ghcr.io/rdouma/hashrate-autopilot:1.18.2
+image: ghcr.io/rdouma/hashrate-autopilot:1.18.4
 architectures:
   - x86_64
   - aarch64

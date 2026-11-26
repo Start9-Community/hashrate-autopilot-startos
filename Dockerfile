@@ -1,8 +1,18 @@
 ARG IMAGE
-FROM ${IMAGE}
-# Node otherwise trusts its compiled-in roots, and the image ships no system store to point it at.
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/* \
- && ! grep -q MIICTjCCAdOgAwIBAgIKPPYHqWhwDtqLhDAKBggqhkjOPQQDAzBr /etc/ssl/certs/ca-certificates.crt
-ENV NODE_OPTIONS=--use-openssl-ca
-COPY --from=node:22.23.4-bookworm-slim /usr/local/bin/node /usr/local/bin/node
-ENV NODE_VERSION=22.23.4
+FROM ${IMAGE} AS upstream
+
+# Apply the patch to the daemon module shipped for the target architecture.
+FROM --platform=$BUILDPLATFORM alpine/git:2.52.0@sha256:4a0e72d49596a1f5d3701aeedafdadc5c0da4062be4657c7bdc4017387f591cc AS patcher
+WORKDIR /work
+COPY --from=upstream /app/packages/daemon/dist/services/datum.js .
+COPY patches/datum.patch .
+RUN git apply --check datum.patch && git apply datum.patch
+
+FROM --platform=$BUILDPLATFORM ${IMAGE} AS checks
+WORKDIR /work
+COPY --from=patcher /work/datum.js .
+COPY patches/datum-dashboard.mjs patches/datum.test.mjs ./
+RUN node --test datum.test.mjs
+
+FROM upstream
+COPY --from=checks /work/datum.js /work/datum-dashboard.mjs /app/packages/daemon/dist/services/

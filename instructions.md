@@ -6,6 +6,8 @@
 > [!IMPORTANT]
 > **Install Bitcoin, Electrs and Datum Gateway first, and let them finish syncing.** Hashrate Autopilot will not start until all three are up and synced. They find each other automatically — there is nothing for you to copy across.
 
+For Bitcoin, choose one compatible installation of **Bitcoin Core**, **Bitcoin Roots** (from `#roots:29.4:1`), or **Bitcoin Knots (pre-RDTS)** (from `#knotsprerdts:29.3:33`). StartOS connects Autopilot to the installed node automatically.
+
 ## Documentation
 
 - [Hashrate Autopilot README](https://github.com/rdouma/hashrate-autopilot#readme) — what the project is and how the controller decides what to bid.
@@ -35,6 +37,8 @@ If the service's **Bitcoin Connection** check asks you to update Bitcoin, instal
 
 Everything happens on the Dashboard: monitoring the marketplace, your pool and your payouts; changing settings; reviewing decisions; and switching between DRY-RUN, LIVE and PAUSED. This package adds no separate controls of its own.
 
+To check DATUM statistics, leave the base URL supplied by StartOS in the **DATUM API** field and select **Test connection**. The package can read worker count and estimated hashrate from the gateway’s status page when its JSON endpoint is unavailable.
+
 ### Switching to DRY-RUN or PAUSED does not cancel a bid you already have
 
 This is the most important thing to know about the run modes. DRY-RUN and PAUSED stop it from making **new** changes — creating, editing or cancelling bids. Neither one retracts a bid that is already live, and that bid keeps delivering hashrate and keeps costing you money.
@@ -43,7 +47,7 @@ To actually stop spending, go to the Braiins marketplace, cancel the bid there, 
 
 ### A few settings are managed for you
 
-The Bitcoin, Electrs and Datum addresses — and Bitcoin's login — are filled in from your installed services every time Hashrate Autopilot starts, so they keep working when those services move or are reinstalled. If you edit one of them in the dashboard it will look like it saved, and then go back on the next restart. That is deliberate. Everything else in the dashboard is yours.
+The Bitcoin, Electrs and Datum addresses — and Bitcoin's login — are filled in from your installed services every time Hashrate Autopilot starts, so they keep working when those services move or are reinstalled. If you edit one of them in the dashboard it will look like it saved, and then go back on the next restart. That is deliberate. Everything else in the dashboard is yours. When changing your DDNS provider or update URL, re-enter the matching credential so the new destination receives only the credential you provide for it.
 
 ### Alerts are the application's, not your server's
 
