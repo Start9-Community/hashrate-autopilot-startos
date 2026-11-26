@@ -42,6 +42,7 @@ See the [update procedure](UPDATING.md#retiring-the-datum-patch) for when to rem
 - [Dependencies](#dependencies)
 - [Network Access and Interfaces](#network-access-and-interfaces)
 - [Installation and First-Run Flow](#installation-and-first-run-flow)
+  - [DATUM and Electrs monitoring settings](#datum-and-electrs-monitoring-settings)
 - [Actions](#actions)
 - [Tasks](#tasks)
 - [Health Checks](#health-checks)
@@ -159,6 +160,19 @@ On a fresh volume the daemon serves a setup wizard rather than the dashboard. It
 **The wizard is unauthenticated until it is finished**, because the password it asks for is what protects everything afterwards. Complete first-run setup from a connection you trust.
 
 The controller starts in **DRY-RUN**: it evaluates and records what it would do without placing or changing anything. Promoting it to LIVE is a decision the operator makes on the Status page after reading the decisions it has been proposing.
+
+### DATUM and Electrs monitoring settings
+
+StartOS fills in the internal addresses when Autopilot starts. To check them, open **Config** in the Autopilot dashboard. The examples below show the field format; use the bridge address and port assigned to each service on your server.
+
+| Dashboard field | Example | What to enter |
+| --- | --- | --- |
+| **Datum stats API (optional)** | `http://10.0.3.1:64058` | HTTP base URL for the DATUM **web** interface, in the form `http://HOST:PORT`. Leave off `/umbrel-api`; Autopilot adds the path. |
+| **Payout source** | **Electrum server (recommended)** | Select this option to track payouts through Electrs. The configuration value is `electrs`. |
+| **Electrum server host** | `10.0.3.1` | Enter only the hostname or IP address. Leave the scheme and port out of this field. |
+| **Port** | `50001` | Enter the numeric port assigned to Electrs’s plaintext Electrum TCP interface. |
+
+Use **Test connection** beside each endpoint. DATUM reports gateway workers and estimated hashrate. Electrs checks the Bitcoin chain for payouts; let it finish syncing before relying on its history. The **Pool URL** is a separate setting for the public Stratum address where Braiins delivers hashrate.
 
 ## Actions
 
