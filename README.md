@@ -14,7 +14,21 @@
 - **Upstream repo:** <https://github.com/rdouma/hashrate-autopilot>
 - **Wrapper repo:** <https://github.com/Start9-Community/hashrate-autopilot-startos>
 
-## StartOS difference: DATUM Gateway statistics
+## StartOS package updates
+
+### 1.18.4:2 — Bitcoin Roots and Bitcoin Knots compatibility
+
+This revision adds **Bitcoin Roots** to the existing **Bitcoin Core** and **Bitcoin Knots (pre-RDTS)** choices. Install one compatible node. All three provide the StartOS `bitcoind` service, and Autopilot uses its RPC connection for block headers and payout lookups.
+
+| Bitcoin implementation | Supported StartOS package versions |
+| --- | --- |
+| Core | 28.x from `28.4:42`, 29.x from `29.5:4`, 30.x from `30.4:4`, or `31.2:4` and later |
+| Roots | `#roots:29.4:1` and later |
+| Knots (pre-RDTS) | `#knotsprerdts:29.3:33` and later |
+
+The minimum revisions above expose the RPC cookie on the shared `public` volume. Electrs and DATUM Gateway also check their own Bitcoin requirements. [Bitcoin Roots package](https://github.com/Start9-Community/bitcoin-roots-startos) · [Bitcoin Knots package](https://github.com/Start9-Community/bitcoin-knots-prerdts-startos)
+
+### 1.18.4:1 — DATUM Gateway stats API fallback
 
 Upstream Hashrate Autopilot 1.18.4 reads worker count and hashrate from the optional
 `/umbrel-api` JSON endpoint. StartOS DATUM Gateway `0.5.1-beta:3` serves those figures
@@ -29,7 +43,7 @@ converting the rate to PH/s. Missing readings stay unknown; a page with neither 
 fails the check. The connection test and background poller share this behavior.
 Keep the StartOS-provided DATUM base URL in the dashboard. This change affects monitoring only.
 
-The [package patch](patches/datum.patch) adapts the historical StartOS fallback.
+The [package patch](patches/datum.patch) adapts the historical StartOS fallback and is included in `1.18.4:2`. For the dashboard field syntax, see [DATUM and Electrs monitoring settings](#datum-and-electrs-monitoring-settings).
 See the [update procedure](UPDATING.md#retiring-the-datum-patch) for when to remove it.
 
 ---
@@ -81,17 +95,7 @@ One volume, holding a single SQLite database that is the entire state of the ser
 | ------------------- | ---------- | ----------------------------------------------------------------------- |
 | `/app/data/state.db` | The daemon | Operator configuration, encrypted application secrets, runtime state, decision and payout history |
 
-Everything else in the container belongs to the image and is replaced on update. Choose **one** Bitcoin node. StartOS publishes Bitcoin Core, [Bitcoin Roots](https://github.com/Start9-Community/bitcoin-roots-startos), and [Bitcoin Knots (pre-RDTS)](https://github.com/Start9-Community/bitcoin-knots-prerdts-startos) under the shared package ID `bitcoind`. Autopilot uses the installed node automatically.
-
-| Bitcoin implementation | Supported StartOS package versions |
-| --- | --- |
-| Core | 28.x from `28.4:42`, 29.x from `29.5:4`, 30.x from `30.4:4`, or `31.2:4` and later |
-| Roots | `#roots:29.4:1` and later |
-| Knots (pre-RDTS) | `#knotsprerdts:29.3:33` and later |
-
-These minimums identify releases that publish the RPC cookie at the location Autopilot mounts. Roots support starts with Autopilot `1.18.4:2`. Electrs and DATUM Gateway also check their own Bitcoin requirements.
-
-Bitcoin's `public` volume is also mounted, read-only, at `/mnt/bitcoin` — see [Dependencies](#dependencies).
+Everything else in the container belongs to the image and is replaced on update. Bitcoin's `public` volume is also mounted, read-only, at `/mnt/bitcoin` — see [Dependencies](#dependencies).
 
 The secrets in that database — the Braiins access token, the dashboard password, Telegram credentials — are encrypted at rest by the application, not by this package. Uninstalling deletes the volume and everything above with it.
 
