@@ -20,11 +20,16 @@ export const long = {
 }
 
 export const depBitcoindDescription = {
-  en_US: 'Supplies the block data Datum Gateway mines against.',
-  es_ES: 'Suministra los datos de bloques con los que mina Datum Gateway.',
-  de_DE: 'Liefert die Blockdaten, gegen die Datum Gateway schürft.',
-  pl_PL: 'Dostarcza dane bloków, na których kopie Datum Gateway.',
-  fr_FR: 'Fournit les données de blocs sur lesquelles Datum Gateway mine.',
+  en_US:
+    'Use Bitcoin Core, Bitcoin Roots, or Bitcoin Knots (pre-RDTS) as the Bitcoin RPC node for block headers and payout lookups.',
+  es_ES:
+    'Usa Bitcoin Core, Bitcoin Roots o Bitcoin Knots (pre-RDTS) como nodo RPC de Bitcoin para consultar cabeceras de bloques y pagos.',
+  de_DE:
+    'Bitcoin Core, Bitcoin Roots oder Bitcoin Knots (pre-RDTS) liefert über Bitcoin-RPC die Blockheader und Zahlungsdaten.',
+  pl_PL:
+    'Bitcoin Core, Bitcoin Roots lub Bitcoin Knots (pre-RDTS) udostępnia przez RPC nagłówki bloków i dane o wypłatach.',
+  fr_FR:
+    'Utilisez Bitcoin Core, Bitcoin Roots ou Bitcoin Knots (pre-RDTS) comme nœud RPC Bitcoin pour consulter les en-têtes de blocs et les paiements.',
 }
 
 export const depElectrsDescription = {

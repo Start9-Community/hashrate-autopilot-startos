@@ -80,7 +80,17 @@ One volume, holding a single SQLite database that is the entire state of the ser
 | ------------------- | ---------- | ----------------------------------------------------------------------- |
 | `/app/data/state.db` | The daemon | Operator configuration, encrypted application secrets, runtime state, decision and payout history |
 
-Everything else in the container belongs to the image and is replaced on update. Bitcoin's `public` volume is also mounted, read-only, at `/mnt/bitcoin` — see [Dependencies](#dependencies).
+Everything else in the container belongs to the image and is replaced on update. Choose **one** Bitcoin node. StartOS publishes Bitcoin Core, [Bitcoin Roots](https://github.com/Start9-Community/bitcoin-roots-startos), and [Bitcoin Knots (pre-RDTS)](https://github.com/Start9-Community/bitcoin-knots-prerdts-startos) under the shared package ID `bitcoind`. Autopilot uses the installed node automatically.
+
+| Bitcoin implementation | Supported StartOS package versions |
+| --- | --- |
+| Core | 28.x from `28.4:42`, 29.x from `29.5:4`, 30.x from `30.4:4`, or `31.2:4` and later |
+| Roots | `#roots:29.4:1` and later |
+| Knots (pre-RDTS) | `#knotsprerdts:29.3:33` and later |
+
+These minimums identify releases that publish the RPC cookie at the location Autopilot mounts. Roots support starts with Autopilot `1.18.4:2`. Electrs and DATUM Gateway also check their own Bitcoin requirements.
+
+Bitcoin's `public` volume is also mounted, read-only, at `/mnt/bitcoin` — see [Dependencies](#dependencies).
 
 The secrets in that database — the Braiins access token, the dashboard password, Telegram credentials — are encrypted at rest by the application, not by this package. Uninstalling deletes the volume and everything above with it.
 

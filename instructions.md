@@ -6,6 +6,8 @@
 > [!IMPORTANT]
 > **Install Bitcoin, Electrs and Datum Gateway first, and let them finish syncing.** Hashrate Autopilot will not start until all three are up and synced. They find each other automatically — there is nothing for you to copy across.
 
+For Bitcoin, choose one compatible installation of **Bitcoin Core**, **Bitcoin Roots** (from `#roots:29.4:1`), or **Bitcoin Knots (pre-RDTS)** (from `#knotsprerdts:29.3:33`). StartOS connects Autopilot to the installed node automatically.
+
 ## Documentation
 
 - [Hashrate Autopilot README](https://github.com/rdouma/hashrate-autopilot#readme) — what the project is and how the controller decides what to bid.

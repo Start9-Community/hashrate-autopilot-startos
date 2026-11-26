@@ -4,6 +4,7 @@ import {
   depElectrsDescription,
 } from './manifest/i18n'
 import { sdk } from './sdk'
+import { bitcoinVersionRange } from './utils'
 
 export const dependencies = sdk.Dependencies.of()
   // A chain tip that is behind gives wrong block-header answers rather than
@@ -13,10 +14,9 @@ export const dependencies = sdk.Dependencies.of()
       description: depBitcoindDescription,
       metadata: {
         title: 'Bitcoin',
-        icon: 'https://raw.githubusercontent.com/Start9Labs/bitcoin-core-startos/refs/heads/31.x/icon.svg',
+        icon: 'https://raw.githubusercontent.com/Start9Labs/bitcoin-core-startos/feec0b1dae42961a257948fe39b40caf8672fce1/dep-icon.svg',
       },
-      versionRange:
-        '(>=28.4:42 && <29) || (>=29.5:4 && <30) || (>=30.4:4 && <31) || >=31.2:4 || >=#knotsprerdts:29.3:33',
+      versionRange: bitcoinVersionRange,
       kind: 'running',
       healthChecks: ['bitcoind', 'sync-progress'],
     }),
