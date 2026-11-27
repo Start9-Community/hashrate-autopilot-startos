@@ -5,7 +5,7 @@
   },
   "dependencies": {
     "@start9labs/start-sdk": "4.1.0",
-    "bitcoin-core-startos": "github:Start9Labs/bitcoin-core-startos#next/31.x",
+    "bitcoin-core-startos": "github:Start9Labs/bitcoin-core-startos#next/32.x",
     "datum-gateway-startos": "github:Start9Labs/datum-gateway-startos#next",
     "electrs-startos": "github:Start9Labs/electrs-startos#next"
   },
